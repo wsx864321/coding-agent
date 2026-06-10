@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -143,5 +144,11 @@ func (a *Agent) buildTools() []openai.Tool {
 			},
 		})
 	}
+
+	// 对tools按照Name进行排序，prompt cache友好
+	sort.Slice(tools, func(i, j int) bool {
+		return tools[i].Function.Name < tools[j].Function.Name
+	})
+
 	return tools
 }
