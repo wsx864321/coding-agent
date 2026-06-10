@@ -6,13 +6,15 @@ import (
 	"os"
 
 	openai "github.com/sashabaranov/go-openai"
-
-	"github.com/wsx864321/coding-agent/internal/permission"
 )
 
 // Config Agent 配置
 //
 // 所有字段可选；调用 NewAgent 时会自动从环境变量回退。
+//
+// 注意：权限检查器 / 事件 hook / openai client 这三类"装配期可选、运行期可替换"
+// 的依赖已迁出 Config，用 Option 模式注入（见 agent.go 的 Option / WithChecker 等）。
+// 好处是 Config 保持"只读、不可变"，新依赖不需要破坏 API。
 type Config struct {
 	// APIKey OpenAI 兼容服务的 API key
 	// 留空时从环境变量 OPENAI_API_KEY 读取
@@ -39,12 +41,6 @@ type Config struct {
 
 	// Temperature 采样温度；0 表示不传该参数（API 默认 1）
 	Temperature float32
-
-	// Checker 工具执行前的权限检查器；nil 时放行所有调用
-	//
-	// 构造时通常与 cmd/cli 提供的 Asker 串联成 Pipeline（deny → ask → allow）。
-	// 也可通过 Agent.SetChecker 在运行时替换。
-	Checker permission.Checker
 }
 
 // DefaultMaxTurns 默认最大轮数

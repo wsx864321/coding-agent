@@ -27,35 +27,21 @@ type BashTool struct {
 	AllowedDirs []string
 	// MaxOutputBytes 单次执行允许捕获的最大输出字节数；0 表示不限制
 	MaxOutputBytes int
-	// Policy 是为未来按 reasonix 风格（mode=ask/allow/deny + deny/allow 规则）演进保留的锚点。
-	// 阶段1：保留字段，Execute 不读取。
-	Policy BashPolicy
 }
-
-// BashPolicy 是为未来安全策略扩展保留的占位类型。
-//
-// 后续会按 DeepSeek-Reasonix 的思路引入：
-//   - Mode: "ask" | "allow" | "deny"
-//   - Deny / Allow / Ask 规则列表
-//   - 只读命令白名单（isReadOnlyBashSubject）用于自动放行
-//
-// 当前阶段 Execute 暂不消费此字段，保留仅为不让未来重构时再改字段名。
-type BashPolicy struct{}
 
 // NewBashTool 创建一个具有默认配置的 BashTool
 //
-// 参数 workdir 是为未来 BashPolicy 演进预留的注入点（与 file 工具保持 API 形状一致）；
-// 现阶段 BashTool 不消费该值，调用方需自行设置 AllowedDirs（如需限制）。
+// 参数 workdir：file 系列工具的白名单基准目录；bash 工具自身不消费此值（按设计不限工作目录）
 //
 // 安全策略：默认不限制 AllowedDirs。bash 工具的"安全"主要由调用方控制：
-//   - 设置 AllowedDirs 后，工具仅在传入 workdir 时校验；workdir 留空仍放行
-//   - 未来通过 BashPolicy 引入 ask/allow/deny 模式（见 docs/bash-tool-design.md）
+//   - 调用方可通过 agent.WithBashAllowedDirs(...) 收紧；
+//   - 顶层更推荐走 permission.Checker / hooks.PreToolUse 实现 allow/ask/deny
 //
 // 之所以不默认收紧到 cwd：
 //   - bash 的合法用途常常跨目录（cd /path/to/project && make test）
 //   - AllowedDirs 留空意味着放行；调用方按需收紧
 func NewBashTool(workdir string) *BashTool {
-	_ = workdir // 暂不消费
+	_ = workdir // 与 file 工具保持 API 形状一致；bash 自身不消费
 	return &BashTool{
 		DefaultTimeout: 60 * time.Second,
 		MaxOutputBytes: 1024 * 1024, // 默认 1MB

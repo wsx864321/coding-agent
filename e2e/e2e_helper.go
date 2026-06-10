@@ -108,16 +108,21 @@ var _ tools.Tool = FakeBash{}
 // =====================================================================
 
 // NewTestAgent 用 fake LLM + FakeBash 构造一个 Agent
-func NewTestAgent(t *testing.T, f *FakeLLMServer) *agent.Agent {
+//
+// opts 用于注入权限 Checker / hooks 等可选依赖
+func NewTestAgent(t *testing.T, f *FakeLLMServer, opts ...agent.Option) *agent.Agent {
 	t.Helper()
 	registry := tools.NewRegistry()
 	registry.Register(FakeBash{})
+
+	// 用 WithRegistry 把 registry 插到 opts 头部（避免调用方在 opts 里重复写）
+	fullOpts := append([]agent.Option{agent.WithRegistry(registry)}, opts...)
 
 	a, err := agent.NewAgent(agent.Config{
 		APIKey:   "test-key",
 		BaseURL:  f.server.URL + "/v1",
 		MaxTurns: 5,
-	}, registry)
+	}, fullOpts...)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}

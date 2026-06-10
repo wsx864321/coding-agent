@@ -10,6 +10,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/wsx864321/coding-agent/e2e"
+	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/permission"
 )
 
@@ -23,15 +24,13 @@ func TestE2E_PermissionDeny_BlocksExecute(t *testing.T) {
 		},
 		e2e.ScriptedResponse{Content: "ok"},
 	)
-	a := e2e.NewTestAgent(t, f)
-
-	a.SetChecker(&permission.Pipeline{
+	a := e2e.NewTestAgent(t, f, agent.WithChecker(&permission.Pipeline{
 		Deny: []permission.Checker{
 			&permission.DenyListChecker{Patterns: []permission.DenyPattern{
 				{ToolName: "bash", ArgName: "command", Substr: "rm -rf /", Reason: "硬拒绝：删根目录"},
 			}},
 		},
-	})
+	}))
 
 	out, err := a.Run(context.Background(), "test")
 	if err != nil {
@@ -62,13 +61,11 @@ func TestE2E_PermissionAllow_Executes(t *testing.T) {
 		},
 		e2e.ScriptedResponse{Content: "done"},
 	)
-	a := e2e.NewTestAgent(t, f)
-
-	a.SetChecker(&permission.Pipeline{
+	a := e2e.NewTestAgent(t, f, agent.WithChecker(&permission.Pipeline{
 		Deny: []permission.Checker{
 			&permission.DenyListChecker{Patterns: permission.DefaultBashDenyList()},
 		},
-	})
+	}))
 
 	out, err := a.Run(context.Background(), "test")
 	if err != nil {
@@ -93,9 +90,7 @@ func TestE2E_PermissionAsk_Deny(t *testing.T) {
 		},
 		e2e.ScriptedResponse{Content: "recovered"},
 	)
-	a := e2e.NewTestAgent(t, f)
-
-	a.SetChecker(&permission.Pipeline{
+	a := e2e.NewTestAgent(t, f, agent.WithChecker(&permission.Pipeline{
 		Ask: []permission.Checker{
 			&permission.AskRuleChecker{Rules: []permission.AskRule{
 				permission.DefaultBashAskRules(),
@@ -104,7 +99,7 @@ func TestE2E_PermissionAsk_Deny(t *testing.T) {
 		Asker: permission.AskerFunc(func(_ context.Context, _ permission.ToolCall, _ string) bool {
 			return false
 		}),
-	})
+	}))
 
 	if _, err := a.Run(context.Background(), "test"); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -128,9 +123,7 @@ func TestE2E_PermissionAsk_Allow(t *testing.T) {
 		},
 		e2e.ScriptedResponse{Content: "ok"},
 	)
-	a := e2e.NewTestAgent(t, f)
-
-	a.SetChecker(&permission.Pipeline{
+	a := e2e.NewTestAgent(t, f, agent.WithChecker(&permission.Pipeline{
 		Ask: []permission.Checker{
 			&permission.AskRuleChecker{Rules: []permission.AskRule{
 				permission.DefaultBashAskRules(),
@@ -139,7 +132,7 @@ func TestE2E_PermissionAsk_Allow(t *testing.T) {
 		Asker: permission.AskerFunc(func(_ context.Context, _ permission.ToolCall, _ string) bool {
 			return true
 		}),
-	})
+	}))
 
 	if _, err := a.Run(context.Background(), "test"); err != nil {
 		t.Fatalf("Run: %v", err)

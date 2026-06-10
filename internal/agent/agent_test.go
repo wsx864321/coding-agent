@@ -11,6 +11,9 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
+	"github.com/wsx864321/coding-agent/internal/agent"
+	"github.com/wsx864321/coding-agent/internal/hooks"
+	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
@@ -130,10 +133,12 @@ func newTestAgent(t *testing.T, f *fakeLLMServer, extraTools ...tools.Tool) *Age
 		registry.Register(tl)
 	}
 	a, err := NewAgent(Config{
-		APIKey:    "test-key",
-		BaseURL:   f.server.URL + "/v1",
-		MaxTurns:  5,
-	}, registry)
+		APIKey:   "test-key",
+		BaseURL:  f.server.URL + "/v1",
+		MaxTurns: 5,
+	},
+		agent.WithRegistry(registry),
+	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -457,3 +462,236 @@ func TestMessages_ReturnsCopy(t *testing.T) {
 		t.Error("Messages() should return a copy, not a reference")
 	}
 }
+
+// =====================================================================
+// Hooks 集成测试
+// =====================================================================
+
+// TestRun_PreToolUse_HookBlocks 验证 PreToolUse hook 阻断工具调用
+func TestRun_PreToolUse_HookBlocks(t *testing.T) {
+	f := newFakeLLM(t,
+		scriptedResponse{
+			toolCalls: []openai.ToolCall{
+				makeToolCall("call_1", "echo", `{"input":"hi"}`),
+			},
+		},
+		scriptedResponse{content: "got it"},
+	)
+
+	hr := newTestHookRegistry()
+	hr.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+		return "Blocked by hook: not allowed", "test"
+	})
+	a := newTestAgentWithHooks(t, f, hr)
+
+	out, err := a.Run(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if out != "got it" {
+		t.Errorf("output = %q, want 'got it'", out)
+	}
+	// 工具消息应包含 "Blocked by hook"
+	if !strings.Contains(a.messages[3].Content, "Blocked by hook") {
+		t.Errorf("expected tool message to contain 'Blocked by hook', got %q", a.messages[3].Content)
+	}
+}
+
+// TestRun_PreToolUse_HookAllowsButCheckerDenies 验证 hook 放行但 system Checker 仍可 deny
+//
+// 这是"hook 放水不能绕过 system deny"的安全不变式
+func TestRun_PreToolUse_HookAllowsButCheckerDenies(t *testing.T) {
+	f := newFakeLLM(t,
+		scriptedResponse{
+			toolCalls: []openai.ToolCall{
+				makeToolCall("call_1", "echo", `{"input":"x"}`),
+			},
+		},
+		scriptedResponse{content: "recovered"},
+	)
+
+	// hook 放行所有调用
+	hr := newTestHookRegistry()
+	hr.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+		return "", "" // 放行
+	})
+
+	// 重造 Agent 并用 Option 注入 hook + denyAll checker
+	registry := tools.NewRegistry()
+	registry.Register(echoTool{})
+	a, err := NewAgent(Config{
+		APIKey:   "test-key",
+		BaseURL:  f.server.URL + "/v1",
+		MaxTurns: 5,
+	},
+		agent.WithRegistry(registry),
+		agent.WithHooks(hr),
+		agent.WithChecker(denyAllChecker{}),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	a.client = makeClientWithFake(t, f)
+
+	out, err := a.Run(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if out != "recovered" {
+		t.Errorf("output = %q, want 'recovered'", out)
+	}
+	// 即便 hook 放行，system deny 仍生效
+	if !strings.Contains(a.messages[3].Content, "Permission denied") {
+		t.Errorf("expected tool message to contain 'Permission denied', got %q", a.messages[3].Content)
+	}
+}
+
+// TestRun_UserPromptSubmit_Triggered 验证 UserPromptSubmit 事件被触发
+func TestRun_UserPromptSubmit_Triggered(t *testing.T) {
+	f := newFakeLLM(t, scriptedResponse{content: "ok"})
+
+	hr := newTestHookRegistry()
+	got := ""
+	hr.RegisterUserPromptSubmit(func(_ context.Context, c string) error {
+		got = c
+		return nil
+	})
+	a := newTestAgentWithHooks(t, f, hr)
+
+	_, _ = a.Run(context.Background(), "hello world")
+	if got != "hello world" {
+		t.Errorf("UserPromptSubmit hook did not see input: got %q, want %q", got, "hello world")
+	}
+}
+
+// TestRun_Stop_ForceContinue 验证 Stop hook 强制续跑
+func TestRun_Stop_ForceContinue(t *testing.T) {
+	// 第一轮 LLM 给 final → Stop hook 强制注入 user 消息 → 第二轮 LLM 给 final
+	f := newFakeLLM(t,
+		scriptedResponse{content: "first answer"},
+		scriptedResponse{content: "second answer"},
+	)
+
+	hr := newTestHookRegistry()
+	hr.RegisterStop(func(_ context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
+		return "请继续", true // 强制续跑
+	})
+	a := newTestAgentWithHooks(t, f, hr)
+
+	out, err := a.Run(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if out != "second answer" {
+		t.Errorf("output = %q, want 'second answer'", out)
+	}
+	if f.calls.Load() != 2 {
+		t.Errorf("expected 2 LLM calls (Stop forced continuation), got %d", f.calls.Load())
+	}
+	// messages 长度：system + user + assistant(final) + user(forced) + assistant(2nd) = 5
+	if len(a.messages) != 5 {
+		t.Errorf("messages len = %d, want 5", len(a.messages))
+	}
+	if a.messages[3].Role != openai.ChatMessageRoleUser || a.messages[3].Content != "请继续" {
+		t.Errorf("messages[3] should be forced user message, got role=%q content=%q",
+			a.messages[3].Role, a.messages[3].Content)
+	}
+}
+
+// TestRun_Stop_NoForce 验证 Stop hook 不返回 force 时正常结束
+func TestRun_Stop_NoForce(t *testing.T) {
+	f := newFakeLLM(t, scriptedResponse{content: "ok"})
+
+	hr := newTestHookRegistry()
+	hr.RegisterStop(func(_ context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
+		return "", false // 不续跑
+	})
+	a := newTestAgentWithHooks(t, f, hr)
+
+	out, err := a.Run(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if out != "ok" {
+		t.Errorf("output = %q, want 'ok'", out)
+	}
+	if f.calls.Load() != 1 {
+		t.Errorf("expected 1 LLM call, got %d", f.calls.Load())
+	}
+}
+
+// TestRun_PostToolUse_Triggered 验证 PostToolUse 事件被触发
+func TestRun_PostToolUse_Triggered(t *testing.T) {
+	f := newFakeLLM(t,
+		scriptedResponse{
+			toolCalls: []openai.ToolCall{
+				makeToolCall("call_1", "echo", `{"input":"hi"}`),
+			},
+		},
+		scriptedResponse{content: "ok"},
+	)
+
+	hr := newTestHookRegistry()
+	type seen struct {
+		name   string
+		output string
+	}
+	var got seen
+	hr.RegisterPostToolUse(func(_ context.Context, call permission.ToolCall, output string) {
+		got.name = call.Name
+		got.output = output
+	})
+	a := newTestAgentWithHooks(t, f, hr)
+
+	_, err := a.Run(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got.name != "echo" {
+		t.Errorf("PostToolUse saw name=%q, want 'echo'", got.name)
+	}
+	if !strings.Contains(got.output, "echoed: hi") {
+		t.Errorf("PostToolUse saw output=%q, want 'echoed: hi'", got.output)
+	}
+}
+
+// =====================================================================
+// 测试辅助
+// =====================================================================
+
+// newTestHookRegistry 构造一个空的 hooks.Registry
+func newTestHookRegistry() *hooks.Registry {
+	return hooks.NewRegistry()
+}
+
+// newTestAgentWithHooks 是 newTestAgent + WithHooks(hr) 的合并版本
+//
+// Agent 构造时通过 option 注入 hr，避免调用已删除的 a.SetHooks(hr)
+func newTestAgentWithHooks(t *testing.T, f *fakeLLMServer, hr *hooks.Registry) *Agent {
+	t.Helper()
+	registry := tools.NewRegistry()
+	registry.Register(echoTool{})
+	registry.Register(failTool{})
+
+	a, err := NewAgent(Config{
+		APIKey:   "test-key",
+		BaseURL:  f.server.URL + "/v1",
+		MaxTurns: 5,
+	},
+		agent.WithRegistry(registry),
+		agent.WithHooks(hr),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	a.client = makeClientWithFake(t, f)
+	return a
+}
+
+// denyAllChecker 是 permission.Checker 的"全部拒绝"实现（用于测试）
+type denyAllChecker struct{}
+
+func (denyAllChecker) Check(_ context.Context, _ permission.ToolCall) permission.CheckResult {
+	return permission.CheckResult{Decision: permission.DecisionDeny, Reason: "test-deny"}
+}
+

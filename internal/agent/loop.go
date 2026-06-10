@@ -47,8 +47,21 @@ func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
 	// 将 assistant 消息原样存入历史（保留 ToolCalls）
 	a.messages = append(a.messages, msg)
 
-	// 无 tool_calls：LLM 已给出最终答案，循环结束
+	// 无 tool_calls：LLM 已给出最终答案，进入 Stop 阶段
 	if len(msg.ToolCalls) == 0 {
+		// Stop hook：若首个返回 force 的 hook 强制续跑，
+		// 把 force 作为 user 消息追加到历史并清空 final 信号，
+		// 让 Run 入口继续 loopStep
+		if a.hooks != nil {
+			force, ok := a.hooks.TriggerStop(ctx, a.messages)
+			if ok {
+				a.messages = append(a.messages, openai.ChatCompletionMessage{
+					Role:    openai.ChatMessageRoleUser,
+					Content: force,
+				})
+				return "", nil
+			}
+		}
 		return msg.Content, nil
 	}
 
@@ -74,28 +87,39 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) {
 
 // invokeTool 真正执行工具调用，返回结果字符串（成功或失败都返回字符串）
 //
+// 调用顺序：
+//  1. PreToolUse hook（如果注册）→ 首个返回非空 block 的 hook 阻断
+//  2. permission.Checker（Deny / Ask / Allow）→ 硬约束（不受 hook 放行影响）
+//  3. registry 查表 + Execute
+//  4. PostToolUse hook → 副作用（日志 / 截断 / 统计）
 //
-//	+----------+   +-------------+   +----------+   +--------+
-//	| tc 进入  | ->| permission  | ->| registry | ->| exec   |
-//	|          |   |  Checker    |   | lookup   |   |        |
-//	+----------+   +-------------+   +----------+   +--------+
-//	                   |
-//	                   +--> Deny  → 把拒绝原因回填给 LLM（不调 Execute）
-//	                   +--> Allow → 继续 registry 查表 + Execute
+//	+----------+   +-----------------+   +-------------+   +----------+   +--------+   +-----------------+
+//	| tc 进入  | ->| PreToolUse hook | ->| permission  | ->| registry | ->| exec   | ->| PostToolUse hook|
+//	|          |   |  (可阻断)        |   |  Checker    |   | lookup   |   |        |   |  (纯副作用)     |
+//	+----------+   +-----------------+   +-------------+   +----------+   +--------+   +-----------------+
+//	                                     |
+//	                                     +--> Deny  → 把拒绝原因回填给 LLM（不调 Execute）
+//	                                     +--> Allow → 继续 registry 查表 + Execute
 func (a *Agent) invokeTool(ctx context.Context, tc openai.ToolCall) string {
-	// 解析 JSON 参数字符串为 map[string]any（permission 也要用）
+	// 解析 JSON 参数字符串为 map[string]any（permission / hook 都要用）
 	var args map[string]any
 	if tc.Function.Arguments != "" {
 		if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 			return fmt.Sprintf("Error: 参数解析失败: %v (raw=%s)", err, tc.Function.Arguments)
 		}
 	}
+	call := permission.ToolCall{Name: tc.Function.Name, Args: args}
 
+	// Stage 1: PreToolUse hook（首个返回非空 block 的 hook 短路）
+	if a.hooks != nil {
+		if blocked, reason := a.hooks.TriggerPreToolUse(ctx, call); blocked {
+			return fmt.Sprintf("Blocked by hook: %s", reason)
+		}
+	}
+
+	// Stage 2: system permission.Checker（硬约束，不可被 hook 覆盖）
 	if a.checker != nil {
-		r := a.checker.Check(ctx, permission.ToolCall{
-			Name: tc.Function.Name,
-			Args: args,
-		})
+		r := a.checker.Check(ctx, call)
 		if r.Decision == permission.DecisionDeny {
 			return fmt.Sprintf("Permission denied: %s", r.Reason)
 		}
@@ -109,7 +133,16 @@ func (a *Agent) invokeTool(ctx context.Context, tc openai.ToolCall) string {
 
 	out, err := tool.Execute(ctx, args)
 	if err != nil {
+		// 即便 Execute 失败，也走 PostToolUse hook（让日志/统计 hook 看到真实输出）
+		if a.hooks != nil {
+			a.hooks.TriggerPostToolUse(ctx, call, fmt.Sprintf("Error: %v", err))
+		}
 		return fmt.Sprintf("Error: %v", err)
+	}
+
+	// Stage 3: PostToolUse hook
+	if a.hooks != nil {
+		a.hooks.TriggerPostToolUse(ctx, call, out)
 	}
 	return out
 }

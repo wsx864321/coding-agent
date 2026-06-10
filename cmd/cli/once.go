@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
 	"github.com/wsx864321/coding-agent/internal/agent"
+	"github.com/wsx864321/coding-agent/internal/hooks/builtin"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
@@ -36,7 +36,23 @@ func init() {
 }
 
 func runOnce(cmd *cobra.Command, args []string) error {
-	a, _, err := buildAgent(cmd)
+	workdir := resolveWorkdir(cmd)
+	registry := tools.DefaultRegistry(workdir)
+
+	// 系统级权限：仅保留硬拒绝（bash deny 列表），保证 hook "放水" 也不能绕过
+	// Ask 阶段在 once 模式下不装配（无 TTY、无 Asker）
+	checker := &permission.Pipeline{
+		Deny: []permission.Checker{
+			&permission.DenyListChecker{Patterns: permission.DefaultBashDenyList()},
+		},
+	}
+
+	// asker=nil：once 模式无 TTY，Ask 视为 Allow
+	a, err := agent.NewAgent(buildConfig(cmd),
+		agent.WithRegistry(registry),
+		agent.WithChecker(checker),
+		agent.WithHooks(builtin.NewDefault(workdir, nil, os.Stderr)),
+	)
 	if err != nil {
 		return err
 	}
@@ -58,60 +74,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
-}
-
-// buildAgent 根据 cmd 的 flags 构造 Agent + 工具注册表
-func buildAgent(cmd *cobra.Command) (*agent.Agent, *tools.Registry, error) {
-	registry := tools.NewRegistry()
-
-	// 基准目录：从 flag 读取，留空走当前目录
-	workdir, _ := cmd.Flags().GetString("workdir")
-	if workdir == "" {
-		workdir, _ = os.Getwd()
-	}
-
-	// bash 不默认限制 workdir（按设计）；调用方按需设置 AllowedDirs
-	registry.Register(tools.NewBashTool(workdir))
-
-	// file 系列工具以 workdir 作为白名单基准
-	registry.Register(tools.NewReadFileTool(workdir))
-	registry.Register(tools.NewWriteFileTool(workdir))
-	registry.Register(tools.NewEditFileTool(workdir))
-	registry.Register(tools.NewGlobFileTool(workdir))
-
-	model, _ := cmd.Flags().GetString("model")
-	baseURL, _ := cmd.Flags().GetString("base-url")
-	maxTurns, _ := cmd.Flags().GetInt("max-turns")
-	system, _ := cmd.Flags().GetString("system")
-
-	// s03: 构造三道闸门权限管线
-	//   Gate 1: bash 硬拒绝列表
-	//   Gate 2: bash 破坏性关键字 / 写入工作区外
-	//   Gate 3: once 模式无 TTY，按 auto-deny：只走 deny 与 ask-no-op，规则命中会被忽略
-	//           后续若需要 once 也走交互，可加 --interactive flag
-	checker := &permission.Pipeline{
-		Deny: []permission.Checker{
-			&permission.DenyListChecker{Patterns: permission.DefaultBashDenyList()},
-		},
-		Ask: []permission.Checker{
-			&permission.AskRuleChecker{Rules: []permission.AskRule{
-				permission.DefaultBashAskRules(),
-				permission.WriteOutsideWorkdirRule(workdir),
-			}},
-		},
-		// Asker 留 nil：once 模式下 Ask 视作 Allow（见 Pipeline.Check 注释）
-	}
-
-	cfg := agent.Config{
-		Model:        model,
-		BaseURL:      baseURL,
-		MaxTurns:     maxTurns,
-		SystemPrompt: system,
-		Checker:      checker,
-	}
-	a, err := agent.NewAgent(cfg, registry)
-	if err != nil {
-		return nil, nil, err
-	}
-	return a, registry, nil
 }
