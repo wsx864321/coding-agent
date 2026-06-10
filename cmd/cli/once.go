@@ -39,19 +39,21 @@ func runOnce(cmd *cobra.Command, args []string) error {
 	workdir := resolveWorkdir(cmd)
 	registry := tools.DefaultRegistry(workdir)
 
-	// 系统级权限：仅保留硬拒绝（bash deny 列表），保证 hook "放水" 也不能绕过
-	// Ask 阶段在 once 模式下不装配（无 TTY、无 Asker）
+	// 系统级权限：once 模式无 TTY / 无 Asker
+	//   - DenyListChecker 仍生效
+	//   - BashAskChecker / WorkdirChecker 装上但 Asker 为 nil，Ask 视作 Allow
 	checker := &permission.Pipeline{
 		Deny: []permission.Checker{
-			&permission.DenyListChecker{Patterns: permission.DefaultBashDenyList()},
+			permission.NewDenyListChecker(),
+			permission.NewBashAskChecker(nil),
+			permission.NewWorkdirChecker(workdir, nil),
 		},
 	}
 
-	// asker=nil：once 模式无 TTY，Ask 视为 Allow
 	a, err := agent.NewAgent(buildConfig(cmd),
 		agent.WithRegistry(registry),
 		agent.WithChecker(checker),
-		agent.WithHooks(builtin.NewDefault(workdir, nil, os.Stderr)),
+		agent.WithHooks(builtin.NewDefault(os.Stderr, workdir)),
 	)
 	if err != nil {
 		return err

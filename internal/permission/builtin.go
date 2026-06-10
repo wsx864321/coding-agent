@@ -2,7 +2,6 @@ package permission
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 )
 
@@ -13,8 +12,8 @@ import (
 // DenyPattern 是单条硬拒绝规则
 //
 // 匹配逻辑：
-//   - ToolName == "*" 或等于 call.Name
-//   - 从 call.Args 中取出 ArgName 对应的字符串值（ArgName=="*" 表示拼接所有 string arg）
+//   - ToolName == "*" 或等于 name
+//   - 从 args 中取出 ArgName 对应的字符串值（ArgName=="*" 表示拼接所有 string arg）
 //   - 若值中包含 Substr，则命中
 type DenyPattern struct {
 	ToolName string // "*" 匹配所有工具
@@ -28,13 +27,31 @@ type DenyListChecker struct {
 	Patterns []DenyPattern
 }
 
+// NewDenyListChecker 构造一个 DenyListChecker，自动装载默认规则（DefaultBashDenyList）
+//
+// 大多数场景下直接用本函数即可；如需追加自定义规则，用 NewDenyListCheckerWith
+func NewDenyListChecker() *DenyListChecker {
+	return &DenyListChecker{Patterns: DefaultBashDenyList()}
+}
+
+// NewDenyListCheckerWith 构造一个 DenyListChecker，在默认规则之上追加自定义规则
+//
+// 自定义规则按追加顺序检查：先命中先返回 Deny；默认规则作为兜底。
+// 传 nil 等价于 NewDenyListChecker()。
+func NewDenyListCheckerWith(extra ...DenyPattern) *DenyListChecker {
+	patterns := make([]DenyPattern, 0, len(DefaultBashDenyList())+len(extra))
+	patterns = append(patterns, DefaultBashDenyList()...)
+	patterns = append(patterns, extra...)
+	return &DenyListChecker{Patterns: patterns}
+}
+
 // Check 实现 Checker 接口
-func (d *DenyListChecker) Check(_ context.Context, call ToolCall) CheckResult {
+func (d *DenyListChecker) Check(_ context.Context, name string, args map[string]any) CheckResult {
 	for _, p := range d.Patterns {
-		if p.ToolName != "*" && p.ToolName != call.Name {
+		if p.ToolName != "*" && p.ToolName != name {
 			continue
 		}
-		haystack := argValue(call, p.ArgName)
+		haystack := argValue(args, p.ArgName)
 		if haystack == "" {
 			continue
 		}
@@ -52,18 +69,18 @@ func (d *DenyListChecker) Check(_ context.Context, call ToolCall) CheckResult {
 	return CheckResult{Decision: DecisionAllow}
 }
 
-// argValue 取 call.Args 中指定 key 的字符串值；"*" 时拼接所有 string 值
-func argValue(call ToolCall, argName string) string {
+// argValue 取 args 中指定 key 的字符串值；"*" 时拼接所有 string 值
+func argValue(args map[string]any, argName string) string {
 	if argName == "*" {
 		var s []string
-		for _, v := range call.Args {
+		for _, v := range args {
 			if str, ok := v.(string); ok {
 				s = append(s, str)
 			}
 		}
 		return strings.Join(s, "\n")
 	}
-	v, _ := call.Args[argName].(string)
+	v, _ := args[argName].(string)
 	return v
 }
 
@@ -78,114 +95,5 @@ func DefaultBashDenyList() []DenyPattern {
 		{ToolName: "bash", ArgName: "command", Substr: "mkfs", Reason: "硬拒绝：尝试格式化磁盘"},
 		{ToolName: "bash", ArgName: "command", Substr: "dd if=", Reason: "硬拒绝：尝试直接写磁盘"},
 		{ToolName: "bash", ArgName: "command", Substr: "> /dev/sda", Reason: "硬拒绝：尝试写入磁盘设备"},
-	}
-}
-
-// =====================================================================
-// Gate 2: 规则匹配
-// =====================================================================
-
-// AskRule 是单条"需要用户确认"的规则
-//
-// ToolNames 命中工具（"*" 通配）；Check 返回是否匹配 + 拒绝原因。
-type AskRule struct {
-	ToolNames []string
-	Check     func(call ToolCall) (matched bool, reason string)
-}
-
-// AskRuleChecker 实现 Gate 2：上下文相关规则
-//
-// 第一个匹配的规则短路返回 Ask；都没命中 → Allow。
-type AskRuleChecker struct {
-	Rules []AskRule
-}
-
-// Check 实现 Checker 接口
-func (a *AskRuleChecker) Check(_ context.Context, call ToolCall) CheckResult {
-	for _, r := range a.Rules {
-		if !toolMatches(r.ToolNames, call.Name) {
-			continue
-		}
-		matched, reason := r.Check(call)
-		if matched {
-			return CheckResult{Decision: DecisionAsk, Reason: reason}
-		}
-	}
-	return CheckResult{Decision: DecisionAllow}
-}
-
-func toolMatches(patterns []string, name string) bool {
-	for _, p := range patterns {
-		if p == "*" || p == name {
-			return true
-		}
-	}
-	return false
-}
-
-// DefaultBashAskRules 返回 bash 工具的默认 Ask 规则：包含破坏性关键字的命令需要确认
-func DefaultBashAskRules() AskRule {
-	kws := []string{
-		"rm ", "rmdir",
-		"> /etc/", "chmod 777",
-		"del ", "rd /s", "rd /q",
-		"format ",
-	}
-	return AskRule{
-		ToolNames: []string{"bash"},
-		Check: func(call ToolCall) (bool, string) {
-			cmd := argValue(call, "command")
-			if cmd == "" {
-				return false, ""
-			}
-			for _, kw := range kws {
-				if strings.Contains(cmd, kw) {
-					return true, "潜在破坏性 bash 命令（包含 '" + kw + "'）"
-				}
-			}
-			return false, ""
-		},
-	}
-}
-
-// WriteOutsideWorkdirRule 返回"写入工作区外需要确认"的规则
-//
-// 适用工具：write_file / edit_file
-//
-//   - workdir 为空 → 规则不生效
-//   - path 解析失败 → 不拦截（让工具自己处理）
-//   - path 解析成功但在工作区外 → Ask
-//
-// 路径语义复用 tools.isInAllowedDirs 的判断：相对 workdir 必须不以 ".." 开头。
-func WriteOutsideWorkdirRule(workdir string) AskRule {
-	return AskRule{
-		ToolNames: []string{"write_file", "edit_file"},
-		Check: func(call ToolCall) (bool, string) {
-			if workdir == "" {
-				return false, ""
-			}
-			pathVal := argValue(call, "path")
-			if pathVal == "" {
-				return false, ""
-			}
-			abs, err := filepath.Abs(pathVal)
-			if err != nil {
-				return false, ""
-			}
-			abs = filepath.Clean(abs)
-			root, err := filepath.Abs(workdir)
-			if err != nil {
-				return false, ""
-			}
-			root = filepath.Clean(root)
-			rel, err := filepath.Rel(root, abs)
-			if err != nil {
-				return true, "写入工作区外（无法解析相对路径）"
-			}
-			if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				return true, "写入工作区外：" + pathVal
-			}
-			return false, ""
-		},
 	}
 }

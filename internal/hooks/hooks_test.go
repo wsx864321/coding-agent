@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	openai "github.com/sashabaranov/go-openai"
-
-	"github.com/wsx864321/coding-agent/internal/permission"
 )
 
 // TestRegistry_UserPromptSubmit_NotifyOnly 验证 UserPromptSubmit 是通知型
@@ -36,20 +34,20 @@ func TestRegistry_UserPromptSubmit_NotifyOnly(t *testing.T) {
 func TestRegistry_PreToolUse_ShortCircuit(t *testing.T) {
 	r := NewRegistry()
 	var calls []string
-	r.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		calls = append(calls, "first")
 		return "", "" // 放行
 	})
-	r.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		calls = append(calls, "second")
 		return "blocked", "reason2" // 阻断
 	})
-	r.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		calls = append(calls, "third")
 		return "should-not-reach", ""
 	})
 
-	blocked, reason := r.TriggerPreToolUse(context.Background(), permission.ToolCall{Name: "x"})
+	blocked, reason := r.TriggerPreToolUse(context.Background(), "x", nil)
 	if !blocked {
 		t.Error("expected blocked=true")
 	}
@@ -64,14 +62,14 @@ func TestRegistry_PreToolUse_ShortCircuit(t *testing.T) {
 // TestRegistry_PreToolUse_AllAllow 验证全部放行
 func TestRegistry_PreToolUse_AllAllow(t *testing.T) {
 	r := NewRegistry()
-	r.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		return "", ""
 	})
-	r.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		return "", ""
 	})
 
-	blocked, _ := r.TriggerPreToolUse(context.Background(), permission.ToolCall{Name: "x"})
+	blocked, _ := r.TriggerPreToolUse(context.Background(), "x", nil)
 	if blocked {
 		t.Error("expected blocked=false when all hooks return empty")
 	}
@@ -83,11 +81,11 @@ func TestRegistry_PostToolUse_NoReturn(t *testing.T) {
 	var got []string
 	for _, name := range []string{"a", "b", "c"} {
 		n := name
-		r.RegisterPostToolUse(func(_ context.Context, _ permission.ToolCall, _ string) {
+		r.RegisterPostToolUse(func(_ context.Context, _ string, _ map[string]any, _ string) {
 			got = append(got, n)
 		})
 	}
-	r.TriggerPostToolUse(context.Background(), permission.ToolCall{Name: "x"}, "out")
+	r.TriggerPostToolUse(context.Background(), "x", nil, "out")
 	if len(got) != 3 {
 		t.Errorf("got=%v, want 3 entries", got)
 	}
@@ -126,9 +124,9 @@ func TestRegistry_Stop_ShortCircuit(t *testing.T) {
 func TestRegistry_Count(t *testing.T) {
 	r := NewRegistry()
 	r.RegisterUserPromptSubmit(func(_ context.Context, _ string) error { return nil })
-	r.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) { return "", "" })
-	r.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) { return "", "" })
-	r.RegisterPostToolUse(func(_ context.Context, _ permission.ToolCall, _ string) {})
+	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) { return "", "" })
+	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) { return "", "" })
+	r.RegisterPostToolUse(func(_ context.Context, _ string, _ map[string]any, _ string) {})
 
 	c := r.Count()
 	if c[EventUserPromptSubmit] != 1 {

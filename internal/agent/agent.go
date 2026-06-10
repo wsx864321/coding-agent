@@ -32,10 +32,10 @@ type Agent struct {
 	cfg      Config
 	client   *openai.Client
 	registry *tools.Registry
-	// checker 在每次工具执行前做权限判断；nil 表示放行（等价于 permission.AllowAllChecker）
+	// checker 在每次工具执行前做权限判断；nil 表示放行
 	checker permission.Checker
 	// hooks 是可选的事件回调链；nil 时跳过所有 trigger
-	hooks *hooks.Registry
+	hooks   *hooks.Registry
 	messages []openai.ChatCompletionMessage
 }
 
@@ -43,21 +43,16 @@ type Agent struct {
 //
 // 参数：
 //   - cfg：基础配置（APIKey / Model / MaxTurns / SystemPrompt 等）
-//   - opts：可选注入项（见 option 包的 WithRegistry / WithChecker / WithHooks / WithClient）
+//   - opts：可选注入项（见 option 包的 WithRegistry / WithChecker / WithHooks）
 //
 // 内部行为：
 //   - 校验 cfg 必填字段（APIKey 缺失时回退到 OPENAI_API_KEY）
 //   - 自动构建 openai.Client（支持自定义 BaseURL，兼容 DeepSeek 等服务）
 //   - 若 cfg.SystemPrompt 为空，则按当前 registry 自动生成（默认是空 registry）
 //   - 初始化时把 system message 放到 messages 头部
-//   - 按顺序应用 opts，opts 内可覆盖 registry / client / checker / hooks
+//   - 按顺序应用 opts，opts 内可覆盖 registry / checker / hooks
 //
-// 所有依赖（registry / checker / hooks / client）都通过 Option 注入：
-//   - agent.WithRegistry(r) → 注入工具注册表
-//   - agent.WithChecker(c)  → 注入权限检查器
-//   - agent.WithHooks(hr)   → 注入事件回调
-//   - agent.WithClient(c)   → 替换 openai.Client
-// 不传对应 Option 时使用合理的默认值（空 registry / nil checker / nil hooks / 默认 client）。
+// 所有依赖（registry / checker / hooks）都通过 Option 注入。
 func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 	if err := cfg.resolve(); err != nil {
 		return nil, err
@@ -76,14 +71,13 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 			Model:        cfg.Model,
 			MaxTokens:    cfg.MaxTokens,
 			MaxTurns:     cfg.MaxTurns,
-			SystemPrompt: cfg.SystemPrompt, // 暂存，下面按 registry 重新计算
+			SystemPrompt: cfg.SystemPrompt,
 			Temperature:  cfg.Temperature,
 		},
 		client:   client,
-		registry: tools.NewRegistry(), // 兜底：默认空 registry
+		registry: tools.NewRegistry(),
 	}
 
-	// 应用 Option：顺序敏感；后注册的覆盖先注册的
 	for _, opt := range opts {
 		if opt != nil {
 			opt.apply(a)
@@ -106,26 +100,10 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 // =====================================================================
 // Option 模式：装配期可选依赖
 // =====================================================================
-//
-// Option 是 NewAgent 的可选注入项，由 4 个内置工厂构造（WithRegistry / WithChecker
-// / WithHooks / WithClient）。Option 实现是私有 interface，外部不能伪造。
-//
-// 字段写入发生在 apply 方法内部——apply 是 agent 包方法，可以访问小写字段，
-// 避免对外暴露 SetXxx 一类的方法。option 子包只做 re-export，业务代码 import
-// option 包就能用同名工厂。
 
 // Option 是 NewAgent 的可选注入项
 type Option interface {
 	apply(*Agent)
-}
-
-// optionFunc 把 func(*Agent) 适配为 Option（agent 包内部使用，option 子包不必走此入口）
-type optionFunc func(*Agent)
-
-func (f optionFunc) apply(a *Agent) {
-	if f != nil {
-		f(a)
-	}
 }
 
 // Hooks 返回底层 Registry（只读，外部不应触发 Trigger）

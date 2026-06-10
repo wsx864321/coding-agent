@@ -41,7 +41,6 @@ type BashTool struct {
 //   - bash 的合法用途常常跨目录（cd /path/to/project && make test）
 //   - AllowedDirs 留空意味着放行；调用方按需收紧
 func NewBashTool(workdir string) *BashTool {
-	_ = workdir // 与 file 工具保持 API 形状一致；bash 自身不消费
 	return &BashTool{
 		DefaultTimeout: 60 * time.Second,
 		MaxOutputBytes: 1024 * 1024, // 默认 1MB

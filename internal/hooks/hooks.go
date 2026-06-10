@@ -7,9 +7,9 @@
 //   - 4 个事件：UserPromptSubmit / PreToolUse / PostToolUse / Stop
 //
 // 安全不变式（与 Claude Code 同型）：
-//   PreToolUse 流程中，hook 不阻断时，仍要走 system-level permission.Checker。
-//   即使用户 hook "放行"，settings.json 的 deny/ask 规则仍会拦截。
-//   换句话说：hook 可以"放水"（允许更多操作），但不能"开闸"（绕过系统硬拒绝）。
+// PreToolUse 流程中，hook 不阻断时，仍要走 system-level permission.Checker。
+// 即使用户 hook "放行"，settings.json 的 deny/ask 规则仍会拦截。
+// 换句话说：hook 可以"放水"（允许更多操作），但不能"开闸"（绕过系统硬拒绝）。
 //
 // 事件语义：
 //
@@ -25,8 +25,6 @@ import (
 	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
-
-	"github.com/wsx864321/coding-agent/internal/permission"
 )
 
 // Event 标识 4 类事件
@@ -53,13 +51,13 @@ type UserPromptSubmitHook func(ctx context.Context, content string) error
 //   - block 为空 → 继续执行后续 hook；全部 hook 放行后仍要走 system permission.Checker
 //
 // reason 是阻断时的原因，会被拼到回填消息里（便于 LLM 看到完整上下文）
-type PreToolUseHook func(ctx context.Context, call permission.ToolCall) (block string, reason string)
+type PreToolUseHook func(ctx context.Context, name string, args map[string]any) (block string, reason string)
 
 // PostToolUseHook 在工具执行成功后被调用
 //
-// 入参：call + 执行输出
+// 入参：name + args + 执行输出
 // 返回：无（纯副作用：日志 / 截断 / 统计等）
-type PostToolUseHook func(ctx context.Context, call permission.ToolCall, output string)
+type PostToolUseHook func(ctx context.Context, name string, args map[string]any, output string)
 
 // StopHook 在主循环即将结束（拿到 final answer）时被调用
 //
@@ -148,13 +146,13 @@ func (r *Registry) TriggerUserPromptSubmit(ctx context.Context, content string) 
 //
 // 返回是否被阻断、阻断原因
 // 首个返回非空 block 的 hook 短路；后续 hook 不再执行
-func (r *Registry) TriggerPreToolUse(ctx context.Context, call permission.ToolCall) (blocked bool, reason string) {
+func (r *Registry) TriggerPreToolUse(ctx context.Context, name string, args map[string]any) (blocked bool, reason string) {
 	r.mu.RLock()
 	hooks := append([]PreToolUseHook(nil), r.preToolUse...)
 	r.mu.RUnlock()
 
 	for _, h := range hooks {
-		block, why := h(ctx, call)
+		block, why := h(ctx, name, args)
 		if block != "" {
 			return true, block
 		}
@@ -166,13 +164,13 @@ func (r *Registry) TriggerPreToolUse(ctx context.Context, call permission.ToolCa
 // TriggerPostToolUse 触发所有 PostToolUse hook
 //
 // 全部执行，无返回值；单个 panic 不影响后续（调用方通常用 defer recover）
-func (r *Registry) TriggerPostToolUse(ctx context.Context, call permission.ToolCall, output string) {
+func (r *Registry) TriggerPostToolUse(ctx context.Context, name string, args map[string]any, output string) {
 	r.mu.RLock()
 	hooks := append([]PostToolUseHook(nil), r.postToolUse...)
 	r.mu.RUnlock()
 
 	for _, h := range hooks {
-		h(ctx, call, output)
+		h(ctx, name, args, output)
 	}
 }
 

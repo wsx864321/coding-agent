@@ -2,20 +2,17 @@ package permission
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 )
 
 // =====================================================================
-// Pipeline：基础三道闸门串联
+// Pipeline：基础 Deny 闸门
 // =====================================================================
 
 func TestPipeline_AllowByDefault(t *testing.T) {
 	p := &Pipeline{}
-	got := p.Check(context.Background(), ToolCall{
-		Name: "bash", Args: map[string]any{"command": "echo hi"},
-	})
+	got := p.Check(context.Background(), "bash", map[string]any{"command": "echo hi"})
 	if got.Decision != DecisionAllow {
 		t.Errorf("Decision = %v, want Allow", got.Decision)
 	}
@@ -24,14 +21,12 @@ func TestPipeline_AllowByDefault(t *testing.T) {
 func TestPipeline_DenyListBlocks(t *testing.T) {
 	p := &Pipeline{
 		Deny: []Checker{
-			&DenyListChecker{Patterns: []DenyPattern{
-				{ToolName: "bash", ArgName: "command", Substr: "rm -rf /", Reason: "硬拒绝"},
-			}},
+			NewDenyListCheckerWith(DenyPattern{
+				ToolName: "bash", ArgName: "command", Substr: "rm -rf /", Reason: "硬拒绝",
+			}),
 		},
 	}
-	got := p.Check(context.Background(), ToolCall{
-		Name: "bash", Args: map[string]any{"command": "rm -rf /"},
-	})
+	got := p.Check(context.Background(), "bash", map[string]any{"command": "rm -rf /"})
 	if got.Decision != DecisionDeny {
 		t.Errorf("Decision = %v, want Deny", got.Decision)
 	}
@@ -43,122 +38,20 @@ func TestPipeline_DenyListBlocks(t *testing.T) {
 func TestPipeline_DenyListNoMatchForOtherArgs(t *testing.T) {
 	p := &Pipeline{
 		Deny: []Checker{
-			&DenyListChecker{Patterns: []DenyPattern{
-				{ToolName: "bash", ArgName: "command", Substr: "rm -rf /"},
-			}},
+			NewDenyListCheckerWith(DenyPattern{
+				ToolName: "bash", ArgName: "command", Substr: "rm -rf /",
+			}),
 		},
 	}
 	// 工具名不匹配
-	got := p.Check(context.Background(), ToolCall{
-		Name: "read_file", Args: map[string]any{"command": "rm -rf /"},
-	})
+	got := p.Check(context.Background(), "read_file", map[string]any{"command": "rm -rf /"})
 	if got.Decision != DecisionAllow {
 		t.Errorf("Decision = %v, want Allow (tool mismatch)", got.Decision)
 	}
 	// 参数名不匹配
-	got = p.Check(context.Background(), ToolCall{
-		Name: "bash", Args: map[string]any{"other": "rm -rf /"},
-	})
+	got = p.Check(context.Background(), "bash", map[string]any{"other": "rm -rf /"})
 	if got.Decision != DecisionAllow {
 		t.Errorf("Decision = %v, want Allow (arg mismatch)", got.Decision)
-	}
-}
-
-func TestPipeline_AskRule_NoAsker_Allows(t *testing.T) {
-	// 没装 Asker 时，Ask 视作 Allow
-	p := &Pipeline{
-		Ask: []Checker{
-			&AskRuleChecker{Rules: []AskRule{
-				{ToolNames: []string{"bash"}, Check: func(call ToolCall) (bool, string) {
-					return true, "potential damage"
-				}},
-			}},
-		},
-	}
-	got := p.Check(context.Background(), ToolCall{
-		Name: "bash", Args: map[string]any{"command": "rm /tmp/a"},
-	})
-	if got.Decision != DecisionAllow {
-		t.Errorf("Decision = %v, want Allow (no asker)", got.Decision)
-	}
-}
-
-func TestPipeline_AskRule_AskerApprove(t *testing.T) {
-	p := &Pipeline{
-		Ask: []Checker{
-			&AskRuleChecker{Rules: []AskRule{
-				{ToolNames: []string{"bash"}, Check: func(call ToolCall) (bool, string) {
-					return true, "potential damage"
-				}},
-			}},
-		},
-		Asker: AskerFunc(func(_ context.Context, _ ToolCall, reason string) bool {
-			if !strings.Contains(reason, "potential damage") {
-				t.Errorf("Asker reason = %q, missing rule reason", reason)
-			}
-			return true
-		}),
-	}
-	got := p.Check(context.Background(), ToolCall{
-		Name: "bash", Args: map[string]any{"command": "rm /tmp/a"},
-	})
-	if got.Decision != DecisionAllow {
-		t.Errorf("Decision = %v, want Allow (user approved)", got.Decision)
-	}
-	if !strings.Contains(got.Reason, "用户已批准") {
-		t.Errorf("Reason = %q, missing user-approved marker", got.Reason)
-	}
-}
-
-func TestPipeline_AskRule_AskerReject(t *testing.T) {
-	p := &Pipeline{
-		Ask: []Checker{
-			&AskRuleChecker{Rules: []AskRule{
-				{ToolNames: []string{"bash"}, Check: func(call ToolCall) (bool, string) {
-					return true, "potential damage"
-				}},
-			}},
-		},
-		Asker: AskerFunc(func(_ context.Context, _ ToolCall, _ string) bool { return false }),
-	}
-	got := p.Check(context.Background(), ToolCall{
-		Name: "bash", Args: map[string]any{"command": "rm /tmp/a"},
-	})
-	if got.Decision != DecisionDeny {
-		t.Errorf("Decision = %v, want Deny (user rejected)", got.Decision)
-	}
-	if !strings.Contains(got.Reason, "用户拒绝") {
-		t.Errorf("Reason = %q, missing user-rejected marker", got.Reason)
-	}
-}
-
-func TestPipeline_DenyShortCircuitsAsk(t *testing.T) {
-	// 即使有 Ask 规则命中，先 Deny 仍然短路
-	called := false
-	p := &Pipeline{
-		Deny: []Checker{
-			&DenyListChecker{Patterns: []DenyPattern{
-				{ToolName: "bash", ArgName: "command", Substr: "rm -rf /"},
-			}},
-		},
-		Ask: []Checker{
-			&AskRuleChecker{Rules: []AskRule{
-				{ToolNames: []string{"bash"}, Check: func(call ToolCall) (bool, string) {
-					called = true
-					return true, "should not reach"
-				}},
-			}},
-		},
-		Asker: AskerFunc(func(_ context.Context, _ ToolCall, _ string) bool { return true }),
-	}
-	got := p.Check(context.Background(), ToolCall{
-		Name: "bash", Args: map[string]any{"command": "rm -rf /"},
-	})
-	if got.Decision != DecisionDeny {
-		t.Errorf("Decision = %v, want Deny", got.Decision)
-	}
-	if called {
-		t.Error("Ask rule should not be evaluated when Deny hits")
 	}
 }
 
@@ -167,7 +60,7 @@ func TestPipeline_DenyShortCircuitsAsk(t *testing.T) {
 // =====================================================================
 
 func TestDefaultBashDenyList_Blocks(t *testing.T) {
-	c := &DenyListChecker{Patterns: DefaultBashDenyList()}
+	c := NewDenyListChecker()
 	for _, cmd := range []string{
 		"rm -rf /",
 		"sudo apt install foo",
@@ -177,9 +70,7 @@ func TestDefaultBashDenyList_Blocks(t *testing.T) {
 		"dd if=/dev/zero of=/dev/sda",
 		"echo x > /dev/sda",
 	} {
-		got := c.Check(context.Background(), ToolCall{
-			Name: "bash", Args: map[string]any{"command": cmd},
-		})
+		got := c.Check(context.Background(), "bash", map[string]any{"command": cmd})
 		if got.Decision != DecisionDeny {
 			t.Errorf("cmd %q expected Deny, got %v", cmd, got.Decision)
 		}
@@ -187,119 +78,144 @@ func TestDefaultBashDenyList_Blocks(t *testing.T) {
 }
 
 func TestDefaultBashDenyList_AllowsSafe(t *testing.T) {
-	c := &DenyListChecker{Patterns: DefaultBashDenyList()}
+	c := NewDenyListChecker()
 	for _, cmd := range []string{
 		"echo hello",
 		"ls -la",
 		"cat main.go",
 		"go test ./...",
 	} {
-		got := c.Check(context.Background(), ToolCall{
-			Name: "bash", Args: map[string]any{"command": cmd},
-		})
+		got := c.Check(context.Background(), "bash", map[string]any{"command": cmd})
 		if got.Decision != DecisionAllow {
 			t.Errorf("cmd %q expected Allow, got %v", cmd, got.Decision)
 		}
 	}
 }
 
-func TestDefaultBashAskRules_Triggers(t *testing.T) {
-	r := DefaultBashAskRules()
-	c := &AskRuleChecker{Rules: []AskRule{r}}
-	for _, cmd := range []string{
-		"rm foo.txt",
-		"rmdir empty_dir",
-		"echo x > /etc/passwd",
-		"chmod 777 /tmp/a",
-		"del file.txt",
-		"format c:",
-	} {
-		got := c.Check(context.Background(), ToolCall{
-			Name: "bash", Args: map[string]any{"command": cmd},
-		})
-		if got.Decision != DecisionAsk {
-			t.Errorf("cmd %q expected Ask, got %v", cmd, got.Decision)
+// =====================================================================
+// BashAskChecker
+// =====================================================================
+
+func TestBashAskChecker_NoAsker_Allows(t *testing.T) {
+	c := NewBashAskChecker(nil)
+	got := c.Check(context.Background(), "bash", map[string]any{"command": "rm foo"})
+	if got.Decision != DecisionAllow {
+		t.Errorf("Decision = %v, want Allow (no asker)", got.Decision)
+	}
+}
+
+func TestBashAskChecker_AskerApprove(t *testing.T) {
+	c := NewBashAskChecker(AskerFunc(func(_ context.Context, _ string, _ map[string]any, reason string) bool {
+		if !strings.Contains(reason, "rm ") {
+			t.Errorf("Asker reason = %q, missing kw", reason)
 		}
+		return true
+	}))
+	got := c.Check(context.Background(), "bash", map[string]any{"command": "rm foo"})
+	if got.Decision != DecisionAllow {
+		t.Errorf("Decision = %v, want Allow (user approved)", got.Decision)
+	}
+	if !strings.Contains(got.Reason, "用户已批准") {
+		t.Errorf("Reason = %q, missing user-approved marker", got.Reason)
 	}
 }
 
-func TestDefaultBashAskRules_AllowsSafe(t *testing.T) {
-	r := DefaultBashAskRules()
-	c := &AskRuleChecker{Rules: []AskRule{r}}
-	for _, cmd := range []string{
-		"echo hello",
-		"ls -la",
-		"go build ./...",
-	} {
-		got := c.Check(context.Background(), ToolCall{
-			Name: "bash", Args: map[string]any{"command": cmd},
-		})
-		if got.Decision != DecisionAllow {
-			t.Errorf("cmd %q expected Allow, got %v", cmd, got.Decision)
-		}
+func TestBashAskChecker_AskerReject(t *testing.T) {
+	c := NewBashAskChecker(AskerFunc(func(_ context.Context, _ string, _ map[string]any, _ string) bool {
+		return false
+	}))
+	got := c.Check(context.Background(), "bash", map[string]any{"command": "rm foo"})
+	if got.Decision != DecisionDeny {
+		t.Errorf("Decision = %v, want Deny (user rejected)", got.Decision)
+	}
+	if !strings.Contains(got.Reason, "用户拒绝") {
+		t.Errorf("Reason = %q, missing user-rejected marker", got.Reason)
 	}
 }
 
-func TestWriteOutsideWorkdirRule_Triggers(t *testing.T) {
-	rule := WriteOutsideWorkdirRule(t.TempDir())
-	c := &AskRuleChecker{Rules: []AskRule{rule}}
-	got := c.Check(context.Background(), ToolCall{
-		Name: "write_file",
-		Args: map[string]any{"path": "/etc/passwd"},
-	})
-	if got.Decision != DecisionAsk {
-		t.Errorf("Decision = %v, want Ask", got.Decision)
-	}
-}
-
-func TestWriteOutsideWorkdirRule_AllowsInside(t *testing.T) {
-	dir := t.TempDir()
-	rule := WriteOutsideWorkdirRule(dir)
-	c := &AskRuleChecker{Rules: []AskRule{rule}}
-	got := c.Check(context.Background(), ToolCall{
-		Name: "write_file",
-		Args: map[string]any{"path": dir + "/inside.txt"},
-	})
+func TestBashAskChecker_SafeCommand_Allows(t *testing.T) {
+	c := NewBashAskChecker(AskerFunc(func(_ context.Context, _ string, _ map[string]any, _ string) bool {
+		t.Error("Asker should not be called for safe commands")
+		return false
+	}))
+	got := c.Check(context.Background(), "bash", map[string]any{"command": "echo hi"})
 	if got.Decision != DecisionAllow {
 		t.Errorf("Decision = %v, want Allow", got.Decision)
 	}
 }
 
-func TestWriteOutsideWorkdirRule_NoWorkdir_NoAsk(t *testing.T) {
-	rule := WriteOutsideWorkdirRule("")
-	c := &AskRuleChecker{Rules: []AskRule{rule}}
-	got := c.Check(context.Background(), ToolCall{
-		Name: "write_file",
-		Args: map[string]any{"path": "/etc/passwd"},
-	})
-	if got.Decision != DecisionAllow {
-		t.Errorf("Decision = %v, want Allow (workdir empty)", got.Decision)
-	}
-}
-
-// =====================================================================
-// 工具 / Asker 适配
-// =====================================================================
-
-type recordingAsker struct {
-	asked  int
-	answer bool
-	err    error
-}
-
-func (r *recordingAsker) Ask(_ context.Context, _ ToolCall, _ string) bool {
-	r.asked++
-	if r.err != nil {
-		// 实际中我们不返回 error；这里仅用于演示接口形态
+func TestBashAskChecker_NotBash_Allows(t *testing.T) {
+	c := NewBashAskChecker(AskerFunc(func(_ context.Context, _ string, _ map[string]any, _ string) bool {
+		t.Error("Asker should not be called for non-bash tools")
 		return false
+	}))
+	got := c.Check(context.Background(), "read_file", map[string]any{"command": "rm foo"})
+	if got.Decision != DecisionAllow {
+		t.Errorf("Decision = %v, want Allow", got.Decision)
 	}
-	return r.answer
 }
 
-type fakeErrAsker struct{ err error }
+// =====================================================================
+// WorkdirChecker
+// =====================================================================
 
-func (f *fakeErrAsker) Ask(_ context.Context, _ ToolCall, _ string) bool {
-	return false
+func TestWorkdirChecker_NoWorkdir_Allows(t *testing.T) {
+	c := NewWorkdirChecker("", nil)
+	got := c.Check(context.Background(), "write_file", map[string]any{"path": "/etc/passwd"})
+	if got.Decision != DecisionAllow {
+		t.Errorf("Decision = %v, want Allow (no workdir)", got.Decision)
+	}
 }
 
-var _ = errors.New // 保持 import
+func TestWorkdirChecker_Inside_Allows(t *testing.T) {
+	dir := t.TempDir()
+	c := NewWorkdirChecker(dir, nil)
+	got := c.Check(context.Background(), "write_file", map[string]any{"path": dir + "/inside.txt"})
+	if got.Decision != DecisionAllow {
+		t.Errorf("Decision = %v, want Allow (inside)", got.Decision)
+	}
+}
+
+func TestWorkdirChecker_Outside_AskerApprove(t *testing.T) {
+	dir := t.TempDir()
+	c := NewWorkdirChecker(dir, AskerFunc(func(_ context.Context, _ string, _ map[string]any, _ string) bool {
+		return true
+	}))
+	got := c.Check(context.Background(), "write_file", map[string]any{"path": "/etc/passwd"})
+	if got.Decision != DecisionAllow {
+		t.Errorf("Decision = %v, want Allow (user approved)", got.Decision)
+	}
+}
+
+func TestWorkdirChecker_Outside_AskerReject(t *testing.T) {
+	dir := t.TempDir()
+	c := NewWorkdirChecker(dir, AskerFunc(func(_ context.Context, _ string, _ map[string]any, _ string) bool {
+		return false
+	}))
+	got := c.Check(context.Background(), "write_file", map[string]any{"path": "/etc/passwd"})
+	if got.Decision != DecisionDeny {
+		t.Errorf("Decision = %v, want Deny (user rejected)", got.Decision)
+	}
+}
+
+func TestWorkdirChecker_Outside_NoAsker_Allows(t *testing.T) {
+	// 无 Asker 时越界也放行（与 Pipeline 行为一致）
+	dir := t.TempDir()
+	c := NewWorkdirChecker(dir, nil)
+	got := c.Check(context.Background(), "write_file", map[string]any{"path": "/etc/passwd"})
+	if got.Decision != DecisionAllow {
+		t.Errorf("Decision = %v, want Allow (no asker)", got.Decision)
+	}
+}
+
+func TestWorkdirChecker_NotWrite_Allows(t *testing.T) {
+	dir := t.TempDir()
+	c := NewWorkdirChecker(dir, AskerFunc(func(_ context.Context, _ string, _ map[string]any, _ string) bool {
+		t.Error("Asker should not be called for non-write tools")
+		return false
+	}))
+	got := c.Check(context.Background(), "bash", map[string]any{"path": "/etc/passwd"})
+	if got.Decision != DecisionAllow {
+		t.Errorf("Decision = %v, want Allow", got.Decision)
+	}
+}

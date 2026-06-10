@@ -11,7 +11,6 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/tools"
@@ -23,8 +22,8 @@ import (
 
 // scriptedResponse 是 fake LLM 在一次请求中返回的响应
 type scriptedResponse struct {
-	content    string                  // 最终内容（当 toolCalls 为空时）
-	toolCalls  []openai.ToolCall       // tool calls（让 agent 继续 loop）
+	content   string            // 最终内容（当 toolCalls 为空时）
+	toolCalls []openai.ToolCall // tool calls（让 agent 继续 loop）
 }
 
 // fakeLLMServer 启动一个 httptest.Server，模拟 OpenAI 兼容接口
@@ -93,8 +92,8 @@ func makeClientWithFake(t *testing.T, f *fakeLLMServer) *openai.Client {
 // echoTool 简单工具，接收 input 字段返回它
 type echoTool struct{}
 
-func (echoTool) Name() string                       { return "echo" }
-func (echoTool) Description() string                { return "echo back the input" }
+func (echoTool) Name() string        { return "echo" }
+func (echoTool) Description() string { return "echo back the input" }
 func (echoTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}`)
 }
@@ -137,7 +136,7 @@ func newTestAgent(t *testing.T, f *fakeLLMServer, extraTools ...tools.Tool) *Age
 		BaseURL:  f.server.URL + "/v1",
 		MaxTurns: 5,
 	},
-		agent.WithRegistry(registry),
+		WithRegistry(registry),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -479,7 +478,7 @@ func TestRun_PreToolUse_HookBlocks(t *testing.T) {
 	)
 
 	hr := newTestHookRegistry()
-	hr.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+	hr.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		return "Blocked by hook: not allowed", "test"
 	})
 	a := newTestAgentWithHooks(t, f, hr)
@@ -512,7 +511,7 @@ func TestRun_PreToolUse_HookAllowsButCheckerDenies(t *testing.T) {
 
 	// hook 放行所有调用
 	hr := newTestHookRegistry()
-	hr.RegisterPreToolUse(func(_ context.Context, _ permission.ToolCall) (string, string) {
+	hr.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		return "", "" // 放行
 	})
 
@@ -524,9 +523,9 @@ func TestRun_PreToolUse_HookAllowsButCheckerDenies(t *testing.T) {
 		BaseURL:  f.server.URL + "/v1",
 		MaxTurns: 5,
 	},
-		agent.WithRegistry(registry),
-		agent.WithHooks(hr),
-		agent.WithChecker(denyAllChecker{}),
+		WithRegistry(registry),
+		WithHooks(hr),
+		WithChecker(denyAllChecker{}),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -637,8 +636,8 @@ func TestRun_PostToolUse_Triggered(t *testing.T) {
 		output string
 	}
 	var got seen
-	hr.RegisterPostToolUse(func(_ context.Context, call permission.ToolCall, output string) {
-		got.name = call.Name
+	hr.RegisterPostToolUse(func(_ context.Context, name string, _ map[string]any, output string) {
+		got.name = name
 		got.output = output
 	})
 	a := newTestAgentWithHooks(t, f, hr)
@@ -678,8 +677,8 @@ func newTestAgentWithHooks(t *testing.T, f *fakeLLMServer, hr *hooks.Registry) *
 		BaseURL:  f.server.URL + "/v1",
 		MaxTurns: 5,
 	},
-		agent.WithRegistry(registry),
-		agent.WithHooks(hr),
+		WithRegistry(registry),
+		WithHooks(hr),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -691,7 +690,6 @@ func newTestAgentWithHooks(t *testing.T, f *fakeLLMServer, hr *hooks.Registry) *
 // denyAllChecker 是 permission.Checker 的"全部拒绝"实现（用于测试）
 type denyAllChecker struct{}
 
-func (denyAllChecker) Check(_ context.Context, _ permission.ToolCall) permission.CheckResult {
+func (denyAllChecker) Check(_ context.Context, _ string, _ map[string]any) permission.CheckResult {
 	return permission.CheckResult{Decision: permission.DecisionDeny, Reason: "test-deny"}
 }
-

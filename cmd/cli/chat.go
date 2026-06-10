@@ -54,25 +54,26 @@ func runChat(cmd *cobra.Command, args []string) error {
 	fmt.Printf("[coding-agent] REPL 已启动，workdir=%s\n", workdir)
 	fmt.Printf("[coding-agent] 已注册工具: %s\n", joinToolNames(registry))
 
-	// 共用 asker：PermissionHook（业务级 Ask）和 system Pipeline（兜底 Deny）都不装 Ask，
-	// 避免同一命令被询问两次
+	// 共享 asker：bash 破坏性关键字 / 越界写入都需要它裁决
 	asker := &permission.StdinAsker{Reader: os.Stdin, Writer: os.Stderr}
 
-	// 系统级硬约束：仅装 Deny 列表，Ask 由 PermissionHook 承担。
-	// 这样 hook "放水" 也不能绕过 system deny（安全不变式），但用户不会被问两次
+	// 系统级权限管线：
+	//   1. DenyListChecker：硬拒绝（rm -rf /、sudo、shutdown ...）
+	//   2. BashAskChecker：破坏性 bash 命令转 Ask
+	//   3. WorkdirChecker：write_file / edit_file 越界转 Ask
 	checker := &permission.Pipeline{
 		Deny: []permission.Checker{
-			&permission.DenyListChecker{Patterns: permission.DefaultBashDenyList()},
+			permission.NewDenyListChecker(),
+			permission.NewBashAskChecker(asker),
+			permission.NewWorkdirChecker(workdir, asker),
 		},
 	}
 
-	// 业务级 hooks：PermissionHook 承担 Ask + 警告 + 日志（用户友好层）
-	hooks := builtin.NewDefault(workdir, asker, os.Stderr)
-
+	// 内置 hook：日志 / 大输出告警 / 上下文注入 / 收尾
 	a, err := agent.NewAgent(buildConfig(cmd),
 		agent.WithRegistry(registry),
 		agent.WithChecker(checker),
-		agent.WithHooks(hooks),
+		agent.WithHooks(builtin.NewDefault(os.Stderr, workdir)),
 	)
 	if err != nil {
 		return err

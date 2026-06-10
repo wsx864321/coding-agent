@@ -19,7 +19,7 @@ type StdinAsker struct {
 }
 
 // Ask 实现 permission.Asker
-func (s *StdinAsker) Ask(_ context.Context, call ToolCall, reason string) bool {
+func (s *StdinAsker) Ask(_ context.Context, name string, args map[string]any, reason string) bool {
 	if s.AutoAnswer == "allow" {
 		return true
 	}
@@ -32,7 +32,7 @@ func (s *StdinAsker) Ask(_ context.Context, call ToolCall, reason string) bool {
 		w = os.Stderr
 	}
 	fmt.Fprintf(w, "\n\033[33m⚠  %s\033[0m\n", reason)
-	fmt.Fprintf(w, "   Tool: %s(%s)\n", call.Name, formatArgs(call.Args))
+	fmt.Fprintf(w, "   Tool: %s(%s)\n", name, formatArgs(args))
 	fmt.Fprintf(w, "   Allow? [y/N] ")
 
 	r := s.Reader
@@ -54,9 +54,9 @@ func formatArgs(args map[string]any) string {
 	}
 	raw, _ := json.Marshal(args)
 	s := string(raw)
-	const max = 200
-	if len(s) > max {
-		s = s[:max] + "...(truncated)"
+	const maxLen = 200
+	if len(s) > maxLen {
+		s = s[:maxLen] + "...(truncated)"
 	}
 	return s
 }

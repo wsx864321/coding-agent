@@ -26,9 +26,9 @@ func TestE2E_PermissionDeny_BlocksExecute(t *testing.T) {
 	)
 	a := e2e.NewTestAgent(t, f, agent.WithChecker(&permission.Pipeline{
 		Deny: []permission.Checker{
-			&permission.DenyListChecker{Patterns: []permission.DenyPattern{
-				{ToolName: "bash", ArgName: "command", Substr: "rm -rf /", Reason: "硬拒绝：删根目录"},
-			}},
+			permission.NewDenyListCheckerWith(
+				permission.DenyPattern{ToolName: "bash", ArgName: "command", Substr: "rm -rf /", Reason: "硬拒绝：删根目录"},
+			),
 		},
 	}))
 
@@ -63,7 +63,7 @@ func TestE2E_PermissionAllow_Executes(t *testing.T) {
 	)
 	a := e2e.NewTestAgent(t, f, agent.WithChecker(&permission.Pipeline{
 		Deny: []permission.Checker{
-			&permission.DenyListChecker{Patterns: permission.DefaultBashDenyList()},
+			permission.NewDenyListChecker(),
 		},
 	}))
 
@@ -80,8 +80,8 @@ func TestE2E_PermissionAllow_Executes(t *testing.T) {
 	}
 }
 
-// 场景 3：Ask 规则命中 + Asker deny → tool 不执行
-func TestE2E_PermissionAsk_Deny(t *testing.T) {
+// 场景 3：BashAskChecker 拒绝 → tool 不执行
+func TestE2E_BashAsk_Deny(t *testing.T) {
 	f := e2e.NewFakeLLM(t,
 		e2e.ScriptedResponse{
 			ToolCalls: []openai.ToolCall{
@@ -91,14 +91,11 @@ func TestE2E_PermissionAsk_Deny(t *testing.T) {
 		e2e.ScriptedResponse{Content: "recovered"},
 	)
 	a := e2e.NewTestAgent(t, f, agent.WithChecker(&permission.Pipeline{
-		Ask: []permission.Checker{
-			&permission.AskRuleChecker{Rules: []permission.AskRule{
-				permission.DefaultBashAskRules(),
-			}},
+		Deny: []permission.Checker{
+			permission.NewBashAskChecker(permission.AskerFunc(
+				func(_ context.Context, _ string, _ map[string]any, _ string) bool { return false },
+			)),
 		},
-		Asker: permission.AskerFunc(func(_ context.Context, _ permission.ToolCall, _ string) bool {
-			return false
-		}),
 	}))
 
 	if _, err := a.Run(context.Background(), "test"); err != nil {
@@ -113,8 +110,8 @@ func TestE2E_PermissionAsk_Deny(t *testing.T) {
 	}
 }
 
-// 场景 4：Ask 规则命中 + Asker allow → tool 执行
-func TestE2E_PermissionAsk_Allow(t *testing.T) {
+// 场景 4：BashAskChecker 批准 → tool 执行
+func TestE2E_BashAsk_Allow(t *testing.T) {
 	f := e2e.NewFakeLLM(t,
 		e2e.ScriptedResponse{
 			ToolCalls: []openai.ToolCall{
@@ -124,14 +121,11 @@ func TestE2E_PermissionAsk_Allow(t *testing.T) {
 		e2e.ScriptedResponse{Content: "ok"},
 	)
 	a := e2e.NewTestAgent(t, f, agent.WithChecker(&permission.Pipeline{
-		Ask: []permission.Checker{
-			&permission.AskRuleChecker{Rules: []permission.AskRule{
-				permission.DefaultBashAskRules(),
-			}},
+		Deny: []permission.Checker{
+			permission.NewBashAskChecker(permission.AskerFunc(
+				func(_ context.Context, _ string, _ map[string]any, _ string) bool { return true },
+			)),
 		},
-		Asker: permission.AskerFunc(func(_ context.Context, _ permission.ToolCall, _ string) bool {
-			return true
-		}),
 	}))
 
 	if _, err := a.Run(context.Background(), "test"); err != nil {
@@ -143,7 +137,7 @@ func TestE2E_PermissionAsk_Allow(t *testing.T) {
 	}
 }
 
-// 场景 5：nil checker → 走老路径，全部放行
+// 场景 5：nil checker → 全部放行
 func TestE2E_NoChecker_AlwaysExecutes(t *testing.T) {
 	f := e2e.NewFakeLLM(t,
 		e2e.ScriptedResponse{
@@ -154,7 +148,6 @@ func TestE2E_NoChecker_AlwaysExecutes(t *testing.T) {
 		e2e.ScriptedResponse{Content: "ok"},
 	)
 	a := e2e.NewTestAgent(t, f)
-	// 显式不设 checker
 
 	if _, err := a.Run(context.Background(), "test"); err != nil {
 		t.Fatalf("Run: %v", err)

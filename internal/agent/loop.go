@@ -89,16 +89,16 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) {
 //
 // 调用顺序：
 //  1. PreToolUse hook（如果注册）→ 首个返回非空 block 的 hook 阻断
-//  2. permission.Checker（Deny / Ask / Allow）→ 硬约束（不受 hook 放行影响）
+//  2. permission.Pipeline（Deny / Allow）→ 硬约束（不受 hook 放行影响）
 //  3. registry 查表 + Execute
 //  4. PostToolUse hook → 副作用（日志 / 截断 / 统计）
 //
 //	+----------+   +-----------------+   +-------------+   +----------+   +--------+   +-----------------+
 //	| tc 进入  | ->| PreToolUse hook | ->| permission  | ->| registry | ->| exec   | ->| PostToolUse hook|
-//	|          |   |  (可阻断)        |   |  Checker    |   | lookup   |   |        |   |  (纯副作用)     |
+//	|          |   |  (可阻断)        |   |  Pipeline   |   | lookup   |   |        |   |  (纯副作用)     |
 //	+----------+   +-----------------+   +-------------+   +----------+   +--------+   +-----------------+
 //	                                     |
-//	                                     +--> Deny  → 把拒绝原因回填给 LLM（不调 Execute）
+//	                                     +--> Deny → 把拒绝原因回填给 LLM（不调 Execute）
 //	                                     +--> Allow → 继续 registry 查表 + Execute
 func (a *Agent) invokeTool(ctx context.Context, tc openai.ToolCall) string {
 	// 解析 JSON 参数字符串为 map[string]any（permission / hook 都要用）
@@ -108,41 +108,40 @@ func (a *Agent) invokeTool(ctx context.Context, tc openai.ToolCall) string {
 			return fmt.Sprintf("Error: 参数解析失败: %v (raw=%s)", err, tc.Function.Arguments)
 		}
 	}
-	call := permission.ToolCall{Name: tc.Function.Name, Args: args}
+	name := tc.Function.Name
 
 	// Stage 1: PreToolUse hook（首个返回非空 block 的 hook 短路）
 	if a.hooks != nil {
-		if blocked, reason := a.hooks.TriggerPreToolUse(ctx, call); blocked {
+		if blocked, reason := a.hooks.TriggerPreToolUse(ctx, name, args); blocked {
 			return fmt.Sprintf("Blocked by hook: %s", reason)
 		}
 	}
 
-	// Stage 2: system permission.Checker（硬约束，不可被 hook 覆盖）
+	// Stage 2: system permission.Pipeline（硬约束，不可被 hook 覆盖）
 	if a.checker != nil {
-		r := a.checker.Check(ctx, call)
+		r := a.checker.Check(ctx, name, args)
 		if r.Decision == permission.DecisionDeny {
 			return fmt.Sprintf("Permission denied: %s", r.Reason)
 		}
-		// Allow / Ask：Ask 已被 Pipeline 内部消化（要么转 Allow 要么转 Deny）
 	}
 
-	tool := a.registry.Get(tc.Function.Name)
+	tool := a.registry.Get(name)
 	if tool == nil {
-		return fmt.Sprintf("Error: 工具 %q 未注册", tc.Function.Name)
+		return fmt.Sprintf("Error: 工具 %q 未注册", name)
 	}
 
 	out, err := tool.Execute(ctx, args)
 	if err != nil {
 		// 即便 Execute 失败，也走 PostToolUse hook（让日志/统计 hook 看到真实输出）
 		if a.hooks != nil {
-			a.hooks.TriggerPostToolUse(ctx, call, fmt.Sprintf("Error: %v", err))
+			a.hooks.TriggerPostToolUse(ctx, name, args, fmt.Sprintf("Error: %v", err))
 		}
 		return fmt.Sprintf("Error: %v", err)
 	}
 
 	// Stage 3: PostToolUse hook
 	if a.hooks != nil {
-		a.hooks.TriggerPostToolUse(ctx, call, out)
+		a.hooks.TriggerPostToolUse(ctx, name, args, out)
 	}
 	return out
 }
