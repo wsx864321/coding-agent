@@ -43,7 +43,19 @@ type BashTool struct {
 type BashPolicy struct{}
 
 // NewBashTool 创建一个具有默认配置的 BashTool
-func NewBashTool() *BashTool {
+//
+// 参数 workdir 是为未来 BashPolicy 演进预留的注入点（与 file 工具保持 API 形状一致）；
+// 现阶段 BashTool 不消费该值，调用方需自行设置 AllowedDirs（如需限制）。
+//
+// 安全策略：默认不限制 AllowedDirs。bash 工具的"安全"主要由调用方控制：
+//   - 设置 AllowedDirs 后，工具仅在传入 workdir 时校验；workdir 留空仍放行
+//   - 未来通过 BashPolicy 引入 ask/allow/deny 模式（见 docs/bash-tool-design.md）
+//
+// 之所以不默认收紧到 cwd：
+//   - bash 的合法用途常常跨目录（cd /path/to/project && make test）
+//   - AllowedDirs 留空意味着放行；调用方按需收紧
+func NewBashTool(workdir string) *BashTool {
+	_ = workdir // 暂不消费
 	return &BashTool{
 		DefaultTimeout: 60 * time.Second,
 		MaxOutputBytes: 1024 * 1024, // 默认 1MB

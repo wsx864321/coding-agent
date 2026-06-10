@@ -45,7 +45,7 @@ func TestReadFile_Whole(t *testing.T) {
 	dir := mkTempDir(t)
 	path := writeTemp(t, dir, "a.txt", "hello\nworld\n")
 
-	tool := NewReadFileTool()
+	tool := NewReadFileTool(dir)
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"path": path,
 	})
@@ -61,7 +61,7 @@ func TestReadFile_LineRange(t *testing.T) {
 	dir := mkTempDir(t)
 	path := writeTemp(t, dir, "a.txt", "L1\nL2\nL3\nL4\nL5\n")
 
-	tool := NewReadFileTool()
+	tool := NewReadFileTool(dir)
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"path":  path,
 		"start": 2,
@@ -80,7 +80,7 @@ func TestReadFile_AllowedDirsBlocks(t *testing.T) {
 	outside := mkTempDir(t)
 	path := writeTemp(t, outside, "secret.txt", "nope")
 
-	tool := NewReadFileTool()
+	tool := NewReadFileTool("")
 	tool.AllowedDirs = []string{allowed}
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"path": path,
@@ -91,7 +91,7 @@ func TestReadFile_AllowedDirsBlocks(t *testing.T) {
 }
 
 func TestReadFile_NotFound(t *testing.T) {
-	tool := NewReadFileTool()
+	tool := NewReadFileTool("")
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"path": filepath.Join(t.TempDir(), "no-such-file"),
 	})
@@ -108,7 +108,7 @@ func TestWriteFile_Overwrite(t *testing.T) {
 	dir := mkTempDir(t)
 	path := filepath.Join(dir, "nested", "out.txt")
 
-	tool := NewWriteFileTool()
+	tool := NewWriteFileTool(dir)
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"path":    path,
 		"content": "new content",
@@ -132,7 +132,7 @@ func TestWriteFile_Append(t *testing.T) {
 	dir := mkTempDir(t)
 	path := writeTemp(t, dir, "log.txt", "first\n")
 
-	tool := NewWriteFileTool()
+	tool := NewWriteFileTool(dir)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"path":    path,
 		"content": "second\n",
@@ -152,7 +152,7 @@ func TestWriteFile_AllowedDirsBlocks(t *testing.T) {
 	outside := mkTempDir(t)
 	path := filepath.Join(outside, "x.txt")
 
-	tool := NewWriteFileTool()
+	tool := NewWriteFileTool("")
 	tool.AllowedDirs = []string{allowed}
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"path":    path,
@@ -171,7 +171,7 @@ func TestEditFile_UniqueReplace(t *testing.T) {
 	dir := mkTempDir(t)
 	path := writeTemp(t, dir, "a.go", "foo bar foo\n")
 
-	tool := NewEditFileTool()
+	tool := NewEditFileTool(dir)
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"path":     path,
 		"old_text": "bar",
@@ -193,7 +193,7 @@ func TestEditFile_MultipleRequiresAll(t *testing.T) {
 	dir := mkTempDir(t)
 	path := writeTemp(t, dir, "a.go", "foo foo foo\n")
 
-	tool := NewEditFileTool()
+	tool := NewEditFileTool(dir)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"path":     path,
 		"old_text": "foo",
@@ -208,7 +208,7 @@ func TestEditFile_AllFlag(t *testing.T) {
 	dir := mkTempDir(t)
 	path := writeTemp(t, dir, "a.go", "foo foo foo\n")
 
-	tool := NewEditFileTool()
+	tool := NewEditFileTool(dir)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"path":     path,
 		"old_text": "foo",
@@ -228,7 +228,7 @@ func TestEditFile_NotFound(t *testing.T) {
 	dir := mkTempDir(t)
 	path := writeTemp(t, dir, "a.go", "hello\n")
 
-	tool := NewEditFileTool()
+	tool := NewEditFileTool(dir)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"path":     path,
 		"old_text": "world",
@@ -253,7 +253,7 @@ func TestGlobFile_Basic(t *testing.T) {
 	writeTemp(t, dir, "c.txt", "x")
 	writeTemp(t, dir, "sub/d.go", "x")
 
-	tool := NewGlobFileTool()
+	tool := NewGlobFileTool(dir)
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"pattern": "*.go",
 		"base_dir": dir,
@@ -276,7 +276,7 @@ func TestGlobFile_Recursive(t *testing.T) {
 	writeTemp(t, dir, "sub/b.go", "x")
 	writeTemp(t, dir, "sub/deep/c.go", "x")
 
-	tool := NewGlobFileTool()
+	tool := NewGlobFileTool(dir)
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"pattern": "**/*.go",
 		"base_dir": dir,
@@ -299,7 +299,7 @@ func TestGlobFile_MaxResults(t *testing.T) {
 	writeTemp(t, dir, "b.go", "x")
 	writeTemp(t, dir, "c.go", "x")
 
-	tool := NewGlobFileTool()
+	tool := NewGlobFileTool(dir)
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"pattern":     "*.go",
 		"base_dir":    dir,
@@ -323,7 +323,7 @@ func TestGlobFile_SkipsGitDir(t *testing.T) {
 	writeTemp(t, dir, "a.go", "x")
 	writeTemp(t, dir, ".git/x.go", "x") // 应被跳过
 
-	tool := NewGlobFileTool()
+	tool := NewGlobFileTool(dir)
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"pattern":  "**/*.go",
 		"base_dir": dir,
@@ -338,7 +338,7 @@ func TestGlobFile_SkipsGitDir(t *testing.T) {
 
 func TestGlobFile_NoMatch(t *testing.T) {
 	dir := mkTempDir(t)
-	tool := NewGlobFileTool()
+	tool := NewGlobFileTool("")
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"pattern":  "*.zzz",
 		"base_dir": dir,

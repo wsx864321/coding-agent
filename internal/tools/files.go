@@ -28,9 +28,24 @@ type ReadFileTool struct {
 }
 
 // NewReadFileTool 创建具有默认配置的 ReadFileTool
-func NewReadFileTool() *ReadFileTool {
+//
+// 参数 workdir 是 AllowedDirs 白名单的基准目录：
+//   - 传非空路径：AllowedDirs = []string{workdir}，LLM 只能读该目录下文件
+//   - 传 ""：AllowedDirs = nil，不限制
+//
+// 推荐用法（CLI 入口）：
+//
+//	wd, _ := os.Getwd()
+//	tool := tools.NewReadFileTool(wd)
+//
+// 如需自定义白名单，可继续覆盖：
+//
+//	tool.AllowedDirs = []string{"/path/a", "/path/b"}
+//	tool.AllowedDirs = nil
+func NewReadFileTool(workdir string) *ReadFileTool {
 	return &ReadFileTool{
-		MaxBytes: 10 * 1024 * 1024, // 默认 10MB
+		AllowedDirs: allowedDirsFromWorkdir(workdir),
+		MaxBytes:    10 * 1024 * 1024, // 默认 10MB
 	}
 }
 
@@ -156,8 +171,12 @@ type WriteFileTool struct {
 }
 
 // NewWriteFileTool 创建具有默认配置的 WriteFileTool
-func NewWriteFileTool() *WriteFileTool {
-	return &WriteFileTool{}
+//
+// 参数 workdir 是 AllowedDirs 白名单的基准目录，语义同 NewReadFileTool。
+func NewWriteFileTool(workdir string) *WriteFileTool {
+	return &WriteFileTool{
+		AllowedDirs: allowedDirsFromWorkdir(workdir),
+	}
 }
 
 // Name 返回工具名称
@@ -265,8 +284,12 @@ type EditFileTool struct {
 }
 
 // NewEditFileTool 创建默认配置
-func NewEditFileTool() *EditFileTool {
-	return &EditFileTool{}
+//
+// 参数 workdir 是 AllowedDirs 白名单的基准目录，语义同 NewReadFileTool。
+func NewEditFileTool(workdir string) *EditFileTool {
+	return &EditFileTool{
+		AllowedDirs: allowedDirsFromWorkdir(workdir),
+	}
 }
 
 // Name 返回工具名称
@@ -383,8 +406,12 @@ type GlobFileTool struct {
 }
 
 // NewGlobFileTool 创建默认配置
-func NewGlobFileTool() *GlobFileTool {
-	return &GlobFileTool{}
+//
+// 参数 workdir 是 AllowedDirs 白名单的基准目录，语义同 NewReadFileTool。
+func NewGlobFileTool(workdir string) *GlobFileTool {
+	return &GlobFileTool{
+		AllowedDirs: allowedDirsFromWorkdir(workdir),
+	}
 }
 
 // Name 返回工具名称
@@ -593,4 +620,18 @@ func globToRegexp(pattern string) (*regexp.Regexp, error) {
 	}
 	b.WriteString("$")
 	return regexp.Compile(b.String())
+}
+
+// allowedDirsFromWorkdir 把 NewXxxTool 的 workdir 形参翻译成 AllowedDirs 字段
+//
+// 规则：
+//   - workdir == ""  → nil（不限制）
+//   - workdir != ""  → []string{workdir}
+//
+// 不在内部调 os.Getwd()，让 NewXxxTool 保持"无 I/O"语义。
+func allowedDirsFromWorkdir(workdir string) []string {
+	if workdir == "" {
+		return nil
+	}
+	return []string{workdir}
 }

@@ -63,19 +63,20 @@ func truncate(s string, n int) string {
 func buildAgent(cmd *cobra.Command) (*agent.Agent, *tools.Registry, error) {
 	registry := tools.NewRegistry()
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, nil, fmt.Errorf("获取当前工作目录失败: %w", err)
+	// 基准目录：从 flag 读取，留空走当前目录
+	workdir, _ := cmd.Flags().GetString("workdir")
+	if workdir == "" {
+		workdir, _ = os.Getwd()
 	}
 
-	bash := tools.NewBashTool()
-	bash.AllowedDirs = []string{cwd}
-	registry.Register(bash)
+	// bash 不默认限制 workdir（按设计）；调用方按需设置 AllowedDirs
+	registry.Register(tools.NewBashTool(workdir))
 
-	registry.Register(tools.NewReadFileTool())
-	registry.Register(tools.NewWriteFileTool())
-	registry.Register(tools.NewEditFileTool())
-	registry.Register(tools.NewGlobFileTool())
+	// file 系列工具以 workdir 作为白名单基准
+	registry.Register(tools.NewReadFileTool(workdir))
+	registry.Register(tools.NewWriteFileTool(workdir))
+	registry.Register(tools.NewEditFileTool(workdir))
+	registry.Register(tools.NewGlobFileTool(workdir))
 
 	model, _ := cmd.Flags().GetString("model")
 	baseURL, _ := cmd.Flags().GetString("base-url")

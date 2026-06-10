@@ -15,21 +15,21 @@ import (
 // =====================================================================
 
 func TestBashTool_Name(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	if got := b.Name(); got != "bash" {
 		t.Errorf("Name() = %q, want %q", got, "bash")
 	}
 }
 
 func TestBashTool_Description(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	if d := b.Description(); d == "" {
 		t.Error("Description() returned empty string")
 	}
 }
 
 func TestBashTool_Schema(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	raw := b.Schema()
 	if len(raw) == 0 {
 		t.Fatal("Schema() returned empty")
@@ -44,7 +44,7 @@ func TestBashTool_Schema(t *testing.T) {
 }
 
 func TestBashTool_NewBashToolDefaults(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	if b.DefaultTimeout != 60*time.Second {
 		t.Errorf("DefaultTimeout = %v, want 60s", b.DefaultTimeout)
 	}
@@ -69,7 +69,7 @@ func shellEchoCmd() string {
 }
 
 func TestBashTool_Execute_Success(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	out, err := b.Execute(context.Background(), map[string]any{
 		"command": shellEchoCmd(),
 	})
@@ -92,7 +92,7 @@ func shellPwdCmd() string {
 func TestBashTool_Execute_Workdir(t *testing.T) {
 	dir := t.TempDir()
 	abs, _ := filepath.Abs(dir)
-	b := NewBashTool()
+	b := NewBashTool("")
 
 	out, err := b.Execute(context.Background(), map[string]any{
 		"command": shellPwdCmd(),
@@ -123,7 +123,7 @@ func shellStdoutAndStderrCmd() string {
 }
 
 func TestBashTool_Execute_StderrMerged(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	out, err := b.Execute(context.Background(), map[string]any{
 		"command": shellStdoutAndStderrCmd(),
 	})
@@ -168,7 +168,7 @@ func shellExit1Cmd() string {
 }
 
 func TestBashTool_Execute_NonZeroExit(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	_, err := b.Execute(context.Background(), map[string]any{
 		"command": shellExit1Cmd(),
 	})
@@ -217,7 +217,7 @@ func TestBashTool_Execute_Timeout(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skip on windows: cmd.exe does not propagate signals to child processes")
 	}
-	b := NewBashTool()
+	b := NewBashTool("")
 	b.DefaultTimeout = 100 * time.Millisecond
 
 	start := time.Now()
@@ -244,7 +244,7 @@ func TestBashTool_Execute_TimeoutParamOverride(t *testing.T) {
 		// 测试容易受子进程自然退出时间影响不稳定；跳过以保证 CI 稳定。
 		t.Skip("skip on windows: cmd.exe does not propagate signals to child processes")
 	}
-	b := NewBashTool()
+	b := NewBashTool("")
 	b.DefaultTimeout = 30 * time.Second // 默认很长
 
 	start := time.Now()
@@ -273,7 +273,7 @@ func TestBashTool_Execute_Canceled(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skip on windows: cmd.exe does not propagate signals to child processes")
 	}
-	b := NewBashTool()
+	b := NewBashTool("")
 	ctx, cancel := context.WithCancel(context.Background())
 	// 50ms 后取消
 	go func() {
@@ -299,7 +299,7 @@ func TestBashTool_Execute_Canceled(t *testing.T) {
 // =====================================================================
 
 func TestBashTool_Execute_EmptyCommand(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	_, err := b.Execute(context.Background(), map[string]any{
 		"command": "",
 	})
@@ -312,7 +312,7 @@ func TestBashTool_Execute_EmptyCommand(t *testing.T) {
 }
 
 func TestBashTool_Execute_WhitespaceCommand(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	_, err := b.Execute(context.Background(), map[string]any{
 		"command": "   \t  \n",
 	})
@@ -325,7 +325,7 @@ func TestBashTool_Execute_WhitespaceCommand(t *testing.T) {
 }
 
 func TestBashTool_Execute_InvalidArgs(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	// 传一个无法 unmarshal 成 bashArgs 的值（command 期望 string，传 int）
 	_, err := b.Execute(context.Background(), map[string]any{
 		"command": 123,
@@ -336,7 +336,7 @@ func TestBashTool_Execute_InvalidArgs(t *testing.T) {
 }
 
 func TestBashTool_Execute_NilArgs(t *testing.T) {
-	b := NewBashTool()
+	b := NewBashTool("")
 	_, err := b.Execute(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error for nil args, got nil")
@@ -352,7 +352,7 @@ func TestBashTool_Execute_AllowedDirsBlocks(t *testing.T) {
 	outside := t.TempDir()
 	outsideAbs, _ := filepath.Abs(outside)
 
-	b := NewBashTool()
+	b := NewBashTool("")
 	b.AllowedDirs = []string{allowed}
 
 	_, err := b.Execute(context.Background(), map[string]any{
@@ -371,7 +371,7 @@ func TestBashTool_Execute_AllowedDirsAllows(t *testing.T) {
 	allowed := t.TempDir()
 	allowedAbs, _ := filepath.Abs(allowed)
 
-	b := NewBashTool()
+	b := NewBashTool("")
 	b.AllowedDirs = []string{allowed}
 
 	_, err := b.Execute(context.Background(), map[string]any{
@@ -388,7 +388,7 @@ func TestBashTool_Execute_AllowedDirsNotCheckedWhenEmpty(t *testing.T) {
 	outside := t.TempDir()
 	_ = outside
 
-	b := NewBashTool()
+	b := NewBashTool("")
 	b.AllowedDirs = []string{"/some/totally/unrelated/dir"}
 
 	// 不传 workdir
@@ -419,7 +419,7 @@ func TestBashTool_Execute_MaxOutputBytesTruncate(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skip on windows: posix-only test command")
 	}
-	b := NewBashTool()
+	b := NewBashTool("")
 	b.MaxOutputBytes = 100 // 限制 100 字节
 
 	out, err := b.Execute(context.Background(), map[string]any{
@@ -443,7 +443,7 @@ func TestBashTool_Execute_MaxOutputBytesZeroNoLimit(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skip on windows: posix-only test command")
 	}
-	b := NewBashTool()
+	b := NewBashTool("")
 	b.MaxOutputBytes = 0 // 不限制
 
 	out, err := b.Execute(context.Background(), map[string]any{

@@ -33,6 +33,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP("base-url", "u", "", "OpenAI 兼容服务 base URL（默认从环境变量 OPEN_BASE_URL）")
 	rootCmd.PersistentFlags().IntP("max-turns", "t", 0, "Agent loop 最大轮数（默认 20）")
 	rootCmd.PersistentFlags().StringP("system", "s", "", "自定义 system prompt（留空则按工具列表自动生成）")
+	rootCmd.PersistentFlags().StringP("workdir", "w", "", "file 工具的白名单基准目录（默认当前工作目录）")
 }
 
 // Execute 是 CLI 入口，由 main() 调用

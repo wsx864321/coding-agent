@@ -48,8 +48,11 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cwd, _ := os.Getwd()
-	fmt.Printf("[coding-agent] REPL 已启动，cwd=%s\n", cwd)
+	workdir, _ := cmd.Flags().GetString("workdir")
+	if workdir == "" {
+		workdir, _ = os.Getwd()
+	}
+	fmt.Printf("[coding-agent] REPL 已启动，workdir=%s\n", workdir)
 	fmt.Printf("[coding-agent] 已注册工具: %s\n", joinToolNames(registry))
 	fmt.Println("[coding-agent] 输入 /help 查看可用命令，Ctrl+C 中断当前轮")
 
