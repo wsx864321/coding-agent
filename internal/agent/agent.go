@@ -6,6 +6,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
+	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
@@ -27,6 +28,8 @@ type Agent struct {
 	cfg      Config
 	client   *openai.Client
 	registry *tools.Registry
+	// checker 在每次工具执行前做权限判断；nil 表示放行（等价于 permission.AllowAllChecker）
+	checker permission.Checker
 	messages []openai.ChatCompletionMessage
 }
 
@@ -68,6 +71,7 @@ func NewAgent(cfg Config, registry *tools.Registry) (*Agent, error) {
 		},
 		client:   client,
 		registry: registry,
+		checker:  cfg.Checker, // 可能为 nil：nil 时由 invokeTool 走放行分支
 		messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
@@ -125,4 +129,21 @@ func (a *Agent) Reset() {
 // Registry 返回底层的工具注册表
 func (a *Agent) Registry() *tools.Registry {
 	return a.registry
+}
+
+// SetChecker 注入 / 替换权限检查器
+//
+//   - 传 nil：放行所有调用（等价于 permission.AllowAllChecker）
+//   - 通常在 NewAgent 之后立即调用一次；运行期切换仅影响后续 tool call
+func (a *Agent) SetChecker(c permission.Checker) {
+	a.checker = c
+}
+
+// SetClient 替换 openai.Client（主要给 fake LLM 测试用）
+//
+//   - agent 包内可读 a.client（小写），但导出 setter 避免外部包碰内部状态
+//   - 用 NewAgent 默认 baseURL 构造出来的 client 仍能跑通大多数 fake 场景
+//     （URL 写的是 httptest 的真实 URL）；只有需要"绝对确保打到 fake"时才替换
+func (a *Agent) SetClient(c *openai.Client) {
+	a.client = c
 }

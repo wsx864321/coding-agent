@@ -7,6 +7,8 @@ import (
 	"fmt"
 
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/wsx864321/coding-agent/internal/permission"
 )
 
 // ErrMaxTurnsExceeded 当 loop 超过 Config.MaxTurns 时返回
@@ -70,18 +72,38 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) {
 }
 
 // invokeTool 真正执行工具调用，返回结果字符串（成功或失败都返回字符串）
+//
+//
+//	+----------+   +-------------+   +----------+   +--------+
+//	| tc 进入  | ->| permission  | ->| registry | ->| exec   |
+//	|          |   |  Checker    |   | lookup   |   |        |
+//	+----------+   +-------------+   +----------+   +--------+
+//	                   |
+//	                   +--> Deny  → 把拒绝原因回填给 LLM（不调 Execute）
+//	                   +--> Allow → 继续 registry 查表 + Execute
 func (a *Agent) invokeTool(ctx context.Context, tc openai.ToolCall) string {
-	tool := a.registry.Get(tc.Function.Name)
-	if tool == nil {
-		return fmt.Sprintf("Error: 工具 %q 未注册", tc.Function.Name)
-	}
-
-	// 解析 JSON 参数字符串为 map[string]any
+	// 解析 JSON 参数字符串为 map[string]any（permission 也要用）
 	var args map[string]any
 	if tc.Function.Arguments != "" {
 		if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 			return fmt.Sprintf("Error: 参数解析失败: %v (raw=%s)", err, tc.Function.Arguments)
 		}
+	}
+
+	if a.checker != nil {
+		r := a.checker.Check(ctx, permission.ToolCall{
+			Name: tc.Function.Name,
+			Args: args,
+		})
+		if r.Decision == permission.DecisionDeny {
+			return fmt.Sprintf("Permission denied: %s", r.Reason)
+		}
+		// Allow / Ask：Ask 已被 Pipeline 内部消化（要么转 Allow 要么转 Deny）
+	}
+
+	tool := a.registry.Get(tc.Function.Name)
+	if tool == nil {
+		return fmt.Sprintf("Error: 工具 %q 未注册", tc.Function.Name)
 	}
 
 	out, err := tool.Execute(ctx, args)

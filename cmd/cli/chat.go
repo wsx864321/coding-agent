@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/wsx864321/coding-agent/internal/agent"
+	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
@@ -55,6 +56,21 @@ func runChat(cmd *cobra.Command, args []string) error {
 	fmt.Printf("[coding-agent] REPL 已启动，workdir=%s\n", workdir)
 	fmt.Printf("[coding-agent] 已注册工具: %s\n", joinToolNames(registry))
 	fmt.Println("[coding-agent] 输入 /help 查看可用命令，Ctrl+C 中断当前轮")
+
+	// 构造一个带 Asker 的 Pipeline 覆盖 buildAgent 装的"无 Asker 版"
+	asker := &permission.StdinAsker{Reader: os.Stdin, Writer: os.Stderr}
+	a.SetChecker(&permission.Pipeline{
+		Deny: []permission.Checker{
+			&permission.DenyListChecker{Patterns: permission.DefaultBashDenyList()},
+		},
+		Ask: []permission.Checker{
+			&permission.AskRuleChecker{Rules: []permission.AskRule{
+				permission.DefaultBashAskRules(),
+				permission.WriteOutsideWorkdirRule(workdir),
+			}},
+		},
+		Asker: asker,
+	})
 
 	// Ctrl+C / SIGTERM 取消当前轮
 	ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)

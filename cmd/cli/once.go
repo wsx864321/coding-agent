@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/wsx864321/coding-agent/internal/agent"
+	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
@@ -83,11 +84,30 @@ func buildAgent(cmd *cobra.Command) (*agent.Agent, *tools.Registry, error) {
 	maxTurns, _ := cmd.Flags().GetInt("max-turns")
 	system, _ := cmd.Flags().GetString("system")
 
+	// s03: 构造三道闸门权限管线
+	//   Gate 1: bash 硬拒绝列表
+	//   Gate 2: bash 破坏性关键字 / 写入工作区外
+	//   Gate 3: once 模式无 TTY，按 auto-deny：只走 deny 与 ask-no-op，规则命中会被忽略
+	//           后续若需要 once 也走交互，可加 --interactive flag
+	checker := &permission.Pipeline{
+		Deny: []permission.Checker{
+			&permission.DenyListChecker{Patterns: permission.DefaultBashDenyList()},
+		},
+		Ask: []permission.Checker{
+			&permission.AskRuleChecker{Rules: []permission.AskRule{
+				permission.DefaultBashAskRules(),
+				permission.WriteOutsideWorkdirRule(workdir),
+			}},
+		},
+		// Asker 留 nil：once 模式下 Ask 视作 Allow（见 Pipeline.Check 注释）
+	}
+
 	cfg := agent.Config{
 		Model:        model,
 		BaseURL:      baseURL,
 		MaxTurns:     maxTurns,
 		SystemPrompt: system,
+		Checker:      checker,
 	}
 	a, err := agent.NewAgent(cfg, registry)
 	if err != nil {

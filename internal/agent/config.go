@@ -6,6 +6,8 @@ import (
 	"os"
 
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/wsx864321/coding-agent/internal/permission"
 )
 
 // Config Agent 配置
@@ -37,6 +39,12 @@ type Config struct {
 
 	// Temperature 采样温度；0 表示不传该参数（API 默认 1）
 	Temperature float32
+
+	// Checker 工具执行前的权限检查器；nil 时放行所有调用
+	//
+	// 构造时通常与 cmd/cli 提供的 Asker 串联成 Pipeline（deny → ask → allow）。
+	// 也可通过 Agent.SetChecker 在运行时替换。
+	Checker permission.Checker
 }
 
 // DefaultMaxTurns 默认最大轮数
