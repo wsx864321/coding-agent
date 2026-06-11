@@ -78,6 +78,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.WireTaskTool()
 
 	if c := a.Hooks(); c != nil {
 		fmt.Printf("[coding-agent] 已注册 hooks: %s\n", formatHookCounts(c.Count()))

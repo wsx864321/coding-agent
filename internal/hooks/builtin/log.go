@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/wsx864321/coding-agent/internal/hooks"
 )
 
 // LogHook 打印每次工具调用的摘要（用于 debug / 审计）
@@ -17,9 +19,13 @@ func NewLogHook() *LogHook {
 }
 
 // Handle 实现 hooks.PreToolUseHook（仅打日志，不阻断）
-func (h *LogHook) Handle(_ context.Context, name string, args map[string]any) (string, string) {
+func (h *LogHook) Handle(ctx context.Context, name string, args map[string]any) (string, string) {
 	preview := argPreview(args, 60)
-	h.sink().Fprintf("[HOOK] %s(%s)\n", name, preview)
+	prefix := "[HOOK]"
+	if hooks.IsSubagent(ctx) {
+		prefix = "[HOOK][sub]"
+	}
+	h.sink().Fprintf("%s %s(%s)\n", prefix, name, preview)
 	return "", ""
 }
 

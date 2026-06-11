@@ -27,6 +27,20 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+type subagentCtxKey struct{}
+
+// WithSubagentFlag 在 context 中标记当前正在 subagent 内运行。
+// 继承的 hooks（如 LogHook）可通过 IsSubagent 检测并加前缀区分日志来源。
+func WithSubagentFlag(ctx context.Context) context.Context {
+	return context.WithValue(ctx, subagentCtxKey{}, true)
+}
+
+// IsSubagent 检查当前 context 是否在 subagent 内
+func IsSubagent(ctx context.Context) bool {
+	v, _ := ctx.Value(subagentCtxKey{}).(bool)
+	return v
+}
+
 // Event 标识 4 类事件
 type Event string
 
@@ -190,6 +204,21 @@ func (r *Registry) TriggerStop(ctx context.Context, messages []openai.ChatComple
 		}
 	}
 	return "", false
+}
+
+// WithoutStopAndPrompt 返回只保留 PreToolUse / PostToolUse 的新 Registry。
+//
+// 用于 subagent：子 agent 需要继承权限检查（PreToolUse）和日志（PostToolUse），
+// 但不应触发 Stop hooks（SummaryHook / TodoGuardHook）和 UserPromptSubmit hooks，
+// 因为这些是 parent agent 级别的生命周期事件。
+func (r *Registry) WithoutStopAndPrompt() *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	child := &Registry{
+		preToolUse:  append([]PreToolUseHook(nil), r.preToolUse...),
+		postToolUse: append([]PostToolUseHook(nil), r.postToolUse...),
+	}
+	return child
 }
 
 // Count 返回每个事件注册的 hook 数量（用于调试 / /hooks 之类 CLI）

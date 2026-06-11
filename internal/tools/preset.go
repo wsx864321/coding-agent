@@ -22,6 +22,7 @@ func DefaultRegistry(workdir string) *Registry {
 	r.Register(NewGlobFileTool(workdir))
 	r.Register(NewTodoWriteTool())
 	r.Register(NewCompleteStepTool())
+	r.Register(NewTaskTool(nil)) // runner 由 agent.WireTaskTool() 延迟注入
 
 	return r
 }

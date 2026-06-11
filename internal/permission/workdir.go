@@ -4,6 +4,8 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+
+	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
 // WorkdirChecker 限制 write_file / edit_file 只能在 workdir 内
@@ -33,6 +35,7 @@ func (w *WorkdirChecker) Check(ctx context.Context, name string, args map[string
 	if pathVal == "" {
 		return CheckResult{Decision: DecisionAllow}
 	}
+	pathVal = tools.NormalizeMingwPath(pathVal)
 	abs, err := filepath.Abs(pathVal)
 	if err != nil {
 		return CheckResult{Decision: DecisionAllow}

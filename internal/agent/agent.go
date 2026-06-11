@@ -111,6 +111,33 @@ func (a *Agent) Registry() *tools.Registry {
 	return a.registry
 }
 
+// WireTaskTool 把 task 工具的 SubagentRunner 连接到当前 Agent 实例。
+//
+// 必须在 NewAgent 之后调用——TaskTool 的 runner 闭包需要捕获已构造完成的 Agent。
+// 若 registry 中没有 task 工具则静默跳过。
+//
+// 典型调用路径：CLI 入口 → NewAgent → WireTaskTool
+func (a *Agent) WireTaskTool() {
+	t := a.registry.Get("task")
+	if t == nil {
+		return
+	}
+	tt, ok := t.(*tools.TaskTool)
+	if !ok {
+		return
+	}
+	tt.SetRunner(func(ctx context.Context, prompt string) (string, error) {
+		var subHooks *hooks.Registry
+		if a.hooks != nil {
+			subHooks = a.hooks.WithoutStopAndPrompt()
+		}
+		return RunSubAgent(ctx, a, prompt, SubagentOptions{
+			Hooks:   subHooks,
+			Checker: a.checker,
+		})
+	})
+}
+
 // Run 接收用户输入，驱动 Agent loop，最终返回 LLM 的最终回答
 //
 // 行为：

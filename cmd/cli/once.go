@@ -58,6 +58,7 @@ func runOnce(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.WireTaskTool()
 
 	if !onceQuiet {
 		fmt.Fprintf(os.Stderr, "[coding-agent] running once, message=%q\n", truncate(onceMessage, 60))

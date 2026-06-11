@@ -50,3 +50,26 @@ func (r *Registry) List() []Tool {
 
 	return tools
 }
+
+// FilterRegistry 从 parent 构建子注册表：复制所有工具，但排除 exclude 中列出的名称。
+//
+// 典型用途：为 subagent 构建工具集，排除 meta 工具（task / todo_write / complete_step）
+// 防止递归 spawn 和状态泄漏。
+//
+// 返回的 Registry 是独立副本，对其修改不影响 parent。
+func FilterRegistry(parent *Registry, exclude ...string) *Registry {
+	ex := make(map[string]bool, len(exclude))
+	for _, name := range exclude {
+		ex[name] = true
+	}
+
+	child := NewRegistry()
+	parent.mu.RLock()
+	defer parent.mu.RUnlock()
+	for name, tool := range parent.tools {
+		if !ex[name] {
+			child.tools[name] = tool
+		}
+	}
+	return child
+}
