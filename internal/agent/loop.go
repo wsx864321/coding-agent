@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
-
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/wsx864321/coding-agent/internal/permission"
@@ -131,6 +129,12 @@ func (a *Agent) invokeTool(ctx context.Context, tc openai.ToolCall) string {
 	}
 
 	out, err := tool.Execute(ctx, args)
+
+	// 记录工具调用凭证到证据账本（无论成功失败都记录）
+	if a.ledger != nil {
+		a.ledger.Record(name, args, out, err == nil)
+	}
+
 	if err != nil {
 		// 即便 Execute 失败，也走 PostToolUse hook（让日志/统计 hook 看到真实输出）
 		if a.hooks != nil {
@@ -176,11 +180,6 @@ func (a *Agent) buildTools() []openai.Tool {
 			},
 		})
 	}
-
-	// 对tools按照Name进行排序，prompt cache友好
-	sort.Slice(tools, func(i, j int) bool {
-		return tools[i].Function.Name < tools[j].Function.Name
-	})
 
 	return tools
 }

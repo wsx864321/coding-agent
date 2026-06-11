@@ -42,5 +42,24 @@ func buildSystemPrompt(registry *tools.Registry) string {
 	}
 
 	b.WriteString("请按用户意图选择合适的工具，按需连续调用多个工具以完成任务。\n")
+
+	if hasTodoTools(registry) {
+		b.WriteString(todoGuidance)
+	}
+
 	return b.String()
 }
+
+// hasTodoTools 检查 registry 中是否注册了 todo_write 和 complete_step
+func hasTodoTools(registry *tools.Registry) bool {
+	return registry.Get("todo_write") != nil && registry.Get("complete_step") != nil
+}
+
+const todoGuidance = `
+对于多步骤任务（3 步以上），使用 todo_write 和 complete_step 工具跟踪进度：
+- 动手之前先调 todo_write 列出所有步骤，第一步设为 in_progress，其余 pending
+- 每次只保持一个 in_progress
+- 完成一个步骤的实际工作后，先调 complete_step 提供完成证据，再调 todo_write 更新状态
+- 不要跳过 complete_step 直接将步骤标记为 completed，否则 todo_write 会拒绝
+- 简单任务（少于 3 步）无需使用 todo_write
+`

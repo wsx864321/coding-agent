@@ -20,6 +20,8 @@ func DefaultRegistry(workdir string) *Registry {
 	r.Register(NewWriteFileTool(workdir))
 	r.Register(NewEditFileTool(workdir))
 	r.Register(NewGlobFileTool(workdir))
+	r.Register(NewTodoWriteTool())
+	r.Register(NewCompleteStepTool())
 
 	return r
 }

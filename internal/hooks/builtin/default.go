@@ -33,6 +33,13 @@ func NewDefault(out io.Writer, workdir string) *hooks.Registry {
 	cih.Sink = sink
 	r.RegisterUserPromptSubmit(cih.Handle)
 
+	// TodoGuard 必须在 Summary 之前注册：
+	// StopHook 链中首个返回 force 的 hook 短路后续，
+	// TodoGuard 阻断时 Summary 不会执行（符合预期：会话尚未结束）
+	tgh := NewTodoGuardHook()
+	tgh.Sink = sink
+	r.RegisterStop(tgh.Handle)
+
 	sh := NewSummaryHook()
 	sh.Sink = sink
 	r.RegisterStop(sh.Handle)

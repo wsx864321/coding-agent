@@ -6,6 +6,11 @@ import (
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
+// Option 是 NewAgent 的可选注入项
+type Option interface {
+	apply(*Agent)
+}
+
 // registryOpt 注入工具注册表
 type registryOpt struct{ r *tools.Registry }
 

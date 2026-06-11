@@ -164,17 +164,21 @@ func makeToolCall(id, name, args string) openai.ToolCall {
 // NewAgent 校验
 // =====================================================================
 
-func TestNewAgent_NilRegistry(t *testing.T) {
-	_, err := NewAgent(Config{APIKey: "x"}, nil)
-	if err == nil {
-		t.Fatal("expected error for nil registry")
+func TestNewAgent_NilOption(t *testing.T) {
+	// nil Option 会被跳过，不引发 panic
+	a, err := NewAgent(Config{APIKey: "x"}, nil)
+	if err != nil {
+		t.Fatalf("NewAgent with nil option should not error: %v", err)
+	}
+	if a == nil {
+		t.Fatal("agent should not be nil")
 	}
 }
 
 func TestNewAgent_MissingAPIKey(t *testing.T) {
 	// 通过清空 env 来确保既无 cfg.APIKey 也无 env
 	t.Setenv("OPENAI_API_KEY", "")
-	_, err := NewAgent(Config{}, tools.NewRegistry())
+	_, err := NewAgent(Config{}, WithRegistry(tools.NewRegistry()))
 	if err == nil {
 		t.Fatal("expected error for missing API key")
 	}
@@ -182,7 +186,7 @@ func TestNewAgent_MissingAPIKey(t *testing.T) {
 
 func TestNewAgent_Defaults(t *testing.T) {
 	f := newFakeLLM(t, scriptedResponse{content: "ok"})
-	a, err := NewAgent(Config{APIKey: "x", BaseURL: f.server.URL + "/v1"}, tools.NewRegistry())
+	a, err := NewAgent(Config{APIKey: "x", BaseURL: f.server.URL + "/v1"}, WithRegistry(tools.NewRegistry()))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -203,7 +207,7 @@ func TestNewAgent_CustomSystemPrompt(t *testing.T) {
 		APIKey:       "x",
 		BaseURL:      f.server.URL + "/v1",
 		SystemPrompt: "You are a custom agent.",
-	}, tools.NewRegistry())
+	}, WithRegistry(tools.NewRegistry()))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -406,7 +410,7 @@ func TestRun_MaxTurnsExceeded(t *testing.T) {
 		APIKey:   "x",
 		BaseURL:  f.server.URL + "/v1",
 		MaxTurns: 3,
-	}, registry)
+	}, WithRegistry(registry))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -572,8 +576,13 @@ func TestRun_Stop_ForceContinue(t *testing.T) {
 	)
 
 	hr := newTestHookRegistry()
+	fired := false
 	hr.RegisterStop(func(_ context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
-		return "请继续", true // 强制续跑
+		if !fired {
+			fired = true
+			return "请继续", true // 首次强制续跑
+		}
+		return "", false // 后续放行
 	})
 	a := newTestAgentWithHooks(t, f, hr)
 

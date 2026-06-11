@@ -1,6 +1,9 @@
 package tools
 
-import "sync"
+import (
+	"sort"
+	"sync"
+)
 
 type Registry struct {
 	mu    *sync.RWMutex
@@ -39,5 +42,11 @@ func (r *Registry) List() []Tool {
 	for _, tool := range r.tools {
 		tools = append(tools, tool)
 	}
+
+	// 对tools按照Name进行排序，prompt cache友好
+	sort.Slice(tools, func(i, j int) bool {
+		return tools[i].Name() < tools[j].Name()
+	})
+
 	return tools
 }

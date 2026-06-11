@@ -44,7 +44,7 @@ type Config struct {
 }
 
 // DefaultMaxTurns 默认最大轮数
-const DefaultMaxTurns = 20
+const DefaultMaxTurns = 100
 
 // DefaultModel 默认模型
 const DefaultModel = openai.GPT4oMini

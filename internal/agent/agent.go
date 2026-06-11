@@ -6,6 +6,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
+	"github.com/wsx864321/coding-agent/internal/evidence"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/tools"
@@ -35,8 +36,10 @@ type Agent struct {
 	// checker 在每次工具执行前做权限判断；nil 表示放行
 	checker permission.Checker
 	// hooks 是可选的事件回调链；nil 时跳过所有 trigger
-	hooks   *hooks.Registry
+	hooks    *hooks.Registry
 	messages []openai.ChatCompletionMessage
+	// ledger 是证据账本，为 todo_write / complete_step 提供工具调用凭证
+	ledger *evidence.Ledger
 }
 
 // NewAgent 构造 Agent
@@ -76,6 +79,7 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 		},
 		client:   client,
 		registry: tools.NewRegistry(),
+		ledger:   evidence.NewLedger(),
 	}
 
 	for _, opt := range opts {
@@ -95,15 +99,6 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 		},
 	}
 	return a, nil
-}
-
-// =====================================================================
-// Option 模式：装配期可选依赖
-// =====================================================================
-
-// Option 是 NewAgent 的可选注入项
-type Option interface {
-	apply(*Agent)
 }
 
 // Hooks 返回底层 Registry（只读，外部不应触发 Trigger）
@@ -129,6 +124,13 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	if userInput == "" {
 		return "", fmt.Errorf("userInput 不能为空")
 	}
+
+	// 每轮用户输入重置 per-turn 证据（receipts、guardBlocks），保留 currentTodos
+	if a.ledger != nil {
+		a.ledger.Reset()
+		ctx = evidence.WithLedger(ctx, a.ledger)
+	}
+
 	// UserPromptSubmit 阶段：先把 user 内容透出，hook 可做日志 / 注入；
 	// 此事件为"通知型"，不允许阻断主流程
 	if a.hooks != nil {
