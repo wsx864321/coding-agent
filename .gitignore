@@ -15,3 +15,7 @@
 *.swp
 
 .specstory
+
+.coding-agent/
+.codegraph
+.reasonix

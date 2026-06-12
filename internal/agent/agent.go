@@ -9,6 +9,7 @@ import (
 	"github.com/wsx864321/coding-agent/internal/evidence"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/permission"
+	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
@@ -40,6 +41,8 @@ type Agent struct {
 	messages []openai.ChatCompletionMessage
 	// ledger 是证据账本，为 todo_write / complete_step 提供工具调用凭证
 	ledger *evidence.Ledger
+	// skillStore 管理 skill 的发现和检索；nil 表示无 skill 支持
+	skillStore *skill.Store
 }
 
 // NewAgent 构造 Agent
@@ -88,9 +91,13 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 		}
 	}
 
-	// SystemPrompt 必须在 registry 注入后才能算（依赖 registry 的工具列表）
+	// SystemPrompt 必须在 registry + skillStore 注入后才能算
 	if a.cfg.SystemPrompt == "" {
-		a.cfg.SystemPrompt = buildSystemPrompt(a.registry)
+		var skills []skill.Skill
+		if a.skillStore != nil {
+			skills = a.skillStore.List()
+		}
+		a.cfg.SystemPrompt = buildSystemPrompt(a.registry, skills)
 	}
 	a.messages = []openai.ChatCompletionMessage{
 		{
@@ -136,6 +143,38 @@ func (a *Agent) WireTaskTool() {
 			Checker: a.checker,
 		})
 	})
+}
+
+// WireSkillTools 把 run_skill 工具的 SkillRunner 连接到当前 Agent 实例。
+//
+// 必须在 NewAgent + WireTaskTool 之后调用。
+// 若 registry 中没有 run_skill 工具则静默跳过。
+func (a *Agent) WireSkillTools() {
+	t := a.registry.Get("run_skill")
+	if t == nil {
+		return
+	}
+	rst, ok := t.(*skill.RunSkillTool)
+	if !ok {
+		return
+	}
+	rst.SetRunner(func(ctx context.Context, sk skill.Skill, task string) (string, error) {
+		var subHooks *hooks.Registry
+		if a.hooks != nil {
+			subHooks = a.hooks.WithoutStopAndPrompt()
+		}
+		sysPrompt := sk.Body
+		return RunSubAgent(ctx, a, task, SubagentOptions{
+			SystemPrompt: sysPrompt,
+			Hooks:        subHooks,
+			Checker:      a.checker,
+		})
+	})
+}
+
+// SkillStore 返回底层的 skill Store
+func (a *Agent) SkillStore() *skill.Store {
+	return a.skillStore
 }
 
 // Run 接收用户输入，驱动 Agent loop，最终返回 LLM 的最终回答

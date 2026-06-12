@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
-// buildSystemPrompt 根据已注册工具自动生成 system prompt
+// buildSystemPrompt 根据已注册工具和 skill 自动生成 system prompt
 //
 // 输出格式（示例）：
 //
@@ -21,7 +22,10 @@ import (
 //	   ...
 //
 //	请按用户意图选择合适的工具，按需连续调用多个工具以完成任务。
-func buildSystemPrompt(registry *tools.Registry) string {
+//
+//	# Skills — 可调用的技能
+//	...
+func buildSystemPrompt(registry *tools.Registry, skills []skill.Skill) string {
 	toolList := registry.List()
 	if len(toolList) == 0 {
 		return "你是一个编码助手。当前未注册任何工具，请直接回答用户问题。"
@@ -50,7 +54,14 @@ func buildSystemPrompt(registry *tools.Registry) string {
 		b.WriteString(taskGuidance)
 	}
 
-	return b.String()
+	prompt := b.String()
+
+	// 追加 skill catalog（名称 + 描述，不含 body）
+	if len(skills) > 0 {
+		prompt = skill.ApplyIndex(prompt, skills)
+	}
+
+	return prompt
 }
 
 // hasTodoTools 检查 registry 中是否注册了 todo_write 和 complete_step

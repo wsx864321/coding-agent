@@ -8,13 +8,15 @@ import (
 	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/hooks/builtin"
 	"github.com/wsx864321/coding-agent/internal/permission"
+	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
 // onceCmd 一次性对话子命令
 //
 // 用法：
-//   coding-agent once -m "请总结 main.go"
+//
+//	coding-agent once -m "请总结 main.go"
 var onceCmd = &cobra.Command{
 	Use:   "once",
 	Short: "一次性对话：执行一次后退出",
@@ -39,9 +41,11 @@ func runOnce(cmd *cobra.Command, args []string) error {
 	workdir := resolveWorkdir(cmd)
 	registry := tools.DefaultRegistry(workdir)
 
-	// 系统级权限：once 模式无 TTY / 无 Asker
-	//   - DenyListChecker 仍生效
-	//   - BashAskChecker / WorkdirChecker 装上但 Asker 为 nil，Ask 视作 Allow
+	// 初始化 skill store
+	skillStore := skill.NewStore(skill.StoreOptions{Workdir: workdir})
+	registry.Register(skill.NewRunSkillTool(skillStore, nil))
+	registry.Register(skill.NewInstallSkillTool(skillStore))
+
 	checker := &permission.Pipeline{
 		Deny: []permission.Checker{
 			permission.NewDenyListChecker(),
@@ -54,11 +58,13 @@ func runOnce(cmd *cobra.Command, args []string) error {
 		agent.WithRegistry(registry),
 		agent.WithChecker(checker),
 		agent.WithHooks(builtin.NewDefault(os.Stderr, workdir)),
+		agent.WithSkillStore(skillStore),
 	)
 	if err != nil {
 		return err
 	}
 	a.WireTaskTool()
+	a.WireSkillTools()
 
 	if !onceQuiet {
 		fmt.Fprintf(os.Stderr, "[coding-agent] running once, message=%q\n", truncate(onceMessage, 60))

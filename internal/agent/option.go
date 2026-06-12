@@ -3,6 +3,7 @@ package agent
 import (
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/permission"
+	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
@@ -54,4 +55,18 @@ func WithChecker(c permission.Checker) Option {
 //   - 传 nil：禁用所有 hook trigger（等价于 NewRegistry 后不注册任何 hook）
 func WithHooks(r *hooks.Registry) Option {
 	return hooksOpt{r: r}
+}
+
+// skillStoreOpt 注入 skill Store
+type skillStoreOpt struct{ s *skill.Store }
+
+func (o skillStoreOpt) apply(a *Agent) {
+	a.skillStore = o.s
+}
+
+// WithSkillStore 注入 skill Store
+//
+//   - 传 nil：禁用 skill 功能
+func WithSkillStore(s *skill.Store) Option {
+	return skillStoreOpt{s: s}
 }

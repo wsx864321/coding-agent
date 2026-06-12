@@ -18,10 +18,9 @@ import (
 // 排除理由：
 //   - task: 防止递归 spawn（delegation 只允许一层）
 //   - todo_write / complete_step: 子 agent 的 todo 状态不应影响父 agent
-//
-// 未来扩展技能工具（explore / review 等）时，也应加入此列表。
+//   - run_skill / install_skill: skill 管理属于父 agent 职责
 func SubagentMetaTools() []string {
-	return []string{"task", "todo_write", "complete_step"}
+	return []string{"task", "todo_write", "complete_step", "run_skill", "install_skill"}
 }
 
 // DefaultSubagentSystemPrompt 是通用 subagent 的默认 system prompt

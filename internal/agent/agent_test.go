@@ -229,7 +229,7 @@ func TestNewAgent_CustomSystemPrompt(t *testing.T) {
 
 func TestBuildSystemPrompt_NoTools(t *testing.T) {
 	r := tools.NewRegistry()
-	got := buildSystemPrompt(r)
+	got := buildSystemPrompt(r, nil)
 	if !strings.Contains(got, "未注册任何工具") {
 		t.Errorf("empty registry prompt should mention no tools, got %q", got)
 	}
@@ -239,7 +239,7 @@ func TestBuildSystemPrompt_WithTools(t *testing.T) {
 	r := tools.NewRegistry()
 	r.Register(echoTool{})
 	r.Register(failTool{})
-	got := buildSystemPrompt(r)
+	got := buildSystemPrompt(r, nil)
 	if !strings.Contains(got, "echo") || !strings.Contains(got, "fail") {
 		t.Errorf("prompt should list tools, got %q", got)
 	}
