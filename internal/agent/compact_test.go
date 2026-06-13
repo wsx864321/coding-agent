@@ -95,7 +95,7 @@ func TestPruneStaleToolResults_ElidesOldToolOutput(t *testing.T) {
 		t.Fatalf("pruneStaleToolResults: %v", err)
 	}
 	got := a.messages[3].Content
-	if !strings.Contains(got, "elided tool result") {
+	if !strings.Contains(got, "历史工具结果已折叠") {
 		t.Fatalf("expected pruned marker, got %q", got)
 	}
 }

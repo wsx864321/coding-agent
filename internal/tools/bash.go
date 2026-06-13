@@ -47,6 +47,9 @@ func NewBashTool(workdir string) *BashTool {
 	}
 }
 
+// ReadOnly bash 可能有任意副作用，不可并行
+func (b *BashTool) ReadOnly() bool { return false }
+
 // Name 返回工具名称
 func (b *BashTool) Name() string {
 	return "bash"

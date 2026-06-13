@@ -40,6 +40,8 @@ func (t *TaskTool) SetRunner(runner SubagentRunner) {
 	t.runner = runner
 }
 
+func (t *TaskTool) ReadOnly() bool { return false }
+
 func (t *TaskTool) Name() string { return "task" }
 
 func (t *TaskTool) Description() string {

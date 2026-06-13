@@ -49,6 +49,9 @@ func NewReadFileTool(workdir string) *ReadFileTool {
 	}
 }
 
+// ReadOnly 纯读文件，可并行
+func (t *ReadFileTool) ReadOnly() bool { return true }
+
 // Name 返回工具名称
 func (t *ReadFileTool) Name() string { return "read_file" }
 
@@ -179,6 +182,9 @@ func NewWriteFileTool(workdir string) *WriteFileTool {
 	}
 }
 
+// ReadOnly 写文件有副作用，不可并行
+func (t *WriteFileTool) ReadOnly() bool { return false }
+
 // Name 返回工具名称
 func (t *WriteFileTool) Name() string { return "write_file" }
 
@@ -291,6 +297,9 @@ func NewEditFileTool(workdir string) *EditFileTool {
 		AllowedDirs: allowedDirsFromWorkdir(workdir),
 	}
 }
+
+// ReadOnly 编辑文件有副作用，不可并行
+func (t *EditFileTool) ReadOnly() bool { return false }
 
 // Name 返回工具名称
 func (t *EditFileTool) Name() string { return "edit_file" }
@@ -413,6 +422,9 @@ func NewGlobFileTool(workdir string) *GlobFileTool {
 		AllowedDirs: allowedDirsFromWorkdir(workdir),
 	}
 }
+
+// ReadOnly 纯读文件系统元数据，可并行
+func (t *GlobFileTool) ReadOnly() bool { return true }
 
 // Name 返回工具名称
 func (t *GlobFileTool) Name() string { return "glob_file" }

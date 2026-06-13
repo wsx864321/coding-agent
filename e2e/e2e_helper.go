@@ -93,6 +93,7 @@ type FakeBash struct{}
 
 func (FakeBash) Name() string        { return "bash" }
 func (FakeBash) Description() string { return "fake bash for e2e" }
+func (FakeBash) ReadOnly() bool      { return false }
 func (FakeBash) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}`)
 }

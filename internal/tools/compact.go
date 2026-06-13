@@ -6,10 +6,12 @@ import (
 )
 
 // CompactTool 允许模型主动请求会话压缩。
-// 真实压缩逻辑在 agent.executeToolCall 中处理，这里仅提供 schema 与调用入口。
+// 真实压缩逻辑在 agent.executeBatch 中处理，这里仅提供 schema 与调用入口。
 type CompactTool struct{}
 
 func NewCompactTool() *CompactTool { return &CompactTool{} }
+
+func (t *CompactTool) ReadOnly() bool { return false }
 
 func (t *CompactTool) Name() string { return "compact" }
 

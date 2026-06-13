@@ -15,4 +15,7 @@ type Tool interface {
 	Schema() json.RawMessage
 	// Execute 使用给定的参数执行工具并返回结果
 	Execute(ctx context.Context, args map[string]any) (string, error)
+	// ReadOnly 返回该工具是否没有可观察到的副作用。
+	// 连续出现的只读工具可以在同一个并行批次中并发执行。
+	ReadOnly() bool
 }

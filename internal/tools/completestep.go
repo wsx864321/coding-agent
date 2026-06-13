@@ -24,6 +24,8 @@ func NewCompleteStepTool() *CompleteStepTool {
 	return &CompleteStepTool{}
 }
 
+func (t *CompleteStepTool) ReadOnly() bool { return false }
+
 func (t *CompleteStepTool) Name() string { return "complete_step" }
 
 func (t *CompleteStepTool) Description() string {

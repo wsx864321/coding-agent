@@ -5,12 +5,12 @@ import (
 	"strings"
 )
 
-//go:embed builtins/*.md
+//go:embed builtin/*.md
 var builtinFS embed.FS
 
 // builtinSkills 返回所有内置 skill
 func builtinSkills() []Skill {
-	entries, err := builtinFS.ReadDir("builtins")
+	entries, err := builtinFS.ReadDir("builtin")
 	if err != nil {
 		return nil
 	}
@@ -20,7 +20,7 @@ func builtinSkills() []Skill {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
-		data, err := builtinFS.ReadFile("builtins/" + entry.Name())
+		data, err := builtinFS.ReadFile("builtin/" + entry.Name())
 		if err != nil {
 			continue
 		}

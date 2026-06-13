@@ -94,6 +94,7 @@ type echoTool struct{}
 
 func (echoTool) Name() string        { return "echo" }
 func (echoTool) Description() string { return "echo back the input" }
+func (echoTool) ReadOnly() bool      { return true }
 func (echoTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}`)
 }
@@ -105,6 +106,7 @@ func (echoTool) Execute(ctx context.Context, args map[string]any) (string, error
 type failTool struct{}
 
 func (failTool) Name() string { return "fail" }
+func (failTool) ReadOnly() bool { return false }
 func (failTool) Description() string {
 	return "always fails"
 }

@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	openai "github.com/sashabaranov/go-openai"
 	"strings"
+	"sync"
+
+	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/wsx864321/coding-agent/internal/permission"
+	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
 // ErrMaxTurnsExceeded 当 loop 超过 Config.MaxTurns 时返回
@@ -69,34 +72,13 @@ func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
 		return msg.Content, nil
 	}
 
-	// 串行执行 tool_calls；单个失败不中断后续，结果以 "Error: ..." 形式回填
-	for _, tc := range choice.Message.ToolCalls {
-		a.executeToolCall(ctx, tc)
-	}
+	// 分区并行执行 tool_calls：连续只读工具并发执行，写工具串行分隔。
+	// 单个失败不中断后续，结果以 "Error: ..." 形式回填。
+	a.executeBatch(ctx, choice.Message.ToolCalls)
 	return "", nil
 }
 
-// executeToolCall 解析 tool_call 的 JSON 参数并通过 registry 执行，结果作为 tool message 回填
-func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) {
-	result := a.invokeTool(ctx, tc)
-	if tc.Function.Name == "compact" {
-		focus := compactFocusFromArgs(tc.Function.Arguments)
-		if err := a.CompactNow(ctx, focus); err != nil {
-			result = fmt.Sprintf("Error: 手动压缩失败: %v", err)
-		} else {
-			result = "手动压缩已完成。"
-		}
-	}
-	if result == "" {
-		result = " " // DeepSeek 等 API 要求 content 字段必须存在
-	}
-	a.messages = append(a.messages, openai.ChatCompletionMessage{
-		Role:       openai.ChatMessageRoleTool,
-		ToolCallID: tc.ID,
-		Content:    result,
-	})
-}
-
+// compactFocusFromArgs 从 compact 工具的参数中提取 focus 字段。
 func compactFocusFromArgs(raw string) string {
 	if strings.TrimSpace(raw) == "" {
 		return ""
@@ -213,4 +195,118 @@ func (a *Agent) buildTools() []openai.Tool {
 	}
 
 	return tools
+}
+
+// maxParallelTools 是单批并行工具调用的最大 goroutine 数。
+// 通过 channel 信号量控制并发度，防止过于激进的 I/O 打满系统资源。
+const maxParallelTools = 8
+
+// toolCallBatch 描述一组 tool_calls 的执行策略。
+type toolCallBatch struct {
+	start    int  // calls[start:end] 在原始数组中的起始索引
+	end      int  // 结束索引（不含）
+	parallel bool // 该批次是否可以并行执行
+}
+
+// executeBatch 分区执行一批 tool_calls：
+//   - 连续出现的只读工具合并为并行批次（goroutine 并发）
+//   - 写工具作为独立串行批次分隔并行区域
+//
+// 执行顺序与 LLM 返回的原始顺序语义等价：并发批次的内部顺序不重要，
+// 但批次之间严格串行，因此写操作不会被后续只读操作重排。
+func (a *Agent) executeBatch(ctx context.Context, calls []openai.ToolCall) {
+	results := make([]string, len(calls))
+
+	for _, batch := range partitionToolCalls(a.registry, calls) {
+		if batch.parallel && batch.end-batch.start > 1 {
+			runParallel(batch.start, batch.end, func(i int) {
+				results[i] = a.invokeTool(ctx, calls[i])
+			})
+			continue
+		}
+		for i := batch.start; i < batch.end; i++ {
+			results[i] = a.invokeTool(ctx, calls[i])
+		}
+	}
+
+	// 所有工具执行完毕后，按原始顺序回填 tool message。
+	// compact 工具需要特殊后处理（真实的压缩逻辑在 CompactNow 中）。
+	for i, tc := range calls {
+		result := results[i]
+		if tc.Function.Name == "compact" {
+			focus := compactFocusFromArgs(tc.Function.Arguments)
+			if err := a.CompactNow(ctx, focus); err != nil {
+				result = fmt.Sprintf("Error: 手动压缩失败: %v", err)
+			} else {
+				result = "手动压缩已完成。"
+			}
+		}
+		if result == "" {
+			result = " " // DeepSeek 等 API 要求 content 字段必须存在
+		}
+		a.messages = append(a.messages, openai.ChatCompletionMessage{
+			Role:       openai.ChatMessageRoleTool,
+			ToolCallID: tc.ID,
+			Content:    result,
+		})
+	}
+}
+
+// partitionToolCalls 将 LLM 返回的 tool_calls 列表按可并行性切分为多个批次。
+//
+// 分区规则：
+//   - 连续出现的只读（ReadOnly()==true）工具合并为一个并行批次
+//   - 每个写工具（ReadOnly()==false）作为独立的串行批次
+//   - 未知工具（registry 中未注册）视为写工具，安全回退到串行
+//
+// 示例：
+//
+//	[read A, read B, bash rm, read C]
+//	→ batch1(并行): [read A, read B]
+//	→ batch2(串行): [bash rm]
+//	→ batch3(并行): [read C]
+func partitionToolCalls(r *tools.Registry, calls []openai.ToolCall) []toolCallBatch {
+	var batches []toolCallBatch
+	for i := 0; i < len(calls); {
+		if isParallelisable(r, calls[i].Function.Name) {
+			start := i
+			i++
+			for i < len(calls) && isParallelisable(r, calls[i].Function.Name) {
+				i++
+			}
+			batches = append(batches, toolCallBatch{start: start, end: i, parallel: true})
+			continue
+		}
+		batches = append(batches, toolCallBatch{start: i, end: i + 1})
+		i++
+	}
+	return batches
+}
+
+// isParallelisable 判断工具是否可以参与并行批次。
+// 仅当工具已在 registry 注册且 ReadOnly()==true 时才返回 true。
+func isParallelisable(r *tools.Registry, name string) bool {
+	t := r.Get(name)
+	if t == nil {
+		return false
+	}
+	return t.ReadOnly()
+}
+
+// runParallel 在 [start, end) 范围内并发执行 run(i)，最多 maxParallelTools 个 goroutine。
+// 使用 channel 信号量控制并发度，sync.WaitGroup 等待全部完成后返回。
+func runParallel(start, end int, run func(int)) {
+	sem := make(chan struct{}, maxParallelTools)
+	var wg sync.WaitGroup
+	for i := start; i < end; i++ {
+		i := i
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			run(i)
+		}()
+	}
+	wg.Wait()
 }

@@ -29,6 +29,8 @@ func (t *RunSkillTool) SetRunner(runner SkillRunner) {
 	t.runner = runner
 }
 
+func (t *RunSkillTool) ReadOnly() bool { return false }
+
 func (t *RunSkillTool) Name() string { return "run_skill" }
 
 func (t *RunSkillTool) Description() string {
@@ -118,6 +120,8 @@ type InstallSkillTool struct {
 func NewInstallSkillTool(store *Store) *InstallSkillTool {
 	return &InstallSkillTool{store: store}
 }
+
+func (t *InstallSkillTool) ReadOnly() bool { return false }
 
 func (t *InstallSkillTool) Name() string { return "install_skill" }
 

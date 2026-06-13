@@ -137,7 +137,7 @@ LLM 可以通过 `install_skill` 工具在运行时创建新技能：
 
 开箱即用的 meta-skill，帮助用户创建新的 SKILL.md 文件。通过 `/skill-creator` 或 `run_skill("skill-creator")` 触发。
 
-**源码**：`internal/skill/builtins/skill-creator.md` + `internal/skill/builtins.go`
+**源码**：`internal/skill/builtin/skill-creator.md` + `internal/skill/builtins.go`
 
 ### 7. System Prompt Catalog 注入
 
