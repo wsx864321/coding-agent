@@ -12,7 +12,6 @@ import (
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
-
 // SubagentMetaTools 返回 subagent 不应继承的 meta 工具名称列表。
 //
 // 排除理由：
@@ -77,13 +76,20 @@ func RunSubAgent(ctx context.Context, parent *Agent, prompt string, opts Subagen
 	}
 
 	subCfg := Config{
-		APIKey:       parent.cfg.APIKey,
-		BaseURL:      parent.cfg.BaseURL,
-		Model:        parent.cfg.Model,
-		MaxTokens:    parent.cfg.MaxTokens,
-		MaxTurns:     maxTurns,
-		SystemPrompt: sysPrompt,
-		Temperature:  parent.cfg.Temperature,
+		APIKey:            parent.cfg.APIKey,
+		BaseURL:           parent.cfg.BaseURL,
+		Model:             parent.cfg.Model,
+		MaxTokens:         parent.cfg.MaxTokens,
+		MaxTurns:          maxTurns,
+		SystemPrompt:      sysPrompt,
+		Temperature:       parent.cfg.Temperature,
+		ContextWindow:     parent.cfg.ContextWindow,
+		SoftCompactRatio:  parent.cfg.SoftCompactRatio,
+		CompactRatio:      parent.cfg.CompactRatio,
+		CompactForceRatio: parent.cfg.CompactForceRatio,
+		RecentKeep:        parent.cfg.RecentKeep,
+		MaxMessagesSnip:   parent.cfg.MaxMessagesSnip,
+		ArchiveDir:        parent.cfg.ArchiveDir,
 	}
 
 	subOpts := []Option{WithRegistry(reg)}

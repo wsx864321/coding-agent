@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -43,6 +44,17 @@ type Agent struct {
 	ledger *evidence.Ledger
 	// skillStore 管理 skill 的发现和检索；nil 表示无 skill 支持
 	skillStore *skill.Store
+	// --- context compaction knobs ---
+	contextWindow       int
+	softCompactRatio    float64
+	compactRatio        float64
+	compactForceRatio   float64
+	recentKeep          int
+	maxMessagesSnip     int
+	archiveDir          string
+	consecutiveCompacts int
+	compactStuck        bool
+	softCompactNoticed  bool
 }
 
 // NewAgent 构造 Agent
@@ -72,13 +84,20 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 
 	a := &Agent{
 		cfg: Config{
-			APIKey:       cfg.APIKey,
-			BaseURL:      cfg.BaseURL,
-			Model:        cfg.Model,
-			MaxTokens:    cfg.MaxTokens,
-			MaxTurns:     cfg.MaxTurns,
-			SystemPrompt: cfg.SystemPrompt,
-			Temperature:  cfg.Temperature,
+			APIKey:            cfg.APIKey,
+			BaseURL:           cfg.BaseURL,
+			Model:             cfg.Model,
+			MaxTokens:         cfg.MaxTokens,
+			MaxTurns:          cfg.MaxTurns,
+			SystemPrompt:      cfg.SystemPrompt,
+			Temperature:       cfg.Temperature,
+			ContextWindow:     cfg.ContextWindow,
+			SoftCompactRatio:  cfg.SoftCompactRatio,
+			CompactRatio:      cfg.CompactRatio,
+			CompactForceRatio: cfg.CompactForceRatio,
+			RecentKeep:        cfg.RecentKeep,
+			MaxMessagesSnip:   cfg.MaxMessagesSnip,
+			ArchiveDir:        cfg.ArchiveDir,
 		},
 		client:   client,
 		registry: tools.NewRegistry(),
@@ -105,6 +124,13 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 			Content: a.cfg.SystemPrompt,
 		},
 	}
+	a.contextWindow = a.cfg.ContextWindow
+	a.softCompactRatio = a.cfg.SoftCompactRatio
+	a.compactRatio = a.cfg.CompactRatio
+	a.compactForceRatio = a.cfg.CompactForceRatio
+	a.recentKeep = a.cfg.RecentKeep
+	a.maxMessagesSnip = a.cfg.MaxMessagesSnip
+	a.archiveDir = a.cfg.ArchiveDir
 	return a, nil
 }
 
@@ -184,8 +210,8 @@ func (a *Agent) SkillStore() *skill.Store {
 //   - 追加 user 消息到历史
 //   - 循环调用 LLM（每轮 1 次 API 调用），处理 tool_calls
 //   - 终止条件：
-//       A. 某轮 LLM 不返回 tool_calls，且无 Stop hook 强制续跑 → 返回 content
-//       B. 达到 Config.MaxTurns → 返回 ErrMaxTurnsExceeded
+//     A. 某轮 LLM 不返回 tool_calls，且无 Stop hook 强制续跑 → 返回 content
+//     B. 达到 Config.MaxTurns → 返回 ErrMaxTurnsExceeded
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	if userInput == "" {
 		return "", fmt.Errorf("userInput 不能为空")
@@ -232,4 +258,22 @@ func (a *Agent) Reset() {
 		return
 	}
 	a.messages = a.messages[:1]
+	a.consecutiveCompacts = 0
+	a.compactStuck = false
+	a.softCompactNoticed = false
+}
+
+// CompactNow 立即执行一次手动压缩（用于 /compact 或 compact 工具）
+func (a *Agent) CompactNow(ctx context.Context, focus string) error {
+	_, err := a.compactHistory(ctx, "manual", strings.TrimSpace(focus), true)
+	return err
+}
+
+// ContextStats 返回当前上下文压缩状态，供 CLI 展示或调试。
+func (a *Agent) ContextStats() string {
+	if a.contextWindow <= 0 {
+		return "compact=已关闭"
+	}
+	return fmt.Sprintf("窗口=%d 阈值(soft=%.0f%% trigger=%.0f%% force=%.0f%%) stuck=%v",
+		a.contextWindow, a.softCompactRatio*100, a.compactRatio*100, a.compactForceRatio*100, a.compactStuck)
 }

@@ -30,6 +30,7 @@ import (
 //	/tools    查看已注册工具
 //	/hooks    查看已注册 hook 数量（按事件分组）
 //	/skills   查看已加载的 skill 列表
+//	/compact  手动触发一次上下文压缩（可选 focus 文本）
 //	/<skill>  触发对应 skill（等效于向 agent 发送 run_skill 的结果）
 //	/exit     退出
 var chatCmd = &cobra.Command{
@@ -44,6 +45,7 @@ var chatCmd = &cobra.Command{
   /tools    查看已注册工具
   /hooks    查看已注册 hook 数量
   /skills   查看已加载的 skill 列表
+  /compact  手动触发一次上下文压缩
   /<skill>  触发对应 skill
   /exit     退出`,
 	RunE: runChat,
@@ -186,6 +188,13 @@ func handleSlashCommand(ctx context.Context, a *agent.Agent, store *skill.Store,
 		skills := store.List()
 		fmt.Println(skill.Catalog(skills))
 		return true, nil
+
+	case "/compact":
+		if err := a.CompactNow(ctx, slashArgs); err != nil {
+			return true, fmt.Errorf("/compact 失败: %w", err)
+		}
+		fmt.Printf("[coding-agent] context compact 完成 (%s)\n", a.ContextStats())
+		return true, nil
 	}
 
 	// 尝试匹配 skill slash 命令：/<skill_name> [args]
@@ -243,6 +252,7 @@ func printChatHelp(store *skill.Store) {
 	fmt.Println("  /tools    查看已注册工具")
 	fmt.Println("  /hooks    查看已注册 hook 数量")
 	fmt.Println("  /skills   查看已加载的 skill 列表")
+	fmt.Println("  /compact  手动触发一次上下文压缩（可附 focus）")
 	fmt.Println("  /exit     退出")
 
 	if store != nil {

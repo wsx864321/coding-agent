@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	openai "github.com/sashabaranov/go-openai"
+	"strings"
 
 	"github.com/wsx864321/coding-agent/internal/permission"
 )
@@ -20,6 +21,11 @@ var ErrMaxTurnsExceeded = errors.New("agent loop 超过最大轮数")
 // 返回 (空, nil) + turnConsumed=true 表示还有下一步。
 // 返回 err 表示 API / 工具调用出错。
 func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
+	// 每轮 LLM 调用前先做低成本上下文整理；必要时触发自动摘要压缩。
+	a.maybeCompact(ctx)
+	// 兜底修复历史里的孤儿 tool 消息，避免 provider 400。
+	a.ensureToolMessageLinks()
+
 	req, err := a.buildRequest()
 	if err != nil {
 		return "", err
@@ -73,6 +79,14 @@ func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
 // executeToolCall 解析 tool_call 的 JSON 参数并通过 registry 执行，结果作为 tool message 回填
 func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) {
 	result := a.invokeTool(ctx, tc)
+	if tc.Function.Name == "compact" {
+		focus := compactFocusFromArgs(tc.Function.Arguments)
+		if err := a.CompactNow(ctx, focus); err != nil {
+			result = fmt.Sprintf("Error: 手动压缩失败: %v", err)
+		} else {
+			result = "手动压缩已完成。"
+		}
+	}
 	if result == "" {
 		result = " " // DeepSeek 等 API 要求 content 字段必须存在
 	}
@@ -83,21 +97,38 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) {
 	})
 }
 
+func compactFocusFromArgs(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	var in struct {
+		Focus string `json:"focus"`
+	}
+	if err := json.Unmarshal([]byte(raw), &in); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(in.Focus)
+}
+
 // invokeTool 真正执行工具调用，返回结果字符串（成功或失败都返回字符串）
 //
 // 调用顺序：
+//
 //  1. PreToolUse hook（如果注册）→ 首个返回非空 block 的 hook 阻断
+//
 //  2. permission.Pipeline（Deny / Allow）→ 硬约束（不受 hook 放行影响）
+//
 //  3. registry 查表 + Execute
+//
 //  4. PostToolUse hook → 副作用（日志 / 截断 / 统计）
 //
-//	+----------+   +-----------------+   +-------------+   +----------+   +--------+   +-----------------+
-//	| tc 进入  | ->| PreToolUse hook | ->| permission  | ->| registry | ->| exec   | ->| PostToolUse hook|
-//	|          |   |  (可阻断)        |   |  Pipeline   |   | lookup   |   |        |   |  (纯副作用)     |
-//	+----------+   +-----------------+   +-------------+   +----------+   +--------+   +-----------------+
-//	                                     |
-//	                                     +--> Deny → 把拒绝原因回填给 LLM（不调 Execute）
-//	                                     +--> Allow → 继续 registry 查表 + Execute
+//     +----------+   +-----------------+   +-------------+   +----------+   +--------+   +-----------------+
+//     | tc 进入  | ->| PreToolUse hook | ->| permission  | ->| registry | ->| exec   | ->| PostToolUse hook|
+//     |          |   |  (可阻断)        |   |  Pipeline   |   | lookup   |   |        |   |  (纯副作用)     |
+//     +----------+   +-----------------+   +-------------+   +----------+   +--------+   +-----------------+
+//     |
+//     +--> Deny → 把拒绝原因回填给 LLM（不调 Execute）
+//     +--> Allow → 继续 registry 查表 + Execute
 func (a *Agent) invokeTool(ctx context.Context, tc openai.ToolCall) string {
 	// 解析 JSON 参数字符串为 map[string]any（permission / hook 都要用）
 	var args map[string]any

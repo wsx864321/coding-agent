@@ -34,6 +34,13 @@ func init() {
 	rootCmd.PersistentFlags().IntP("max-turns", "t", 0, "Agent loop 最大轮数（默认 20）")
 	rootCmd.PersistentFlags().StringP("system", "s", "", "自定义 system prompt（留空则按工具列表自动生成）")
 	rootCmd.PersistentFlags().StringP("workdir", "w", "", "file 工具的白名单基准目录（默认当前工作目录）")
+	rootCmd.PersistentFlags().Int("context-window", 0, "上下文窗口 token 上限；<=0 关闭 context compact")
+	rootCmd.PersistentFlags().Float64("soft-compact-ratio", 0.50, "软阈值（仅提示，不触发摘要）")
+	rootCmd.PersistentFlags().Float64("compact-ratio", 0.80, "自动摘要压缩触发阈值")
+	rootCmd.PersistentFlags().Float64("compact-force-ratio", 0.90, "强制压缩阈值（跳过低价值折叠判断）")
+	rootCmd.PersistentFlags().Int("recent-keep", 3, "压缩时最少保留的最近消息下限")
+	rootCmd.PersistentFlags().Int("max-messages-snip", 80, "snip_compact 消息数阈值；<=0 关闭")
+	rootCmd.PersistentFlags().String("archive-dir", "", "压缩归档目录（默认 .transcripts）")
 }
 
 // Execute 是 CLI 入口，由 main() 调用
