@@ -15,6 +15,7 @@ import (
 	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/hooks/builtin"
+	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
@@ -68,6 +69,9 @@ func runChat(cmd *cobra.Command, args []string) error {
 	registry.Register(skill.NewRunSkillTool(skillStore, nil))
 	registry.Register(skill.NewInstallSkillTool(skillStore))
 
+	// 加载 memory
+	memSet := memory.Load(memory.Options{CWD: workdir, Workdir: workdir})
+
 	// --- session 持久化 ---
 	list, _ := cmd.Flags().GetBool("list")
 	resume, _ := cmd.Flags().GetString("resume")
@@ -81,6 +85,10 @@ func runChat(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("[coding-agent] REPL 已启动，workdir=%s\n", workdir)
 	fmt.Printf("[coding-agent] 已注册工具: %s\n", joinToolNames(registry))
+
+	if len(memSet.Docs) > 0 {
+		fmt.Printf("[coding-agent] 已加载 %d 个层级文档\n", len(memSet.Docs))
+	}
 
 	skills := skillStore.List()
 	if len(skills) > 0 {
@@ -106,12 +114,14 @@ func runChat(cmd *cobra.Command, args []string) error {
 		agent.WithChecker(checker),
 		agent.WithHooks(builtin.NewDefault(os.Stderr, workdir)),
 		agent.WithSkillStore(skillStore),
+		agent.WithMemory(memSet),
 	)
 	if err != nil {
 		return err
 	}
 	a.WireTaskTool()
 	a.WireSkillTools()
+	a.WireMemoryTools()
 
 	// 绑定 session 路径（--resume 恢复已有 session，否则新建）
 	if resume != "" {

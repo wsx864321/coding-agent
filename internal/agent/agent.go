@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/wsx864321/coding-agent/internal/evidence"
 	"github.com/wsx864321/coding-agent/internal/hooks"
+	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
@@ -58,6 +60,16 @@ type Agent struct {
 	// --- session persistence ---
 	sessionDir  string
 	sessionPath string // 当前 session 文件路径，空表示不持久化
+	// --- memory ---
+	memSet   *memory.Set   // 长期记忆集（nil 表示未启用）
+	memQueue *memory.Queue // 中会话记忆变更通知队列
+	// --- pre-compact snapshot (for memory extraction) ---
+	preCompactSnapshot []openai.ChatCompletionMessage // 压缩前消息快照
+	// --- auto-extract throttling ---
+	lastExtractTime  time.Time // 上次自动提取时间
+	extractInterval  time.Duration // 自动提取最小间隔
+	memExtractThresh int // 累计轮数阈值，达到后触发提取
+	extractTurnCount int // 累计轮数计数
 }
 
 // NewAgent 构造 Agent
@@ -122,6 +134,11 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 		}
 		a.cfg.SystemPrompt = buildSystemPrompt(a.registry, skills)
 	}
+	// memSet 由 Option 注入，在 system prompt 构建后可做最终合成
+	if a.memSet != nil {
+		a.cfg.SystemPrompt = memory.Compose(a.cfg.SystemPrompt, a.memSet)
+		a.memQueue = memory.NewQueue()
+	}
 	a.messages = []openai.ChatCompletionMessage{
 		{
 			Role:    openai.ChatMessageRoleSystem,
@@ -136,6 +153,8 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 	a.maxMessagesSnip = a.cfg.MaxMessagesSnip
 	a.archiveDir = a.cfg.ArchiveDir
 	a.sessionDir = a.cfg.SessionDir
+	a.extractInterval = DefaultMemoryExtractInterval
+	a.memExtractThresh = DefaultMemoryExtractThreshold
 	return a, nil
 }
 
@@ -203,6 +222,39 @@ func (a *Agent) WireSkillTools() {
 	})
 }
 
+// WireMemoryTools 把 remember/forget/recall 工具连接到 Agent 的 memory Store/Queue。
+//
+// 必须在 NewAgent 之后调用——memory 工具的 store/queue 需要捕获已构造完成的 Agent。
+// 若 registry 中没有对应工具或 memSet 为空则静默跳过。
+func (a *Agent) WireMemoryTools() {
+	if a.memSet == nil || a.memSet.Store == nil {
+		return
+	}
+
+	// remember
+	if t := a.registry.Get("remember"); t != nil {
+		if rt, ok := t.(*tools.RememberTool); ok {
+			rt.SetStore(a.memSet.Store)
+			rt.SetQueue(a.memQueue)
+		}
+	}
+
+	// forget
+	if t := a.registry.Get("forget"); t != nil {
+		if ft, ok := t.(*tools.ForgetTool); ok {
+			ft.SetStore(a.memSet.Store)
+			ft.SetQueue(a.memQueue)
+		}
+	}
+
+	// recall
+	if t := a.registry.Get("recall"); t != nil {
+		if rct, ok := t.(*tools.RecallTool); ok {
+			rct.SetStore(a.memSet.Store)
+		}
+	}
+}
+
 // SkillStore 返回底层的 skill Store
 func (a *Agent) SkillStore() *skill.Store {
 	return a.skillStore
@@ -212,6 +264,7 @@ func (a *Agent) SkillStore() *skill.Store {
 //
 // 行为：
 //   - 触发 UserPromptSubmit hook
+//   - 注入中会话记忆变更通知（如果有）
 //   - 追加 user 消息到历史
 //   - 循环调用 LLM（每轮 1 次 API 调用），处理 tool_calls
 //   - 终止条件：
@@ -233,9 +286,19 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	if a.hooks != nil {
 		a.hooks.TriggerUserPromptSubmit(ctx, userInput)
 	}
+
+	// 注入中会话记忆变更通知（不改 system prompt，保护前缀缓存）
+	userContent := userInput
+	if a.memQueue != nil && a.memQueue.Pending() {
+		update := a.memQueue.Flush()
+		if update != "" {
+			userContent = update + "\n\n" + userInput
+		}
+	}
+
 	a.messages = append(a.messages, openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
-		Content: userInput,
+		Content: userContent,
 	})
 
 	for turn := 0; turn < a.cfg.MaxTurns; turn++ {
@@ -329,4 +392,24 @@ func (a *Agent) SaveCurrentSession() error {
 // SessionDir 返回 session 持久化根目录。
 func (a *Agent) SessionDir() string {
 	return a.sessionDir
+}
+
+// MemorySet 返回底层的 memory Set
+func (a *Agent) MemorySet() *memory.Set {
+	return a.memSet
+}
+
+// MemoryQueue 返回记忆变更通知队列
+func (a *Agent) MemoryQueue() *memory.Queue {
+	return a.memQueue
+}
+
+// PreCompactSnapshot 返回当前压缩前快照
+func (a *Agent) PreCompactSnapshot() []openai.ChatCompletionMessage {
+	return a.preCompactSnapshot
+}
+
+// SetPreCompactSnapshot 设置压缩前快照
+func (a *Agent) SetPreCompactSnapshot(snapshot []openai.ChatCompletionMessage) {
+	a.preCompactSnapshot = snapshot
 }

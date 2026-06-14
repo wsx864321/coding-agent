@@ -44,6 +44,12 @@ func (a *Agent) maybeCompact(ctx context.Context) {
 	if a.contextWindow <= 0 {
 		return
 	}
+	// 保存压缩前快照（用于后续记忆提取）
+	if a.memSet != nil {
+		snap := make([]openai.ChatCompletionMessage, len(a.messages))
+		copy(snap, a.messages)
+		a.preCompactSnapshot = snap
+	}
 	_ = a.pruneStaleToolResults()
 	a.snipCompact()
 

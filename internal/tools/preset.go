@@ -1,17 +1,24 @@
 package tools
 
-// DefaultRegistry 构造一个预装 5 个工具的注册表
+// DefaultRegistry 构造预装工具的注册表
 //
 // 工具清单：
-//   - bash        : 跨平台 shell 执行（按设计不限制 workdir）
-//   - read_file   : 读 workdir 内文件
-//   - write_file  : 写 workdir 内文件
-//   - edit_file   : 替换 workdir 内文件文本
-//   - glob_file   : 在 workdir 内做 glob 匹配
+//   - bash        : 跨平台 shell 执行
+//   - read_file   : 读文件
+//   - write_file  : 写文件
+//   - edit_file   : 替换文件文本
+//   - glob_file   : glob 匹配
+//   - todo_write  : 多步骤任务跟踪
+//   - complete_step: 步骤完成凭证
+//   - task        : 委派子 agent
+//   - compact     : 手动压缩上下文
+//   - remember    : 保存长期记忆
+//   - forget      : 删除长期记忆
+//   - recall      : 搜索/读取/列出长期记忆
 //
-// 参数 workdir：file 系列工具的白名单基准目录；空字符串不限制（部分工具会拒绝运行）
+// 参数 workdir：file 系列工具的白名单基准目录；空字符串不限制。
 //
-// 这是"默认装配"——调用方可在 DefaultRegistry 基础上追加 / 替换 / 删除工具
+// 这是"默认装配"——调用方可在 DefaultRegistry 基础上追加 / 替换 / 删除工具。
 func DefaultRegistry(workdir string) *Registry {
 	r := NewRegistry()
 
@@ -24,6 +31,11 @@ func DefaultRegistry(workdir string) *Registry {
 	r.Register(NewCompleteStepTool())
 	r.Register(NewTaskTool(nil)) // runner 由 agent.WireTaskTool() 延迟注入
 	r.Register(NewCompactTool())
+
+	// 记忆工具——先以 nil store/queue 注册占位，由 agent.WireMemoryTools() 延迟注入真实实例
+	r.Register(NewRememberTool(nil, nil))
+	r.Register(NewForgetTool(nil, nil))
+	r.Register(NewRecallTool(nil))
 
 	return r
 }

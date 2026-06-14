@@ -26,32 +26,32 @@ import (
 //	# Skills — 可调用的技能
 //	...
 func buildSystemPrompt(registry *tools.Registry, skills []skill.Skill) string {
+	var b strings.Builder
+
 	toolList := registry.List()
 	if len(toolList) == 0 {
-		return "你是一个编码助手。当前未注册任何工具，请直接回答用户问题。"
-	}
+		b.WriteString("你是一个编码助手。当前未注册任何工具，请直接回答用户问题。\n")
+	} else {
+		b.WriteString("你是一个编码助手，可以使用以下工具完成任务。\n\n")
 
-	var b strings.Builder
-	b.WriteString("你是一个编码助手，可以使用以下工具完成任务。\n\n")
-
-	for i, t := range toolList {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, t.Name())
-		fmt.Fprintf(&b, "   描述: %s\n", t.Description())
-		// Schema 是 json.RawMessage，直接 stringify
-		schema := t.Schema()
-		if len(schema) > 0 {
-			fmt.Fprintf(&b, "   参数 schema: %s\n", string(schema))
+		for i, t := range toolList {
+			fmt.Fprintf(&b, "%d. %s\n", i+1, t.Name())
+			fmt.Fprintf(&b, "   描述: %s\n", t.Description())
+			schema := t.Schema()
+			if len(schema) > 0 {
+				fmt.Fprintf(&b, "   参数 schema: %s\n", string(schema))
+			}
+			b.WriteString("\n")
 		}
-		b.WriteString("\n")
-	}
 
-	b.WriteString("请按用户意图选择合适的工具，按需连续调用多个工具以完成任务。\n")
+		b.WriteString("请按用户意图选择合适的工具，按需连续调用多个工具以完成任务。\n")
 
-	if hasTodoTools(registry) {
-		b.WriteString(todoGuidance)
-	}
-	if hasTaskTool(registry) {
-		b.WriteString(taskGuidance)
+		if hasTodoTools(registry) {
+			b.WriteString(todoGuidance)
+		}
+		if hasTaskTool(registry) {
+			b.WriteString(taskGuidance)
+		}
 	}
 
 	prompt := b.String()

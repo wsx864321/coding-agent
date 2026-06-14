@@ -56,6 +56,11 @@ func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
 
 	// 无 tool_calls：LLM 已给出最终答案，进入 Stop 阶段
 	if len(msg.ToolCalls) == 0 {
+		// 尝试自动提取长期记忆（在 Stop hook 之前，确保最终返回是 LLM 的答案）
+		if a.memSet != nil {
+			a.maybeExtractMemories(ctx)
+		}
+
 		// Stop hook：若首个返回 force 的 hook 强制续跑，
 		// 把 force 作为 user 消息追加到历史并清空 final 信号，
 		// 让 Run 入口继续 loopStep

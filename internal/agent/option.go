@@ -2,6 +2,7 @@ package agent
 
 import (
 	"github.com/wsx864321/coding-agent/internal/hooks"
+	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
@@ -69,4 +70,18 @@ func (o skillStoreOpt) apply(a *Agent) {
 //   - 传 nil：禁用 skill 功能
 func WithSkillStore(s *skill.Store) Option {
 	return skillStoreOpt{s: s}
+}
+
+// memorySetOpt 注入 memory Set
+type memorySetOpt struct{ s *memory.Set }
+
+func (o memorySetOpt) apply(a *Agent) {
+	a.memSet = o.s
+}
+
+// WithMemory 注入 memory Set
+//
+//   - 传 nil：禁用记忆功能
+func WithMemory(s *memory.Set) Option {
+	return memorySetOpt{s: s}
 }
