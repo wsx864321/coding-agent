@@ -52,6 +52,8 @@ var chatCmd = &cobra.Command{
 }
 
 func init() {
+	chatCmd.Flags().String("resume", "", "恢复指定会话（latest=最近, 或 ID 前缀匹配）")
+	chatCmd.Flags().Bool("list", false, "列出当前项目的所有会话")
 	rootCmd.AddCommand(chatCmd)
 }
 
@@ -65,6 +67,17 @@ func runChat(cmd *cobra.Command, args []string) error {
 	// 注册 skill 工具到 registry
 	registry.Register(skill.NewRunSkillTool(skillStore, nil))
 	registry.Register(skill.NewInstallSkillTool(skillStore))
+
+	// --- session 持久化 ---
+	list, _ := cmd.Flags().GetBool("list")
+	resume, _ := cmd.Flags().GetString("resume")
+
+	cfg := buildConfig(cmd)
+	// SessionDir 需要在 NewAgent(resolve) 之前确定，以便 --list / --resume 使用
+	sessionBucket := agent.SessionBucket(agent.ResolveSessionDir(cfg.SessionDir), workdir)
+	if list {
+		return listAndPrintSessions(sessionBucket)
+	}
 
 	fmt.Printf("[coding-agent] REPL 已启动，workdir=%s\n", workdir)
 	fmt.Printf("[coding-agent] 已注册工具: %s\n", joinToolNames(registry))
@@ -88,7 +101,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	a, err := agent.NewAgent(buildConfig(cmd),
+	a, err := agent.NewAgent(cfg,
 		agent.WithRegistry(registry),
 		agent.WithChecker(checker),
 		agent.WithHooks(builtin.NewDefault(os.Stderr, workdir)),
@@ -99,6 +112,15 @@ func runChat(cmd *cobra.Command, args []string) error {
 	}
 	a.WireTaskTool()
 	a.WireSkillTools()
+
+	// 绑定 session 路径（--resume 恢复已有 session，否则新建）
+	if resume != "" {
+		if err := resumeSession(a, sessionBucket, resume); err != nil {
+			return err
+		}
+	} else {
+		a.SetSessionPath(agent.NewSessionPath(sessionBucket, cfg.Model))
+	}
 
 	if c := a.Hooks(); c != nil {
 		fmt.Printf("[coding-agent] 已注册 hooks: %s\n", formatHookCounts(c.Count()))
@@ -265,4 +287,80 @@ func printChatHelp(store *skill.Store) {
 			}
 		}
 	}
+}
+
+// listAndPrintSessions 列出当前项目所有 session 并打印。
+func listAndPrintSessions(dir string) error {
+	sessions, err := agent.ListSessions(dir)
+	if err != nil {
+		return fmt.Errorf("列出 session 失败: %w", err)
+	}
+	if len(sessions) == 0 {
+		fmt.Println("暂无保存的会话。")
+		return nil
+	}
+	fmt.Printf("共 %d 个会话（按时间倒序）：\n\n", len(sessions))
+	for i, s := range sessions {
+		fmt.Printf("  %2d. [%s] %s\n", i+1, s.ID, s.Preview)
+		fmt.Printf("      轮次: %d  最后活跃: %s\n", s.Turns, s.UpdatedAt.Format("2006-01-02 15:04"))
+	}
+	fmt.Println("\n使用 --resume <id> 恢复会话，或 --resume latest 恢复最近会话。")
+	return nil
+}
+
+// resumeSession 根据模式恢复 session：
+//   - "latest"：恢复最近 session
+//   - 其他：按 ID 前缀匹配（例如 --resume 202506 匹配 202506...-xxx）
+func resumeSession(a *agent.Agent, dir, mode string) error {
+	sessions, err := agent.ListSessions(dir)
+	if err != nil {
+		return fmt.Errorf("列出 session 失败: %w", err)
+	}
+	if len(sessions) == 0 {
+		return fmt.Errorf("没有可恢复的会话——请先运行 chat 创建新会话")
+	}
+
+	var target *agent.SessionInfo
+	if mode == "latest" {
+		target = &sessions[0]
+	} else {
+		for i := range sessions {
+			if strings.HasPrefix(sessions[i].ID, mode) {
+				t := sessions[i] // 避免取循环变量地址
+				target = &t
+				break
+			}
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("未找到匹配 %q 的会话，使用 --list 查看可用会话", mode)
+	}
+
+	messages, err := agent.LoadSession(target.Path)
+	if err != nil {
+		return fmt.Errorf("加载 session 失败: %w", err)
+	}
+
+	// 替换 agent 当前的 messages（保留已存在的 system message 不动，追加其他消息）
+	if len(messages) > 0 && len(a.Messages()) > 0 {
+		// system message 已由 NewAgent 设置，跳过恢复的首条 system 消息
+		start := 0
+		if messages[0].Role == "system" {
+			start = 1
+		}
+		// 逐个追加非 system 消息（绕过 append 的并发问题，直接使用内部 messages）
+		a.Reset()
+		for i := start; i < len(messages); i++ {
+			a.AppendMessage(messages[i])
+		}
+	} else {
+		for _, m := range messages {
+			a.AppendMessage(m)
+		}
+	}
+
+	a.SetSessionPath(target.Path)
+	fmt.Printf("[coding-agent] 已恢复会话: %s（%d 轮, %d 条消息）\n",
+		target.ID, target.Turns, len(messages))
+	return nil
 }

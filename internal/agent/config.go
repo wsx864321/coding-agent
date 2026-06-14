@@ -66,8 +66,10 @@ type Config struct {
 	MaxMessagesSnip int
 
 	// ArchiveDir 压缩归档根目录（jsonl），为空时默认：~/.coding-agent/archives
-	// （Windows 等价为 %USERPROFILE%\.coding-agent\archives）
 	ArchiveDir string
+
+	// SessionDir session 持久化根目录，为空时默认：~/.coding-agent/sessions 。
+	SessionDir string
 }
 
 // DefaultMaxTurns 默认最大轮数
@@ -194,6 +196,7 @@ func (c *Config) resolve() error {
 	if c.ArchiveDir == "" {
 		c.ArchiveDir = defaultArchiveRootDir()
 	}
+	c.SessionDir = ResolveSessionDir(c.SessionDir)
 	if c.CompactForceRatio < c.CompactRatio {
 		c.CompactForceRatio = c.CompactRatio
 	}
@@ -246,11 +249,28 @@ func defaultArchiveRootDir() string {
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
 		return filepath.Join(home, ".coding-agent", "archives")
 	}
-	// 兜底：某些精简环境下 UserHomeDir 可能不可用，Windows 再尝试 LOCALAPPDATA。
-	if local := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); local != "" {
-		return filepath.Join(local, ".coding-agent", "archives")
-	}
 	return ".coding-agent/archives"
+}
+
+// defaultSessionRootDir 返回 session 持久化根目录，与 archive 同级。
+func defaultSessionRootDir() string {
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return filepath.Join(home, ".coding-agent", "sessions")
+	}
+	return ".coding-agent/sessions"
+}
+
+// ResolveSessionDir 解析 SessionDir：raw → env → 默认路径。
+//
+// 用于需要在 Config.resolve() 之前确定 SessionDir 的外部调用方。
+func ResolveSessionDir(raw string) string {
+	if raw != "" {
+		return raw
+	}
+	if v := strings.TrimSpace(os.Getenv("CODING_AGENT_SESSION_DIR")); v != "" {
+		return v
+	}
+	return defaultSessionRootDir()
 }
 
 func archiveProjectBucket(workdir string) string {

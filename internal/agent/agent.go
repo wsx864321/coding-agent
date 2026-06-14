@@ -55,6 +55,9 @@ type Agent struct {
 	consecutiveCompacts int
 	compactStuck        bool
 	softCompactNoticed  bool
+	// --- session persistence ---
+	sessionDir  string
+	sessionPath string // 当前 session 文件路径，空表示不持久化
 }
 
 // NewAgent 构造 Agent
@@ -98,6 +101,7 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 			RecentKeep:        cfg.RecentKeep,
 			MaxMessagesSnip:   cfg.MaxMessagesSnip,
 			ArchiveDir:        cfg.ArchiveDir,
+			SessionDir:        cfg.SessionDir,
 		},
 		client:   client,
 		registry: tools.NewRegistry(),
@@ -131,6 +135,7 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 	a.recentKeep = a.cfg.RecentKeep
 	a.maxMessagesSnip = a.cfg.MaxMessagesSnip
 	a.archiveDir = a.cfg.ArchiveDir
+	a.sessionDir = a.cfg.SessionDir
 	return a, nil
 }
 
@@ -239,6 +244,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			return "", err
 		}
 		if final != "" {
+			// 每轮完成后自动持久化当前 session
+			_ = a.SaveCurrentSession()
 			return final, nil
 		}
 	}
@@ -252,7 +259,14 @@ func (a *Agent) Messages() []openai.ChatCompletionMessage {
 	return out
 }
 
-// Reset 清空除 system message 外的所有消息历史
+// AppendMessage 追加一条消息到历史（用于 session 恢复）。
+func (a *Agent) AppendMessage(m openai.ChatCompletionMessage) {
+	a.messages = append(a.messages, m)
+}
+
+// Reset 清空除 system message 外的所有消息历史。
+//
+// session 文件绑定不受影响——/reset 后自动保存会覆盖旧内容。
 func (a *Agent) Reset() {
 	if len(a.messages) == 0 {
 		return
@@ -276,4 +290,43 @@ func (a *Agent) ContextStats() string {
 	}
 	return fmt.Sprintf("窗口=%d 阈值(soft=%.0f%% trigger=%.0f%% force=%.0f%%) stuck=%v",
 		a.contextWindow, a.softCompactRatio*100, a.compactRatio*100, a.compactForceRatio*100, a.compactStuck)
+}
+
+// SetSessionPath 绑定当前 session 的文件路径。
+//
+// 绑定后每次 Run 返回时自动保存；path 为空则关闭自动保存。
+// 用于 --resume 恢复已有 session 或指定新 session 路径。
+func (a *Agent) SetSessionPath(path string) {
+	a.sessionPath = path
+}
+
+// SessionPath 返回当前绑定的 session 文件路径。
+func (a *Agent) SessionPath() string {
+	return a.sessionPath
+}
+
+// SaveCurrentSession 将当前消息历史写入 sessionPath。
+//
+// 若 sessionPath 为空或 messages 只有 system 消息则跳过。
+func (a *Agent) SaveCurrentSession() error {
+	if a.sessionPath == "" || a.sessionDir == "" {
+		return nil
+	}
+	// 至少有一条非 system 消息才保存
+	hasContent := false
+	for _, m := range a.messages {
+		if m.Role != openai.ChatMessageRoleSystem {
+			hasContent = true
+			break
+		}
+	}
+	if !hasContent {
+		return nil
+	}
+	return SaveSession(a.sessionPath, a.messages)
+}
+
+// SessionDir 返回 session 持久化根目录。
+func (a *Agent) SessionDir() string {
+	return a.sessionDir
 }
