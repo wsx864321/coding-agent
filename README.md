@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="logo.svg">
-    <img alt="coding-agent" src="logo.svg" width="140">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo.svg">
+    <img alt="coding-agent" src="docs/images/logo.svg" width="140">
   </picture>
 </p>
 
