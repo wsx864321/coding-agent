@@ -107,7 +107,7 @@ func TestMaybeCompact_AutoCompactsWhenOverThreshold(t *testing.T) {
 	// 强制低窗口，确保阈值命中。
 	a.contextWindow = 600
 
-	a.maybeCompact(context.Background())
+	a.maybeCompact(context.Background(), estimateMessagesTokens(a.messages))
 
 	found := false
 	for _, m := range a.messages {
@@ -118,6 +118,22 @@ func TestMaybeCompact_AutoCompactsWhenOverThreshold(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("auto compact did not inject summary message: %+v", a.messages)
+	}
+}
+
+func TestMaybeCompact_SkipsPruneWhenBelowThreshold(t *testing.T) {
+	f := newFakeLLM(t, scriptedResponse{content: "ok"})
+	a := newCompactionAgent(t, f)
+	seedLongHistory(a)
+	// contextWindow=1200, compactRatio=0.8 → high=960.
+	// seedLongHistory 产生 ~1300 估算 token，但传入低 promptTokens 模拟低于阈值场景。
+	msgCountBefore := len(a.messages)
+
+	a.maybeCompact(context.Background(), 500)
+
+	// 低于阈值时不应触碰消息历史（不 prune、不 snip、不 compact）
+	if len(a.messages) != msgCountBefore {
+		t.Fatalf("below threshold should not touch messages: was %d, now %d", msgCountBefore, len(a.messages))
 	}
 }
 

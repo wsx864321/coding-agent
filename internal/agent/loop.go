@@ -24,8 +24,6 @@ var ErrMaxTurnsExceeded = errors.New("agent loop 超过最大轮数")
 // 返回 (空, nil) + turnConsumed=true 表示还有下一步。
 // 返回 err 表示 API / 工具调用出错。
 func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
-	// 每轮 LLM 调用前先做低成本上下文整理；必要时触发自动摘要压缩。
-	a.maybeCompact(ctx)
 	// 兜底修复历史里的孤儿 tool 消息，避免 provider 400。
 	a.ensureToolMessageLinks()
 
@@ -41,6 +39,13 @@ func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
 	if len(resp.Choices) == 0 {
 		return "", errors.New("LLM 返回的 choices 为空")
 	}
+
+	// 缓存真实 PromptTokens，供 maybeCompact 使用（避免每轮用估算值）
+	if resp.Usage.PromptTokens > 0 {
+		a.lastPromptTokens = resp.Usage.PromptTokens
+	}
+	// 使用真实 prompt token 数判断是否需要压缩——低于阈值时不碰消息历史，保护 prompt cache。
+	a.maybeCompact(ctx, a.lastPromptTokens)
 
 	choice := resp.Choices[0]
 
@@ -80,6 +85,8 @@ func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
 	// 分区并行执行 tool_calls：连续只读工具并发执行，写工具串行分隔。
 	// 单个失败不中断后续，结果以 "Error: ..." 形式回填。
 	a.executeBatch(ctx, choice.Message.ToolCalls)
+	// 工具结果已追加入历史，prompt 增大，再次检查是否需要压缩
+	a.maybeCompact(ctx, a.lastPromptTokens)
 	return "", nil
 }
 

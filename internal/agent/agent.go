@@ -57,6 +57,7 @@ type Agent struct {
 	consecutiveCompacts int
 	compactStuck        bool
 	softCompactNoticed  bool
+	lastPromptTokens    int // 最近一次 LLM 响应的真实 PromptTokens，用于校准 tokPerChar
 	// --- session persistence ---
 	sessionDir  string
 	sessionPath string // 当前 session 文件路径，空表示不持久化
