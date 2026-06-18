@@ -5,12 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/wsx864321/coding-agent/internal/provider"
 )
 
-// TestRegistry_UserPromptSubmit_NotifyOnly 验证 UserPromptSubmit 是通知型
-//
-// 期望：所有 hook 都被执行，error 不阻断
 func TestRegistry_UserPromptSubmit_NotifyOnly(t *testing.T) {
 	r := NewRegistry()
 	var got []string
@@ -30,17 +27,16 @@ func TestRegistry_UserPromptSubmit_NotifyOnly(t *testing.T) {
 	}
 }
 
-// TestRegistry_PreToolUse_ShortCircuit 验证 PreToolUse 首个非空 block 短路
 func TestRegistry_PreToolUse_ShortCircuit(t *testing.T) {
 	r := NewRegistry()
 	var calls []string
 	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		calls = append(calls, "first")
-		return "", "" // 放行
+		return "", ""
 	})
 	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		calls = append(calls, "second")
-		return "blocked", "reason2" // 阻断
+		return "blocked", "reason2"
 	})
 	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
 		calls = append(calls, "third")
@@ -59,7 +55,6 @@ func TestRegistry_PreToolUse_ShortCircuit(t *testing.T) {
 	}
 }
 
-// TestRegistry_PreToolUse_AllAllow 验证全部放行
 func TestRegistry_PreToolUse_AllAllow(t *testing.T) {
 	r := NewRegistry()
 	r.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
@@ -75,7 +70,6 @@ func TestRegistry_PreToolUse_AllAllow(t *testing.T) {
 	}
 }
 
-// TestRegistry_PostToolUse_NoReturn 验证 PostToolUse 全部执行
 func TestRegistry_PostToolUse_NoReturn(t *testing.T) {
 	r := NewRegistry()
 	var got []string
@@ -91,19 +85,18 @@ func TestRegistry_PostToolUse_NoReturn(t *testing.T) {
 	}
 }
 
-// TestRegistry_Stop_ShortCircuit 验证 Stop 首个非空 force 短路
 func TestRegistry_Stop_ShortCircuit(t *testing.T) {
 	r := NewRegistry()
 	var calls []string
-	r.RegisterStop(func(_ context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
+	r.RegisterStop(func(_ context.Context, _ []provider.Message) (string, bool) {
 		calls = append(calls, "first")
 		return "", false
 	})
-	r.RegisterStop(func(_ context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
+	r.RegisterStop(func(_ context.Context, _ []provider.Message) (string, bool) {
 		calls = append(calls, "second")
 		return "continue please", true
 	})
-	r.RegisterStop(func(_ context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
+	r.RegisterStop(func(_ context.Context, _ []provider.Message) (string, bool) {
 		calls = append(calls, "third")
 		return "should-not-reach", true
 	})
@@ -120,7 +113,6 @@ func TestRegistry_Stop_ShortCircuit(t *testing.T) {
 	}
 }
 
-// TestRegistry_Count 验证 Count 反映注册情况
 func TestRegistry_Count(t *testing.T) {
 	r := NewRegistry()
 	r.RegisterUserPromptSubmit(func(_ context.Context, _ string) error { return nil })
@@ -143,7 +135,6 @@ func TestRegistry_Count(t *testing.T) {
 	}
 }
 
-// TestRegistry_NilHook 验证注册 nil hook 不会 panic
 func TestRegistry_NilHook(t *testing.T) {
 	r := NewRegistry()
 	r.RegisterUserPromptSubmit(nil)

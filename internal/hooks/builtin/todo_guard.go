@@ -4,23 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	openai "github.com/sashabaranov/go-openai"
-
 	"github.com/wsx864321/coding-agent/internal/evidence"
+	"github.com/wsx864321/coding-agent/internal/provider"
 )
 
-// MaxGuardBlocks 终答守卫最大阻断次数；超过后放行，防止无限循环
+// MaxGuardBlocks 终答守卫最大阻断次数
 const MaxGuardBlocks = 3
 
 // TodoGuardHook 在 Agent 尝试给出最终回答时检查 todo 是否全部完成。
-//
-// 行为：
-//   - 无 todo 列表 → 放行
-//   - 所有 todo 已 completed → 放行
-//   - 存在未完成 todo → 阻断，注入续跑消息让 Agent 继续工作
-//   - 连续阻断超过 MaxGuardBlocks 次 → 放行（防死循环）
-//
-// 通过 context 读取 evidence.Ledger，不持有 Ledger 引用。
 type TodoGuardHook struct {
 	Sink *Sink
 }
@@ -31,7 +22,7 @@ func NewTodoGuardHook() *TodoGuardHook {
 }
 
 // Handle 实现 hooks.StopHook
-func (h *TodoGuardHook) Handle(ctx context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
+func (h *TodoGuardHook) Handle(ctx context.Context, _ []provider.Message) (string, bool) {
 	ledger, ok := evidence.FromContext(ctx)
 	if !ok {
 		return "", false
@@ -42,7 +33,6 @@ func (h *TodoGuardHook) Handle(ctx context.Context, _ []openai.ChatCompletionMes
 		return "", false
 	}
 
-	// 统计未完成项
 	var incomplete []string
 	for _, t := range todos {
 		if t.Status != "completed" {
@@ -53,7 +43,6 @@ func (h *TodoGuardHook) Handle(ctx context.Context, _ []openai.ChatCompletionMes
 		return "", false
 	}
 
-	// 检查阻断次数上限
 	blocks := ledger.IncrementGuardBlock()
 	if blocks > MaxGuardBlocks {
 		h.sink().Fprintf("[HOOK] 终答守卫: %d/%d 未完成，已超过最大阻断次数 (%d)，放行\n",

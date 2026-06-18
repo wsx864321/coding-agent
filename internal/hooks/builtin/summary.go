@@ -3,7 +3,7 @@ package builtin
 import (
 	"context"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/wsx864321/coding-agent/internal/provider"
 )
 
 // SummaryHook 在主循环结束时打印本次会话的工具调用统计
@@ -17,12 +17,10 @@ func NewSummaryHook() *SummaryHook {
 }
 
 // Handle 实现 hooks.StopHook
-//
-// 统计 messages 中 Role=tool 的条数；不阻断（不返回 force）
-func (h *SummaryHook) Handle(_ context.Context, messages []openai.ChatCompletionMessage) (string, bool) {
+func (h *SummaryHook) Handle(_ context.Context, messages []provider.Message) (string, bool) {
 	count := 0
 	for _, m := range messages {
-		if m.Role == openai.ChatMessageRoleTool {
+		if m.Role == provider.RoleTool {
 			count++
 		}
 	}

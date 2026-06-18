@@ -17,6 +17,7 @@ import (
 	"github.com/wsx864321/coding-agent/internal/hooks/builtin"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
+	"github.com/wsx864321/coding-agent/internal/provider"
 	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
@@ -355,7 +356,7 @@ func resumeSession(a *agent.Agent, dir, mode string) error {
 	if len(messages) > 0 && len(a.Messages()) > 0 {
 		// system message 已由 NewAgent 设置，跳过恢复的首条 system 消息
 		start := 0
-		if messages[0].Role == "system" {
+		if messages[0].Role == provider.RoleSystem {
 			start = 1
 		}
 		// 逐个追加非 system 消息（绕过 append 的并发问题，直接使用内部 messages）

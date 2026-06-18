@@ -3,40 +3,41 @@ package agent
 import (
 	"crypto/sha1"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	openai "github.com/sashabaranov/go-openai"
 )
 
 // Config Agent 配置
 //
 // 所有字段可选；调用 NewAgent 时会自动从环境变量回退。
 //
-// 注意：权限检查器 / 事件 hook / openai client 这三类"装配期可选、运行期可替换"
-// 的依赖已迁出 Config，用 Option 模式注入（见 agent.go 的 Option / WithChecker 等）。
+// 注意：权限检查器 / 事件 hook / provider 这三类"装配期可选、运行期可替换"
+// 的依赖已迁出 Config，用 Option 模式注入（见 agent.go 的 Option / WithProvider 等）。
 // 好处是 Config 保持"只读、不可变"，新依赖不需要破坏 API。
 type Config struct {
-	// APIKey OpenAI 兼容服务的 API key
-	// 留空时从环境变量 OPENAI_API_KEY 读取
+	// ProviderKind provider 类型："openai" 或 "anthropic"
+	// 留空时从环境变量 PROVIDER_KIND 读取，仍为空则默认 "openai"
+	ProviderKind string
+
+	// APIKey API key
+	// 留空时从环境变量 OPENAI_API_KEY / ANTHROPIC_API_KEY 读取（按 ProviderKind）
 	APIKey string
 
-	// BaseURL OpenAI 兼容服务的 base URL（如 "https://api.deepseek.com/v1"）
-	// 留空时从环境变量 OPEN_BASE_URL 读取，仍为空则使用 OpenAI 官方地址
+	// BaseURL API base URL
+	// 留空时从环境变量 OPEN_BASE_URL / ANTHROPIC_BASE_URL 读取
 	BaseURL string
 
 	// Model 使用的模型名
-	// 留空时从环境变量 OPENAI_MODEL 读取，仍为空则使用 openai.GPT4oMini
+	// 留空时从环境变量 OPENAI_MODEL / ANTHROPIC_MODEL 读取
 	Model string
 
 	// MaxTokens 单次响应最大 token 数；0 表示不传该参数
 	MaxTokens int
 
-	// MaxTurns Agent loop 最大轮数；0 表示使用默认值 20
+	// MaxTurns Agent loop 最大轮数；0 表示使用默认值 100
 	// 超过 MaxTurns 后强制结束，返回 ErrMaxTurnsExceeded
 	MaxTurns int
 
@@ -75,8 +76,11 @@ type Config struct {
 // DefaultMaxTurns 默认最大轮数
 const DefaultMaxTurns = 100
 
-// DefaultModel 默认模型
-const DefaultModel = openai.GPT4oMini
+// DefaultModel 默认模型（OpenAI）
+const DefaultModel = "gpt-4o-mini"
+
+// DefaultAnthropicModel 默认模型（Anthropic）
+const DefaultAnthropicModel = "claude-sonnet-4-20250514"
 
 const (
 	DefaultSoftCompactRatio  = 0.50
@@ -90,18 +94,52 @@ const (
 
 // resolve 应用环境变量回退与默认值
 func (c *Config) resolve() error {
-	if c.APIKey == "" {
-		c.APIKey = os.Getenv("OPENAI_API_KEY")
+	// Provider kind
+	if c.ProviderKind == "" {
+		c.ProviderKind = os.Getenv("PROVIDER_KIND")
 	}
-	if c.APIKey == "" {
-		return errors.New("APIKey 未设置：传入 cfg.APIKey 或设置环境变量 OPENAI_API_KEY")
-	}
-	if c.BaseURL == "" {
-		c.BaseURL = os.Getenv("OPEN_BASE_URL")
+	if c.ProviderKind == "" {
+		c.ProviderKind = "openai"
 	}
 
+	// API Key（按 provider 类型选择环境变量）
+	if c.APIKey == "" {
+		switch c.ProviderKind {
+		case "anthropic":
+			c.APIKey = os.Getenv("ANTHROPIC_API_KEY")
+		default:
+			c.APIKey = os.Getenv("OPENAI_API_KEY")
+		}
+	}
+	if c.APIKey == "" {
+		var envName string
+		switch c.ProviderKind {
+		case "anthropic":
+			envName = "ANTHROPIC_API_KEY"
+		default:
+			envName = "OPENAI_API_KEY"
+		}
+		return fmt.Errorf("APIKey 未设置：传入 cfg.APIKey 或设置环境变量 %s", envName)
+	}
+
+	// BaseURL
+	if c.BaseURL == "" {
+		switch c.ProviderKind {
+		case "anthropic":
+			c.BaseURL = os.Getenv("ANTHROPIC_BASE_URL")
+		default:
+			c.BaseURL = os.Getenv("OPEN_BASE_URL")
+		}
+	}
+
+	// Model
 	if c.Model == "" {
-		c.Model = os.Getenv("OPENAI_MODEL")
+		switch c.ProviderKind {
+		case "anthropic":
+			c.Model = os.Getenv("ANTHROPIC_MODEL")
+		default:
+			c.Model = os.Getenv("OPENAI_MODEL")
+		}
 	}
 	if c.MaxTokens == 0 {
 		if v, ok, err := readEnvInt("CODING_AGENT_MAX_TOKENS"); err != nil {
@@ -111,7 +149,12 @@ func (c *Config) resolve() error {
 		}
 	}
 	if c.Model == "" {
-		c.Model = DefaultModel
+		switch c.ProviderKind {
+		case "anthropic":
+			c.Model = DefaultAnthropicModel
+		default:
+			c.Model = DefaultModel
+		}
 	}
 	if c.MaxTurns == 0 {
 		if v, ok, err := readEnvInt("CODING_AGENT_MAX_TURNS"); err != nil {
@@ -203,14 +246,24 @@ func (c *Config) resolve() error {
 	return nil
 }
 
+// APIKeyEnv 返回当前 provider 对应的 API key 环境变量名
+func (c *Config) APIKeyEnv() string {
+	switch c.ProviderKind {
+	case "anthropic":
+		return "ANTHROPIC_API_KEY"
+	default:
+		return "OPENAI_API_KEY"
+	}
+}
+
 // String 返回脱敏后的配置描述
 func (c *Config) String() string {
 	masked := c.APIKey
 	if len(masked) > 8 {
 		masked = masked[:4] + "***" + masked[len(masked)-4:]
 	}
-	return fmt.Sprintf("Config{APIKey=%s, BaseURL=%q, Model=%q, MaxTokens=%d, MaxTurns=%d, ContextWindow=%d, CompactRatio=%.2f}",
-		masked, c.BaseURL, c.Model, c.MaxTokens, c.MaxTurns, c.ContextWindow, c.CompactRatio)
+	return fmt.Sprintf("Config{Provider=%s, APIKey=%s, BaseURL=%q, Model=%q, MaxTokens=%d, MaxTurns=%d, ContextWindow=%d, CompactRatio=%.2f}",
+		c.ProviderKind, masked, c.BaseURL, c.Model, c.MaxTokens, c.MaxTurns, c.ContextWindow, c.CompactRatio)
 }
 
 func readEnvInt(name string) (int, bool, error) {

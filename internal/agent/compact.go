@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/wsx864321/coding-agent/internal/provider"
 )
 
 const (
@@ -48,14 +48,10 @@ func (a *Agent) maybeCompact(ctx context.Context, promptTokens int) {
 	soft := int(float64(a.contextWindow) * a.softCompactRatio)
 	forceLine := int(float64(a.contextWindow) * a.compactForceRatio)
 
-	// Soft threshold: notice once without touching messages — pruning here
-	// would needlessly crater the prompt cache for no real gain.
 	if promptTokens >= soft && promptTokens < high && !a.softCompactNoticed {
 		a.softCompactNoticed = true
 		return
 	}
-	// Below compact threshold: healthy breathing room — clear stuck state and
-	// leave the cache-stable prefix intact (NO prune, NO snip).
 	if promptTokens < high {
 		a.softCompactNoticed = false
 		a.compactStuck = false
@@ -66,27 +62,19 @@ func (a *Agent) maybeCompact(ctx context.Context, promptTokens int) {
 		return
 	}
 
-	// Only now — above the compact threshold — do we touch the message history.
-	// Save pre-compact snapshot for memory extraction.
 	if a.memSet != nil {
-		snap := make([]openai.ChatCompletionMessage, len(a.messages))
+		snap := make([]provider.Message, len(a.messages))
 		copy(snap, a.messages)
 		a.preCompactSnapshot = snap
 	}
 
 	force := promptTokens >= forceLine
 
-	// Compute tokPerChar ratio BEFORE prune/snip mutates messages, so the
-	// re-check below uses pre-prune calibration.
 	ratio := a.tokPerChar()
 
-	// Prune before folding: when eliding stale tool results alone clears the
-	// trigger, this turn's (paid) summarize call can be skipped entirely.
 	_ = a.pruneStaleToolResults()
 	a.snipCompact()
 
-	// Re-check after prune/snip: if non-force and we're now below the trigger,
-	// skip the expensive LLM summarization.
 	if !force {
 		afterTokens := int(float64(charsOfMessages(a.messages)) * ratio)
 		if afterTokens < high {
@@ -99,7 +87,6 @@ func (a *Agent) maybeCompact(ctx context.Context, promptTokens int) {
 		return
 	}
 	a.consecutiveCompacts++
-	// 连续两轮压缩仍在高位，说明窗口过小或最近尾部过重，暂停自动压缩避免循环。
 	if a.consecutiveCompacts >= 2 {
 		a.compactStuck = true
 	}
@@ -117,11 +104,11 @@ func (a *Agent) pruneStaleToolResults() error {
 		protected = 0
 	}
 
-	var archived []openai.ChatCompletionMessage
+	var archived []provider.Message
 	changed := false
 	for i := 0; i < protected; i++ {
 		msg := a.messages[i]
-		if msg.Role != openai.ChatMessageRoleTool {
+		if msg.Role != provider.RoleTool {
 			continue
 		}
 		if len(msg.Content) < minPruneBytes {
@@ -153,7 +140,7 @@ func (a *Agent) snipCompact() {
 		return
 	}
 
-	tailKeep := a.maxMessagesSnip - headEnd - 1 // 1 for placeholder
+	tailKeep := a.maxMessagesSnip - headEnd - 1
 	if tailKeep < minRecentMessages {
 		tailKeep = minRecentMessages
 	}
@@ -162,15 +149,12 @@ func (a *Agent) snipCompact() {
 		return
 	}
 
-	// 不切断 assistant(tool_calls) -> tool(result) 对。
 	if headEnd > 0 && hasToolCalls(a.messages[headEnd-1]) {
-		for headEnd < len(a.messages) && a.messages[headEnd].Role == openai.ChatMessageRoleTool {
+		for headEnd < len(a.messages) && a.messages[headEnd].Role == provider.RoleTool {
 			headEnd++
 		}
 	}
-	// 关键：tail 不允许从 tool 消息开始，否则前一个非 tool 可能是占位 user，
-	// 会触发 provider 校验错误（tool 必须挂在前面的 assistant tool_calls 上）。
-	for tailStart > headEnd && tailStart < len(a.messages) && a.messages[tailStart].Role == openai.ChatMessageRoleTool {
+	for tailStart > headEnd && tailStart < len(a.messages) && a.messages[tailStart].Role == provider.RoleTool {
 		tailStart--
 	}
 	if tailStart <= headEnd {
@@ -178,10 +162,10 @@ func (a *Agent) snipCompact() {
 	}
 
 	snipped := tailStart - headEnd
-	next := make([]openai.ChatCompletionMessage, 0, headEnd+1+len(a.messages)-tailStart)
+	next := make([]provider.Message, 0, headEnd+1+len(a.messages)-tailStart)
 	next = append(next, a.messages[:headEnd]...)
-	next = append(next, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleUser,
+	next = append(next, provider.Message{
+		Role:    provider.RoleUser,
 		Content: fmt.Sprintf("[为节省上下文，已裁剪中间 %d 条历史消息]", snipped),
 	})
 	next = append(next, a.messages[tailStart:]...)
@@ -197,7 +181,7 @@ func (a *Agent) compactHistory(ctx context.Context, trigger, focus string, force
 	if start < head {
 		start = head
 	}
-	for start > head && start < len(a.messages) && a.messages[start].Role == openai.ChatMessageRoleTool {
+	for start > head && start < len(a.messages) && a.messages[start].Role == provider.RoleTool {
 		start--
 	}
 	if start-head < 1 {
@@ -231,11 +215,11 @@ func (a *Agent) compactHistory(ctx context.Context, trigger, focus string, force
 		fmt.Sprintf("历史对话摘要（触发方式=%s）：\n", trigger) +
 		summary + "\n" + summaryTagClose
 
-	compacted := make([]openai.ChatCompletionMessage, 0, head+len(kept)+1+len(a.messages)-start)
+	compacted := make([]provider.Message, 0, head+len(kept)+1+len(a.messages)-start)
 	compacted = append(compacted, a.messages[:head]...)
 	compacted = append(compacted, kept...)
-	compacted = append(compacted, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleUser,
+	compacted = append(compacted, provider.Message{
+		Role:    provider.RoleUser,
 		Content: tagged,
 	})
 	compacted = append(compacted, a.messages[start:]...)
@@ -243,7 +227,8 @@ func (a *Agent) compactHistory(ctx context.Context, trigger, focus string, force
 	return true, nil
 }
 
-func (a *Agent) summarize(ctx context.Context, region []openai.ChatCompletionMessage, focus string) (string, error) {
+// summarize 通过 Provider 的流式接口做摘要压缩
+func (a *Agent) summarize(ctx context.Context, region []provider.Message, focus string) (string, error) {
 	sctx, cancel := context.WithTimeout(ctx, summaryTimeout)
 	defer cancel()
 
@@ -251,53 +236,54 @@ func (a *Agent) summarize(ctx context.Context, region []openai.ChatCompletionMes
 	if strings.TrimSpace(focus) != "" {
 		sys += "\n\n额外关注点（优先保留）：\n" + strings.TrimSpace(focus)
 	}
-	req := openai.ChatCompletionRequest{
+	req := provider.Request{
 		Model: a.cfg.Model,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: sys},
-			{Role: openai.ChatMessageRoleUser, Content: renderTranscript(region)},
+		Messages: []provider.Message{
+			{Role: provider.RoleSystem, Content: sys},
+			{Role: provider.RoleUser, Content: renderTranscript(region)},
 		},
 		MaxTokens:   1800,
 		Temperature: a.cfg.Temperature,
 	}
-	resp, err := a.client.CreateChatCompletion(sctx, req)
+	ch, err := a.prov.Stream(sctx, req)
 	if err != nil {
 		return "", err
 	}
-	if len(resp.Choices) == 0 {
-		return "", errors.New("摘要接口返回空 choices")
+	msg, _, err := provider.Collect(ch)
+	if err != nil {
+		return "", err
 	}
-	s := strings.TrimSpace(resp.Choices[0].Message.Content)
+	s := strings.TrimSpace(msg.Content)
 	if s == "" {
 		return "", errors.New("摘要内容为空")
 	}
 	return s, nil
 }
 
-func renderTranscript(msgs []openai.ChatCompletionMessage) string {
+func renderTranscript(msgs []provider.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
 		switch m.Role {
-		case openai.ChatMessageRoleUser:
+		case provider.RoleUser:
 			fmt.Fprintf(&b, "[用户]\n%s\n\n", m.Content)
-		case openai.ChatMessageRoleAssistant:
+		case provider.RoleAssistant:
 			if strings.TrimSpace(m.Content) != "" {
 				fmt.Fprintf(&b, "[助手]\n%s\n", m.Content)
 			}
 			for _, tc := range m.ToolCalls {
-				fmt.Fprintf(&b, "[助手调用工具 %s] %s\n", tc.Function.Name, tc.Function.Arguments)
+				fmt.Fprintf(&b, "[助手调用工具 %s] %s\n", tc.Name, tc.Arguments)
 			}
 			b.WriteString("\n")
-		case openai.ChatMessageRoleTool:
+		case provider.RoleTool:
 			fmt.Fprintf(&b, "[工具 %s 输出]\n%s\n\n", m.Name, m.Content)
-		case openai.ChatMessageRoleSystem:
+		case provider.RoleSystem:
 			fmt.Fprintf(&b, "[系统]\n%s\n\n", m.Content)
 		}
 	}
 	return b.String()
 }
 
-func archiveMessages(dir string, msgs []openai.ChatCompletionMessage) (string, error) {
+func archiveMessages(dir string, msgs []provider.Message) (string, error) {
 	if strings.TrimSpace(dir) == "" {
 		return "", nil
 	}
@@ -329,22 +315,22 @@ func mechanicalFoldDigest(n int, archive string, cause error) string {
 	return fmt.Sprintf("为释放上下文，已机械折叠 %d 条历史消息；但自动摘要失败：%v%s 如需使用更早信息，请先向用户确认关键细节。", n, cause, where)
 }
 
-func hasToolCalls(m openai.ChatCompletionMessage) bool {
-	return m.Role == openai.ChatMessageRoleAssistant && len(m.ToolCalls) > 0
+func hasToolCalls(m provider.Message) bool {
+	return m.Role == provider.RoleAssistant && len(m.ToolCalls) > 0
 }
 
-func isCompactionSummary(m openai.ChatCompletionMessage) bool {
-	return m.Role == openai.ChatMessageRoleUser &&
+func isCompactionSummary(m provider.Message) bool {
+	return m.Role == provider.RoleUser &&
 		strings.HasPrefix(strings.TrimLeft(m.Content, "\n "), summaryTagOpen)
 }
 
-func (a *Agent) pinnedPrefixLen(msgs []openai.ChatCompletionMessage) int {
+func (a *Agent) pinnedPrefixLen(msgs []provider.Message) int {
 	i := 0
-	if i < len(msgs) && msgs[i].Role == openai.ChatMessageRoleSystem {
+	if i < len(msgs) && msgs[i].Role == provider.RoleSystem {
 		i++
 	}
 	if i < len(msgs) &&
-		msgs[i].Role == openai.ChatMessageRoleUser &&
+		msgs[i].Role == provider.RoleUser &&
 		!isCompactionSummary(msgs[i]) &&
 		estimateTextTokens(msgs[i].Content) <= maxPinnedUserChars {
 		i++
@@ -355,9 +341,9 @@ func (a *Agent) pinnedPrefixLen(msgs []openai.ChatCompletionMessage) int {
 	return i
 }
 
-func (a *Agent) partitionFold(region []openai.ChatCompletionMessage) (kept, fold []openai.ChatCompletionMessage) {
+func (a *Agent) partitionFold(region []provider.Message) (kept, fold []provider.Message) {
 	for _, m := range region {
-		if isCompactionSummary(m) || (m.Role == openai.ChatMessageRoleUser && estimateTextTokens(m.Content) <= maxPinnedUserChars) {
+		if isCompactionSummary(m) || (m.Role == provider.RoleUser && estimateTextTokens(m.Content) <= maxPinnedUserChars) {
 			kept = append(kept, m)
 		} else {
 			fold = append(fold, m)
@@ -366,7 +352,7 @@ func (a *Agent) partitionFold(region []openai.ChatCompletionMessage) (kept, fold
 	return kept, fold
 }
 
-func estimateMessagesTokens(msgs []openai.ChatCompletionMessage) int {
+func estimateMessagesTokens(msgs []provider.Message) int {
 	total := 0
 	for _, m := range msgs {
 		total += 4
@@ -376,8 +362,8 @@ func estimateMessagesTokens(msgs []openai.ChatCompletionMessage) int {
 		for _, tc := range m.ToolCalls {
 			total += 8
 			total += estimateTextTokens(tc.ID)
-			total += estimateTextTokens(tc.Function.Name)
-			total += estimateTextTokens(tc.Function.Arguments)
+			total += estimateTextTokens(tc.Name)
+			total += estimateTextTokens(tc.Arguments)
 		}
 	}
 	return total
@@ -395,9 +381,6 @@ func estimateTextTokens(s string) int {
 	return byBytes
 }
 
-// tokPerChar 从最近一次 LLM 响应的真实 PromptTokens 校准 tokens-per-char 比例，
-// 避免纯启发式估算在不同语言/模型下的偏差。首轮 fallback 到 0.25（~4 chars/token）。
-// 异常比例（<0.05 或 >2）fallback 到启发式。
 func (a *Agent) tokPerChar() float64 {
 	if a.lastPromptTokens > 0 {
 		if c := charsOfMessages(a.messages); c > 0 {
@@ -409,16 +392,15 @@ func (a *Agent) tokPerChar() float64 {
 	return 0.25
 }
 
-// msgChars 统计一条消息实际发送给 provider 的字符数（content + tool call name/arguments）
-func msgChars(m openai.ChatCompletionMessage) int {
+func msgChars(m provider.Message) int {
 	n := len(m.Content)
 	for _, tc := range m.ToolCalls {
-		n += len(tc.Function.Name) + len(tc.Function.Arguments)
+		n += len(tc.Name) + len(tc.Arguments)
 	}
 	return n
 }
 
-func charsOfMessages(msgs []openai.ChatCompletionMessage) int {
+func charsOfMessages(msgs []provider.Message) int {
 	n := 0
 	for _, m := range msgs {
 		n += msgChars(m)

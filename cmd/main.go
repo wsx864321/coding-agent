@@ -20,6 +20,9 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/wsx864321/coding-agent/cmd/cli"
+
+	_ "github.com/wsx864321/coding-agent/internal/provider/anthropic"
+	_ "github.com/wsx864321/coding-agent/internal/provider/openai"
 )
 
 func main() {

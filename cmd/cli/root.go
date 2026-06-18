@@ -29,8 +29,9 @@ write_file / edit_file / glob_file 五个工具。
 
 func init() {
 	// 公共 flag 注册到 rootCmd，子命令会自动继承
-	rootCmd.PersistentFlags().StringP("model", "M", "", "模型名（默认 gpt-4o-mini）")
-	rootCmd.PersistentFlags().StringP("base-url", "u", "", "OpenAI 兼容服务 base URL（默认从环境变量 OPEN_BASE_URL）")
+	rootCmd.PersistentFlags().StringP("provider", "P", "", "provider 类型：openai 或 anthropic（默认 openai，可通过 PROVIDER_KIND 环境变量设置）")
+	rootCmd.PersistentFlags().StringP("model", "M", "", "模型名（默认按 provider 类型选择）")
+	rootCmd.PersistentFlags().StringP("base-url", "u", "", "API base URL（默认从环境变量读取）")
 	rootCmd.PersistentFlags().IntP("max-turns", "t", 0, "Agent loop 最大轮数（默认 20）")
 	rootCmd.PersistentFlags().StringP("system", "s", "", "自定义 system prompt（留空则按工具列表自动生成）")
 	rootCmd.PersistentFlags().StringP("workdir", "w", "", "file 工具的白名单基准目录（默认当前工作目录）")

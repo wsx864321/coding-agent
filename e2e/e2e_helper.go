@@ -1,47 +1,37 @@
 //go:build e2e
 
-// e2e 包内部的 mock / 辅助
-//
-// 约定：
-//   - 同包复用（package e2e），无需 import
-//   - 加 //go:build e2e 和测试文件保持一致，普通 build 不编译
-//   - 命名规则：所有跨测试文件复用的 fake 工具 / 辅助函数都放这里
-//   - 不引入外部依赖（不开子包），避免循环引用
 package e2e
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 
-	openai "github.com/sashabaranov/go-openai"
-
 	"github.com/wsx864321/coding-agent/internal/agent"
+	"github.com/wsx864321/coding-agent/internal/provider"
+	_ "github.com/wsx864321/coding-agent/internal/provider/openai"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
 // =====================================================================
-// Fake LLM Server
+// Fake LLM Server (SSE streaming)
 // =====================================================================
 
-// ScriptedResponse 是 fake LLM 在一次请求中返回的响应
 type ScriptedResponse struct {
-	Content   string            // 最终内容（当 ToolCalls 为空时）
-	ToolCalls []openai.ToolCall // tool calls（让 agent 继续 loop）
+	Content   string
+	ToolCalls []provider.ToolCall
 }
 
-// FakeLLMServer 启动一个 httptest.Server，模拟 OpenAI 兼容接口
-// 每次收到 /v1/chat/completions 请求时按顺序返回 queue 中的下一个
 type FakeLLMServer struct {
 	server *httptest.Server
 	queue  []ScriptedResponse
 	idx    atomic.Int32
 }
 
-// NewFakeLLM 构造并启动 fake LLM server；t.Cleanup 自动关闭
 func NewFakeLLM(t *testing.T, responses ...ScriptedResponse) *FakeLLMServer {
 	t.Helper()
 	f := &FakeLLMServer{queue: responses}
@@ -53,33 +43,74 @@ func NewFakeLLM(t *testing.T, responses ...ScriptedResponse) *FakeLLMServer {
 			return
 		}
 		resp := f.queue[i]
-		body := openai.ChatCompletionResponse{
-			ID: "fake", Model: "fake-model",
-			Choices: []openai.ChatCompletionChoice{{
-				Index: 0,
-				Message: openai.ChatCompletionMessage{
-					Role:      openai.ChatMessageRoleAssistant,
-					Content:   resp.Content,
-					ToolCalls: resp.ToolCalls,
-				},
-				FinishReason: openai.FinishReasonStop,
-			}},
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		flusher, _ := w.(http.Flusher)
+
+		if resp.Content != "" {
+			writeSSE(w, flusher, map[string]any{
+				"choices": []map[string]any{{
+					"delta": map[string]any{
+						"role":    "assistant",
+						"content": resp.Content,
+					},
+				}},
+			})
 		}
+
+		for _, tc := range resp.ToolCalls {
+			writeSSE(w, flusher, map[string]any{
+				"choices": []map[string]any{{
+					"delta": map[string]any{
+						"tool_calls": []map[string]any{{
+							"id":   tc.ID,
+							"type": "function",
+							"function": map[string]any{
+								"name":      tc.Name,
+								"arguments": tc.Arguments,
+							},
+						}},
+					},
+				}},
+			})
+		}
+
+		finishReason := "stop"
 		if len(resp.ToolCalls) > 0 {
-			body.Choices[0].FinishReason = openai.FinishReasonToolCalls
+			finishReason = "tool_calls"
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(body)
+		writeSSE(w, flusher, map[string]any{
+			"choices": []map[string]any{{
+				"finish_reason": finishReason,
+			}},
+			"usage": map[string]any{
+				"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
+			},
+		})
+
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
 	}))
 	t.Cleanup(f.server.Close)
 	return f
 }
 
-// MakeToolCall 构造一个 openai.ToolCall
-func MakeToolCall(id, name, args string) openai.ToolCall {
-	return openai.ToolCall{
-		ID: id, Type: openai.ToolTypeFunction,
-		Function: openai.FunctionCall{Name: name, Arguments: args},
+func writeSSE(w http.ResponseWriter, flusher http.Flusher, data any) {
+	b, _ := json.Marshal(data)
+	fmt.Fprintf(w, "data: %s\n\n", b)
+	if flusher != nil {
+		flusher.Flush()
+	}
+}
+
+func MakeToolCall(id, name, args string) provider.ToolCall {
+	return provider.ToolCall{
+		ID:        id,
+		Name:      name,
+		Arguments: args,
 	}
 }
 
@@ -87,8 +118,6 @@ func MakeToolCall(id, name, args string) openai.ToolCall {
 // Fake Bash 工具
 // =====================================================================
 
-// FakeBash 把"执行过的命令"打上 EXECUTED: 前缀返回
-// 用于断言"permission 阻断后 bash 没执行 / 放行后 bash 执行了"
 type FakeBash struct{}
 
 func (FakeBash) Name() string        { return "bash" }
@@ -108,16 +137,24 @@ var _ tools.Tool = FakeBash{}
 // 辅助：构造测试用 Agent
 // =====================================================================
 
-// NewTestAgent 用 fake LLM + FakeBash 构造一个 Agent
-//
-// opts 用于注入权限 Checker / hooks 等可选依赖
 func NewTestAgent(t *testing.T, f *FakeLLMServer, opts ...agent.Option) *agent.Agent {
 	t.Helper()
 	registry := tools.NewRegistry()
 	registry.Register(FakeBash{})
 
-	// 用 WithRegistry 把 registry 插到 opts 头部（避免调用方在 opts 里重复写）
-	fullOpts := append([]agent.Option{agent.WithRegistry(registry)}, opts...)
+	prov, err := provider.New("openai", provider.Config{
+		Name:    "openai",
+		APIKey:  "test-key",
+		BaseURL: f.server.URL + "/v1",
+	})
+	if err != nil {
+		t.Fatalf("provider.New: %v", err)
+	}
+
+	fullOpts := append([]agent.Option{
+		agent.WithRegistry(registry),
+		agent.WithProvider(prov),
+	}, opts...)
 
 	a, err := agent.NewAgent(agent.Config{
 		APIKey:   "test-key",

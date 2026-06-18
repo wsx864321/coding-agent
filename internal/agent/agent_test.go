@@ -3,31 +3,29 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 
-	openai "github.com/sashabaranov/go-openai"
-
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/permission"
+	"github.com/wsx864321/coding-agent/internal/provider"
+	_ "github.com/wsx864321/coding-agent/internal/provider/openai"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
 // =====================================================================
-// 工具：fake LLM server
+// 工具：fake LLM server（流式 SSE 响应）
 // =====================================================================
 
-// scriptedResponse 是 fake LLM 在一次请求中返回的响应
 type scriptedResponse struct {
-	content   string            // 最终内容（当 toolCalls 为空时）
-	toolCalls []openai.ToolCall // tool calls（让 agent 继续 loop）
+	content   string
+	toolCalls []provider.ToolCall
 }
 
-// fakeLLMServer 启动一个 httptest.Server，模拟 OpenAI 兼容接口
-// 每次收到 /v1/chat/completions 请求时按顺序返回 queuedResponses 中的下一个
 type fakeLLMServer struct {
 	server *httptest.Server
 	queue  []scriptedResponse
@@ -48,48 +46,106 @@ func newFakeLLM(t *testing.T, responses ...scriptedResponse) *fakeLLMServer {
 		}
 		resp := f.queue[i]
 
-		// 构造 ChatCompletionResponse
-		body := openai.ChatCompletionResponse{
-			ID:      "fake-id",
-			Object:  "chat.completion",
-			Created: 0,
-			Model:   "fake-model",
-			Choices: []openai.ChatCompletionChoice{
-				{
-					Index: 0,
-					Message: openai.ChatCompletionMessage{
-						Role:      openai.ChatMessageRoleAssistant,
-						Content:   resp.content,
-						ToolCalls: resp.toolCalls,
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		flusher, _ := w.(http.Flusher)
+
+		if resp.content != "" {
+			writeSSE(w, flusher, streamDelta{
+				Choices: []streamChoice{{
+					Delta: streamDeltaContent{
+						Role:    "assistant",
+						Content: resp.content,
 					},
-					FinishReason: openai.FinishReasonStop,
-				},
-			},
-		}
-		if len(resp.toolCalls) > 0 {
-			body.Choices[0].FinishReason = openai.FinishReasonToolCalls
+				}},
+			})
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(body)
+		for _, tc := range resp.toolCalls {
+			writeSSE(w, flusher, streamDelta{
+				Choices: []streamChoice{{
+					Delta: streamDeltaContent{
+						ToolCalls: []streamToolDelta{{
+							ID:   tc.ID,
+							Type: "function",
+							Function: chatFunction{
+								Name:      tc.Name,
+								Arguments: tc.Arguments,
+							},
+						}},
+					},
+				}},
+			})
+		}
+
+		finishReason := "stop"
+		if len(resp.toolCalls) > 0 {
+			finishReason = "tool_calls"
+		}
+		writeSSE(w, flusher, streamDelta{
+			Choices: []streamChoice{{
+				FinishReason: finishReason,
+			}},
+			Usage: &streamUsage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+		})
+
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
 	}))
 	t.Cleanup(f.server.Close)
 	return f
 }
 
-// makeClientWithFake 用 fake LLM URL 构造一个 openai.Client
-func makeClientWithFake(t *testing.T, f *fakeLLMServer) *openai.Client {
-	t.Helper()
-	cfg := openai.DefaultConfig("test-key")
-	cfg.BaseURL = f.server.URL + "/v1"
-	return openai.NewClientWithConfig(cfg)
+type streamDelta struct {
+	Choices []streamChoice `json:"choices"`
+	Usage   *streamUsage   `json:"usage,omitempty"`
+}
+
+type streamChoice struct {
+	Delta        streamDeltaContent `json:"delta"`
+	FinishReason string             `json:"finish_reason,omitempty"`
+}
+
+type streamDeltaContent struct {
+	Role      string            `json:"role,omitempty"`
+	Content   string            `json:"content,omitempty"`
+	ToolCalls []streamToolDelta `json:"tool_calls,omitempty"`
+}
+
+type streamToolDelta struct {
+	Index    int          `json:"index"`
+	ID       string       `json:"id,omitempty"`
+	Type     string       `json:"type,omitempty"`
+	Function chatFunction `json:"function,omitempty"`
+}
+
+type chatFunction struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+type streamUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+func writeSSE(w http.ResponseWriter, flusher http.Flusher, delta streamDelta) {
+	data, _ := json.Marshal(delta)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	if flusher != nil {
+		flusher.Flush()
+	}
 }
 
 // =====================================================================
-// 工具：简易 echo 工具，用于测试工具调用
+// 工具：简易 echo / fail 工具
 // =====================================================================
 
-// echoTool 简单工具，接收 input 字段返回它
 type echoTool struct{}
 
 func (echoTool) Name() string        { return "echo" }
@@ -102,14 +158,11 @@ func (echoTool) Execute(ctx context.Context, args map[string]any) (string, error
 	return "echoed: " + args["input"].(string), nil
 }
 
-// failTool 总是返回错误的工具
 type failTool struct{}
 
-func (failTool) Name() string { return "fail" }
-func (failTool) ReadOnly() bool { return false }
-func (failTool) Description() string {
-	return "always fails"
-}
+func (failTool) Name() string        { return "fail" }
+func (failTool) ReadOnly() bool      { return false }
+func (failTool) Description() string { return "always fails" }
 func (failTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object"}`)
 }
@@ -133,32 +186,35 @@ func newTestAgent(t *testing.T, f *fakeLLMServer, extraTools ...tools.Tool) *Age
 	for _, tl := range extraTools {
 		registry.Register(tl)
 	}
+
+	prov, err := provider.New("openai", provider.Config{
+		Name:   "openai",
+		APIKey: "test-key",
+		BaseURL: f.server.URL + "/v1",
+	})
+	if err != nil {
+		t.Fatalf("provider.New: %v", err)
+	}
+
 	a, err := NewAgent(Config{
 		APIKey:   "test-key",
 		BaseURL:  f.server.URL + "/v1",
 		MaxTurns: 5,
 	},
 		WithRegistry(registry),
+		WithProvider(prov),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
-	// 替换为 fake client（NewAgent 内部已经用 BaseURL 创建了一个 client，
-	// 但 httptest.Server 真实 URL 在调用 NewAgent 时已传入；我们重新
-	// 替换为明确知道接 fake 的 client，确保请求一定打到 fake server）
-	a.client = makeClientWithFake(t, f)
 	return a
 }
 
-// makeToolCall 构造一个 openai.ToolCall
-func makeToolCall(id, name, args string) openai.ToolCall {
-	return openai.ToolCall{
-		ID:   id,
-		Type: openai.ToolTypeFunction,
-		Function: openai.FunctionCall{
-			Name:      name,
-			Arguments: args,
-		},
+func makeToolCall(id, name, args string) provider.ToolCall {
+	return provider.ToolCall{
+		ID:        id,
+		Name:      name,
+		Arguments: args,
 	}
 }
 
@@ -167,7 +223,6 @@ func makeToolCall(id, name, args string) openai.ToolCall {
 // =====================================================================
 
 func TestNewAgent_NilOption(t *testing.T) {
-	// nil Option 会被跳过，不引发 panic
 	a, err := NewAgent(Config{APIKey: "x"}, nil)
 	if err != nil {
 		t.Fatalf("NewAgent with nil option should not error: %v", err)
@@ -178,7 +233,6 @@ func TestNewAgent_NilOption(t *testing.T) {
 }
 
 func TestNewAgent_MissingAPIKey(t *testing.T) {
-	// 通过清空 env 来确保既无 cfg.APIKey 也无 env
 	t.Setenv("OPENAI_API_KEY", "")
 	_, err := NewAgent(Config{}, WithRegistry(tools.NewRegistry()))
 	if err == nil {
@@ -188,7 +242,11 @@ func TestNewAgent_MissingAPIKey(t *testing.T) {
 
 func TestNewAgent_Defaults(t *testing.T) {
 	f := newFakeLLM(t, scriptedResponse{content: "ok"})
-	a, err := NewAgent(Config{APIKey: "x", BaseURL: f.server.URL + "/v1"}, WithRegistry(tools.NewRegistry()))
+	prov, _ := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "x", BaseURL: f.server.URL + "/v1",
+	})
+	a, err := NewAgent(Config{APIKey: "x", BaseURL: f.server.URL + "/v1"},
+		WithRegistry(tools.NewRegistry()), WithProvider(prov))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -205,18 +263,20 @@ func TestNewAgent_Defaults(t *testing.T) {
 
 func TestNewAgent_CustomSystemPrompt(t *testing.T) {
 	f := newFakeLLM(t, scriptedResponse{content: "ok"})
+	prov, _ := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "x", BaseURL: f.server.URL + "/v1",
+	})
 	a, err := NewAgent(Config{
 		APIKey:       "x",
 		BaseURL:      f.server.URL + "/v1",
 		SystemPrompt: "You are a custom agent.",
-	}, WithRegistry(tools.NewRegistry()))
+	}, WithRegistry(tools.NewRegistry()), WithProvider(prov))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
 	if a.cfg.SystemPrompt != "You are a custom agent." {
 		t.Errorf("SystemPrompt = %q, want custom", a.cfg.SystemPrompt)
 	}
-	// 消息历史里应该只有这一条 system
 	if len(a.messages) != 1 {
 		t.Errorf("messages len = %d, want 1", len(a.messages))
 	}
@@ -245,14 +305,13 @@ func TestBuildSystemPrompt_WithTools(t *testing.T) {
 	if !strings.Contains(got, "echo") || !strings.Contains(got, "fail") {
 		t.Errorf("prompt should list tools, got %q", got)
 	}
-	// 验证 schema 也被注入
 	if !strings.Contains(got, `"properties"`) {
 		t.Errorf("prompt should contain schema json, got %q", got)
 	}
 }
 
 // =====================================================================
-// Run: 简单 LLM 直接答（无 tool calls）
+// Run: 简单 LLM 直接答
 // =====================================================================
 
 func TestRun_DirectAnswer(t *testing.T) {
@@ -269,7 +328,6 @@ func TestRun_DirectAnswer(t *testing.T) {
 	if f.calls.Load() != 1 {
 		t.Errorf("expected 1 LLM call, got %d", f.calls.Load())
 	}
-	// 消息历史：system + user + assistant = 3
 	if len(a.messages) != 3 {
 		t.Errorf("messages len = %d, want 3", len(a.messages))
 	}
@@ -292,10 +350,9 @@ func TestRun_EmptyUserInput(t *testing.T) {
 // =====================================================================
 
 func TestRun_OneToolCall(t *testing.T) {
-	// 第一轮：LLM 调 echo，第二轮：LLM 拿到 tool 结果后给最终答案
 	f := newFakeLLM(t,
 		scriptedResponse{
-			toolCalls: []openai.ToolCall{
+			toolCalls: []provider.ToolCall{
 				makeToolCall("call_1", "echo", `{"input":"hi"}`),
 			},
 		},
@@ -313,12 +370,10 @@ func TestRun_OneToolCall(t *testing.T) {
 	if f.calls.Load() != 2 {
 		t.Errorf("expected 2 LLM calls, got %d", f.calls.Load())
 	}
-	// 消息历史：system + user + assistant(有 tool call) + tool(result) + assistant(answer) = 5
 	if len(a.messages) != 5 {
 		t.Errorf("messages len = %d, want 5", len(a.messages))
 	}
-	// 第 4 条应是 tool 消息，含 echo 结果
-	if a.messages[3].Role != openai.ChatMessageRoleTool {
+	if a.messages[3].Role != provider.RoleTool {
 		t.Errorf("messages[3] role = %q, want tool", a.messages[3].Role)
 	}
 	if a.messages[3].ToolCallID != "call_1" {
@@ -330,13 +385,13 @@ func TestRun_OneToolCall(t *testing.T) {
 }
 
 // =====================================================================
-// Run: 工具执行失败 → 不中断，回填 Error
+// Run: 工具执行失败 → 不中断
 // =====================================================================
 
 func TestRun_ToolErrorNotFatal(t *testing.T) {
 	f := newFakeLLM(t,
 		scriptedResponse{
-			toolCalls: []openai.ToolCall{
+			toolCalls: []provider.ToolCall{
 				makeToolCall("call_1", "fail", `{}`),
 			},
 		},
@@ -351,20 +406,19 @@ func TestRun_ToolErrorNotFatal(t *testing.T) {
 	if out != "recovered" {
 		t.Errorf("output = %q, want %q", out, "recovered")
 	}
-	// 验证 tool 消息含 Error
 	if !strings.Contains(a.messages[3].Content, "Error:") {
 		t.Errorf("tool error should be reported as Error:, got %q", a.messages[3].Content)
 	}
 }
 
 // =====================================================================
-// Run: 未知工具 → 回填 Error 不中断
+// Run: 未知工具
 // =====================================================================
 
 func TestRun_UnknownTool(t *testing.T) {
 	f := newFakeLLM(t,
 		scriptedResponse{
-			toolCalls: []openai.ToolCall{
+			toolCalls: []provider.ToolCall{
 				makeToolCall("call_1", "does_not_exist", `{}`),
 			},
 		},
@@ -389,34 +443,29 @@ func TestRun_UnknownTool(t *testing.T) {
 // =====================================================================
 
 func TestRun_MaxTurnsExceeded(t *testing.T) {
-	// 准备 10 个都返回 tool call 的响应，但 MaxTurns=3
-	// 每次 loopStep 消耗 1 轮 tool call + 1 轮 LLM 调用
-	// 第 3 轮后未拿到 final → 超过 maxTurns
 	responses := make([]scriptedResponse, 10)
 	for i := range responses {
 		responses[i] = scriptedResponse{
-			toolCalls: []openai.ToolCall{
+			toolCalls: []provider.ToolCall{
 				makeToolCall("c", "echo", `{"input":"x"}`),
 			},
 		}
 	}
 	f := newFakeLLM(t, responses...)
 
-	f2 := newFakeLLM(t, responses...) // 给 newTestAgent 一个独立的 queue
-	_ = f2
-
-	// 单独构造，maxTurns=3
 	registry := tools.NewRegistry()
 	registry.Register(echoTool{})
+	prov, _ := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "x", BaseURL: f.server.URL + "/v1",
+	})
 	a, err := NewAgent(Config{
 		APIKey:   "x",
 		BaseURL:  f.server.URL + "/v1",
 		MaxTurns: 3,
-	}, WithRegistry(registry))
+	}, WithRegistry(registry), WithProvider(prov))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
-	a.client = makeClientWithFake(t, f)
 
 	_, err = a.Run(context.Background(), "test")
 	if err == nil {
@@ -446,13 +495,13 @@ func TestReset(t *testing.T) {
 	if len(a.messages) != 1 {
 		t.Errorf("after Reset messages len = %d, want 1", len(a.messages))
 	}
-	if a.messages[0].Role != openai.ChatMessageRoleSystem {
+	if a.messages[0].Role != provider.RoleSystem {
 		t.Errorf("after Reset first message role = %q, want system", a.messages[0].Role)
 	}
 }
 
 // =====================================================================
-// Messages 返回副本（防止外部修改内部状态）
+// Messages 返回副本
 // =====================================================================
 
 func TestMessages_ReturnsCopy(t *testing.T) {
@@ -462,7 +511,6 @@ func TestMessages_ReturnsCopy(t *testing.T) {
 
 	msgs := a.Messages()
 	msgs[0].Content = "tampered"
-	// 内部不受影响
 	if a.messages[0].Content == "tampered" {
 		t.Error("Messages() should return a copy, not a reference")
 	}
@@ -472,11 +520,10 @@ func TestMessages_ReturnsCopy(t *testing.T) {
 // Hooks 集成测试
 // =====================================================================
 
-// TestRun_PreToolUse_HookBlocks 验证 PreToolUse hook 阻断工具调用
 func TestRun_PreToolUse_HookBlocks(t *testing.T) {
 	f := newFakeLLM(t,
 		scriptedResponse{
-			toolCalls: []openai.ToolCall{
+			toolCalls: []provider.ToolCall{
 				makeToolCall("call_1", "echo", `{"input":"hi"}`),
 			},
 		},
@@ -496,34 +543,31 @@ func TestRun_PreToolUse_HookBlocks(t *testing.T) {
 	if out != "got it" {
 		t.Errorf("output = %q, want 'got it'", out)
 	}
-	// 工具消息应包含 "Blocked by hook"
 	if !strings.Contains(a.messages[3].Content, "Blocked by hook") {
 		t.Errorf("expected tool message to contain 'Blocked by hook', got %q", a.messages[3].Content)
 	}
 }
 
-// TestRun_PreToolUse_HookAllowsButCheckerDenies 验证 hook 放行但 system Checker 仍可 deny
-//
-// 这是"hook 放水不能绕过 system deny"的安全不变式
 func TestRun_PreToolUse_HookAllowsButCheckerDenies(t *testing.T) {
 	f := newFakeLLM(t,
 		scriptedResponse{
-			toolCalls: []openai.ToolCall{
+			toolCalls: []provider.ToolCall{
 				makeToolCall("call_1", "echo", `{"input":"x"}`),
 			},
 		},
 		scriptedResponse{content: "recovered"},
 	)
 
-	// hook 放行所有调用
 	hr := newTestHookRegistry()
 	hr.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
-		return "", "" // 放行
+		return "", ""
 	})
 
-	// 重造 Agent 并用 Option 注入 hook + denyAll checker
 	registry := tools.NewRegistry()
 	registry.Register(echoTool{})
+	prov, _ := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "test-key", BaseURL: f.server.URL + "/v1",
+	})
 	a, err := NewAgent(Config{
 		APIKey:   "test-key",
 		BaseURL:  f.server.URL + "/v1",
@@ -532,11 +576,11 @@ func TestRun_PreToolUse_HookAllowsButCheckerDenies(t *testing.T) {
 		WithRegistry(registry),
 		WithHooks(hr),
 		WithChecker(denyAllChecker{}),
+		WithProvider(prov),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
-	a.client = makeClientWithFake(t, f)
 
 	out, err := a.Run(context.Background(), "test")
 	if err != nil {
@@ -545,13 +589,11 @@ func TestRun_PreToolUse_HookAllowsButCheckerDenies(t *testing.T) {
 	if out != "recovered" {
 		t.Errorf("output = %q, want 'recovered'", out)
 	}
-	// 即便 hook 放行，system deny 仍生效
 	if !strings.Contains(a.messages[3].Content, "Permission denied") {
 		t.Errorf("expected tool message to contain 'Permission denied', got %q", a.messages[3].Content)
 	}
 }
 
-// TestRun_UserPromptSubmit_Triggered 验证 UserPromptSubmit 事件被触发
 func TestRun_UserPromptSubmit_Triggered(t *testing.T) {
 	f := newFakeLLM(t, scriptedResponse{content: "ok"})
 
@@ -569,9 +611,7 @@ func TestRun_UserPromptSubmit_Triggered(t *testing.T) {
 	}
 }
 
-// TestRun_Stop_ForceContinue 验证 Stop hook 强制续跑
 func TestRun_Stop_ForceContinue(t *testing.T) {
-	// 第一轮 LLM 给 final → Stop hook 强制注入 user 消息 → 第二轮 LLM 给 final
 	f := newFakeLLM(t,
 		scriptedResponse{content: "first answer"},
 		scriptedResponse{content: "second answer"},
@@ -579,12 +619,12 @@ func TestRun_Stop_ForceContinue(t *testing.T) {
 
 	hr := newTestHookRegistry()
 	fired := false
-	hr.RegisterStop(func(_ context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
+	hr.RegisterStop(func(_ context.Context, _ []provider.Message) (string, bool) {
 		if !fired {
 			fired = true
-			return "请继续", true // 首次强制续跑
+			return "请继续", true
 		}
-		return "", false // 后续放行
+		return "", false
 	})
 	a := newTestAgentWithHooks(t, f, hr)
 
@@ -596,25 +636,23 @@ func TestRun_Stop_ForceContinue(t *testing.T) {
 		t.Errorf("output = %q, want 'second answer'", out)
 	}
 	if f.calls.Load() != 2 {
-		t.Errorf("expected 2 LLM calls (Stop forced continuation), got %d", f.calls.Load())
+		t.Errorf("expected 2 LLM calls, got %d", f.calls.Load())
 	}
-	// messages 长度：system + user + assistant(final) + user(forced) + assistant(2nd) = 5
 	if len(a.messages) != 5 {
 		t.Errorf("messages len = %d, want 5", len(a.messages))
 	}
-	if a.messages[3].Role != openai.ChatMessageRoleUser || a.messages[3].Content != "请继续" {
+	if a.messages[3].Role != provider.RoleUser || a.messages[3].Content != "请继续" {
 		t.Errorf("messages[3] should be forced user message, got role=%q content=%q",
 			a.messages[3].Role, a.messages[3].Content)
 	}
 }
 
-// TestRun_Stop_NoForce 验证 Stop hook 不返回 force 时正常结束
 func TestRun_Stop_NoForce(t *testing.T) {
 	f := newFakeLLM(t, scriptedResponse{content: "ok"})
 
 	hr := newTestHookRegistry()
-	hr.RegisterStop(func(_ context.Context, _ []openai.ChatCompletionMessage) (string, bool) {
-		return "", false // 不续跑
+	hr.RegisterStop(func(_ context.Context, _ []provider.Message) (string, bool) {
+		return "", false
 	})
 	a := newTestAgentWithHooks(t, f, hr)
 
@@ -630,11 +668,10 @@ func TestRun_Stop_NoForce(t *testing.T) {
 	}
 }
 
-// TestRun_PostToolUse_Triggered 验证 PostToolUse 事件被触发
 func TestRun_PostToolUse_Triggered(t *testing.T) {
 	f := newFakeLLM(t,
 		scriptedResponse{
-			toolCalls: []openai.ToolCall{
+			toolCalls: []provider.ToolCall{
 				makeToolCall("call_1", "echo", `{"input":"hi"}`),
 			},
 		},
@@ -669,20 +706,19 @@ func TestRun_PostToolUse_Triggered(t *testing.T) {
 // 测试辅助
 // =====================================================================
 
-// newTestHookRegistry 构造一个空的 hooks.Registry
 func newTestHookRegistry() *hooks.Registry {
 	return hooks.NewRegistry()
 }
 
-// newTestAgentWithHooks 是 newTestAgent + WithHooks(hr) 的合并版本
-//
-// Agent 构造时通过 option 注入 hr，避免调用已删除的 a.SetHooks(hr)
 func newTestAgentWithHooks(t *testing.T, f *fakeLLMServer, hr *hooks.Registry) *Agent {
 	t.Helper()
 	registry := tools.NewRegistry()
 	registry.Register(echoTool{})
 	registry.Register(failTool{})
 
+	prov, _ := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "test-key", BaseURL: f.server.URL + "/v1",
+	})
 	a, err := NewAgent(Config{
 		APIKey:   "test-key",
 		BaseURL:  f.server.URL + "/v1",
@@ -690,15 +726,14 @@ func newTestAgentWithHooks(t *testing.T, f *fakeLLMServer, hr *hooks.Registry) *
 	},
 		WithRegistry(registry),
 		WithHooks(hr),
+		WithProvider(prov),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
-	a.client = makeClientWithFake(t, f)
 	return a
 }
 
-// denyAllChecker 是 permission.Checker 的"全部拒绝"实现（用于测试）
 type denyAllChecker struct{}
 
 func (denyAllChecker) Check(_ context.Context, _ string, _ map[string]any) permission.CheckResult {

@@ -5,8 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	openai "github.com/sashabaranov/go-openai"
-
+	"github.com/wsx864321/coding-agent/internal/provider"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
@@ -14,23 +13,24 @@ import (
 // RunSubAgent 测试
 // =====================================================================
 
-// newParentAgent 构造一个 parent agent，使用独立的 fakeLLM（parent 不做 LLM 调用，
-// 只用于提供 config 和 client 给 subagent）
 func newParentAgent(t *testing.T, subLLM *fakeLLMServer) *Agent {
 	t.Helper()
 	registry := tools.NewRegistry()
 	registry.Register(echoTool{})
 	registry.Register(failTool{})
 
+	prov, _ := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "test-key", BaseURL: subLLM.server.URL + "/v1",
+	})
+
 	a, err := NewAgent(Config{
 		APIKey:   "test-key",
 		BaseURL:  subLLM.server.URL + "/v1",
 		MaxTurns: 10,
-	}, WithRegistry(registry))
+	}, WithRegistry(registry), WithProvider(prov))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
-	a.client = makeClientWithFake(t, subLLM)
 	return a
 }
 
@@ -98,13 +98,11 @@ func TestRunSubAgent_CustomSystemPrompt(t *testing.T) {
 
 func TestRunSubAgent_ToolCallInSubagent(t *testing.T) {
 	f := newFakeLLM(t,
-		// subagent 第一轮调 echo
 		scriptedResponse{
-			toolCalls: []openai.ToolCall{
+			toolCalls: []provider.ToolCall{
 				makeToolCall("sub_call_1", "echo", `{"input":"sub-hello"}`),
 			},
 		},
-		// subagent 第二轮给最终答案
 		scriptedResponse{content: "子 agent: 发现了 echoed: sub-hello"},
 	)
 	parent := newParentAgent(t, f)
@@ -119,7 +117,6 @@ func TestRunSubAgent_ToolCallInSubagent(t *testing.T) {
 }
 
 func TestRunSubAgent_IsolatedMessages(t *testing.T) {
-	// parent 先跑一轮
 	parentLLM := newFakeLLM(t,
 		scriptedResponse{content: "parent answer"},
 	)
@@ -131,18 +128,20 @@ func TestRunSubAgent_IsolatedMessages(t *testing.T) {
 	}
 	parentMsgCount := len(parent.messages)
 
-	// subagent 用独立的 fakeLLM
 	subLLM := newFakeLLM(t,
 		scriptedResponse{content: "sub answer"},
 	)
-	parent.client = makeClientWithFake(t, subLLM)
+	// subagent 使用独立的 provider
+	subProv, _ := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "test-key", BaseURL: subLLM.server.URL + "/v1",
+	})
+	parent.prov = subProv
 
 	_, err = RunSubAgent(context.Background(), parent, "sub question", SubagentOptions{})
 	if err != nil {
 		t.Fatalf("RunSubAgent: %v", err)
 	}
 
-	// subagent 不应修改 parent 的 messages
 	if len(parent.messages) != parentMsgCount {
 		t.Errorf("parent messages changed: before=%d, after=%d", parentMsgCount, len(parent.messages))
 	}
@@ -212,7 +211,6 @@ func TestWireTaskTool_NoTaskTool(t *testing.T) {
 
 func TestWireTaskTool_WithTaskTool(t *testing.T) {
 	f := newFakeLLM(t,
-		// subagent 回答
 		scriptedResponse{content: "wired sub answer"},
 	)
 	tt := tools.NewTaskTool(nil)

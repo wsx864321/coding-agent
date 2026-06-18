@@ -4,6 +4,7 @@ import (
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
+	"github.com/wsx864321/coding-agent/internal/provider"
 	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
@@ -36,26 +37,31 @@ func (o hooksOpt) apply(a *Agent) {
 	a.hooks = o.r
 }
 
+// providerOpt 注入 Provider 实例
+type providerOpt struct{ p provider.Provider }
+
+func (o providerOpt) apply(a *Agent) {
+	a.prov = o.p
+}
+
 // WithRegistry 注入工具注册表
-//
-//   - 传 nil：保留 NewAgent 默认构造的空注册表
-//   - 不传：NewAgent 内部会用 tools.NewRegistry() 自动构造一个空注册表
 func WithRegistry(r *tools.Registry) Option {
 	return registryOpt{r: r}
 }
 
 // WithChecker 注入权限检查器
-//
-//   - 传 nil：放行所有调用
 func WithChecker(c permission.Checker) Option {
 	return checkerOpt{c: c}
 }
 
 // WithHooks 注入事件回调 Registry
-//
-//   - 传 nil：禁用所有 hook trigger（等价于 NewRegistry 后不注册任何 hook）
 func WithHooks(r *hooks.Registry) Option {
 	return hooksOpt{r: r}
+}
+
+// WithProvider 注入 Provider 实例（用于 subagent 共享、测试 mock 等场景）
+func WithProvider(p provider.Provider) Option {
+	return providerOpt{p: p}
 }
 
 // skillStoreOpt 注入 skill Store
@@ -66,8 +72,6 @@ func (o skillStoreOpt) apply(a *Agent) {
 }
 
 // WithSkillStore 注入 skill Store
-//
-//   - 传 nil：禁用 skill 功能
 func WithSkillStore(s *skill.Store) Option {
 	return skillStoreOpt{s: s}
 }
@@ -80,8 +84,6 @@ func (o memorySetOpt) apply(a *Agent) {
 }
 
 // WithMemory 注入 memory Set
-//
-//   - 传 nil：禁用记忆功能
 func WithMemory(s *memory.Set) Option {
 	return memorySetOpt{s: s}
 }

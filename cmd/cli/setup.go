@@ -21,9 +21,10 @@ func resolveWorkdir(cmd *cobra.Command) string {
 
 // buildConfig 从 cmd flags 构造 agent.Config
 //
-// 注意：permission.Checker / hooks / client / registry 这类"装配期可选、运行期可替换"
+// 注意：permission.Checker / hooks / provider / registry 这类"装配期可选、运行期可替换"
 // 的依赖已迁出 Config，由各子命令在 NewAgent 时通过 agent.WithXxx 注入
 func buildConfig(cmd *cobra.Command) agent.Config {
+	providerKind, _ := cmd.Flags().GetString("provider")
 	model, _ := cmd.Flags().GetString("model")
 	baseURL, _ := cmd.Flags().GetString("base-url")
 	maxTurns, _ := cmd.Flags().GetInt("max-turns")
@@ -37,6 +38,7 @@ func buildConfig(cmd *cobra.Command) agent.Config {
 	archiveDir, _ := cmd.Flags().GetString("archive-dir")
 
 	return agent.Config{
+		ProviderKind:      providerKind,
 		Model:             model,
 		BaseURL:           baseURL,
 		MaxTurns:          maxTurns,

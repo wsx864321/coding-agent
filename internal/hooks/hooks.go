@@ -9,7 +9,6 @@
 // 安全不变式（与 Claude Code 同型）：
 // PreToolUse 流程中，hook 不阻断时，仍要走 system-level permission.Checker。
 // 即使用户 hook "放行"，settings.json 的 deny/ask 规则仍会拦截。
-// 换句话说：hook 可以"放水"（允许更多操作），但不能"开闸"（绕过系统硬拒绝）。
 //
 // 事件语义：
 //
@@ -17,20 +16,18 @@
 //	PreToolUse        工具执行前；首个返回非空 block 的 hook 阻断本次调用
 //	PostToolUse       工具执行后；纯副作用（截断 / 统计），无返回语义
 //	Stop              主循环即将结束；首个返回非空 force 的 hook 强制续跑
-//	                  （把 force 作为 user 消息注入，下一轮 LLM 必须继续工作）
 package hooks
 
 import (
 	"context"
 	"sync"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/wsx864321/coding-agent/internal/provider"
 )
 
 type subagentCtxKey struct{}
 
 // WithSubagentFlag 在 context 中标记当前正在 subagent 内运行。
-// 继承的 hooks（如 LogHook）可通过 IsSubagent 检测并加前缀区分日志来源。
 func WithSubagentFlag(ctx context.Context) context.Context {
 	return context.WithValue(ctx, subagentCtxKey{}, true)
 }
@@ -52,40 +49,18 @@ const (
 )
 
 // UserPromptSubmitHook 在追加 user 消息前被调用
-//
-// 入参：用户输入的原始字符串
-// 返回：error 仅用于日志，不会阻断主流程（UserPromptSubmit 是"通知型"事件）
 type UserPromptSubmitHook func(ctx context.Context, content string) error
 
 // PreToolUseHook 在工具执行前被调用
-//
-// 入参：工具名 + 参数
-// 返回：
-//   - block 非空 → 立即阻断本次工具调用，把 block 字符串作为 tool_result 回填给 LLM
-//   - block 为空 → 继续执行后续 hook；全部 hook 放行后仍要走 system permission.Checker
-//
-// reason 是阻断时的原因，会被拼到回填消息里（便于 LLM 看到完整上下文）
 type PreToolUseHook func(ctx context.Context, name string, args map[string]any) (block string, reason string)
 
-// PostToolUseHook 在工具执行成功后被调用
-//
-// 入参：name + args + 执行输出
-// 返回：无（纯副作用：日志 / 截断 / 统计等）
+// PostToolUseHook 在工具执行后被调用
 type PostToolUseHook func(ctx context.Context, name string, args map[string]any, output string)
 
-// StopHook 在主循环即将结束（拿到 final answer）时被调用
-//
-// 入参：当前消息历史
-// 返回：
-//   - force 非空 → 强制续跑：把 force 作为 user 消息追加到历史，下一轮 LLM 必须继续
-//   - force 为空 → 正常退出
-//
-// 典型用途：summary 摘要、缺失工具自检、最终检查等
-type StopHook func(ctx context.Context, messages []openai.ChatCompletionMessage) (force string, ok bool)
+// StopHook 在主循环即将结束时被调用
+type StopHook func(ctx context.Context, messages []provider.Message) (force string, ok bool)
 
 // Registry 持有 4 类事件的回调链表
-//
-// 线程安全：所有 Register / Trigger 方法都受 mu 保护，可并发注册 + 并发触发
 type Registry struct {
 	mu sync.RWMutex
 
@@ -141,8 +116,6 @@ func (r *Registry) RegisterStop(h StopHook) {
 }
 
 // TriggerUserPromptSubmit 触发所有 UserPromptSubmit hook
-//
-// 全部执行（不短路），单个 hook 返回 error 仅记日志，不阻断主流程
 func (r *Registry) TriggerUserPromptSubmit(ctx context.Context, content string) {
 	r.mu.RLock()
 	hooks := append([]UserPromptSubmitHook(nil), r.userPromptSubmit...)
@@ -150,16 +123,12 @@ func (r *Registry) TriggerUserPromptSubmit(ctx context.Context, content string) 
 
 	for _, h := range hooks {
 		if err := h(ctx, content); err != nil {
-			// UserPromptSubmit 是"通知型"事件，error 不阻断；调用方通常写日志
 			_ = err
 		}
 	}
 }
 
 // TriggerPreToolUse 触发所有 PreToolUse hook
-//
-// 返回是否被阻断、阻断原因
-// 首个返回非空 block 的 hook 短路；后续 hook 不再执行
 func (r *Registry) TriggerPreToolUse(ctx context.Context, name string, args map[string]any) (blocked bool, reason string) {
 	r.mu.RLock()
 	hooks := append([]PreToolUseHook(nil), r.preToolUse...)
@@ -170,14 +139,12 @@ func (r *Registry) TriggerPreToolUse(ctx context.Context, name string, args map[
 		if block != "" {
 			return true, block
 		}
-		_ = why // reason 目前仅作信息保留；block 非空即视为阻断
+		_ = why
 	}
 	return false, ""
 }
 
 // TriggerPostToolUse 触发所有 PostToolUse hook
-//
-// 全部执行，无返回值；单个 panic 不影响后续（调用方通常用 defer recover）
 func (r *Registry) TriggerPostToolUse(ctx context.Context, name string, args map[string]any, output string) {
 	r.mu.RLock()
 	hooks := append([]PostToolUseHook(nil), r.postToolUse...)
@@ -189,10 +156,7 @@ func (r *Registry) TriggerPostToolUse(ctx context.Context, name string, args map
 }
 
 // TriggerStop 触发所有 Stop hook
-//
-// 返回是否续跑、续跑消息
-// 首个返回非空 force 的 hook 短路；后续 hook 不再执行
-func (r *Registry) TriggerStop(ctx context.Context, messages []openai.ChatCompletionMessage) (force string, ok bool) {
+func (r *Registry) TriggerStop(ctx context.Context, messages []provider.Message) (force string, ok bool) {
 	r.mu.RLock()
 	hooks := append([]StopHook(nil), r.stop...)
 	r.mu.RUnlock()
@@ -207,10 +171,6 @@ func (r *Registry) TriggerStop(ctx context.Context, messages []openai.ChatComple
 }
 
 // WithoutStopAndPrompt 返回只保留 PreToolUse / PostToolUse 的新 Registry。
-//
-// 用于 subagent：子 agent 需要继承权限检查（PreToolUse）和日志（PostToolUse），
-// 但不应触发 Stop hooks（SummaryHook / TodoGuardHook）和 UserPromptSubmit hooks，
-// 因为这些是 parent agent 级别的生命周期事件。
 func (r *Registry) WithoutStopAndPrompt() *Registry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -221,7 +181,7 @@ func (r *Registry) WithoutStopAndPrompt() *Registry {
 	return child
 }
 
-// Count 返回每个事件注册的 hook 数量（用于调试 / /hooks 之类 CLI）
+// Count 返回每个事件注册的 hook 数量
 func (r *Registry) Count() map[Event]int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
