@@ -281,6 +281,56 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	return "", fmt.Errorf("%w (limit=%d)", ErrMaxTurnsExceeded, a.cfg.MaxTurns)
 }
 
+// RunStreaming 与 Run 相同，但在 LLM 流式输出时将文本增量推送给 onText。
+func (a *Agent) RunStreaming(ctx context.Context, userInput string, onText func(string)) (string, error) {
+	if userInput == "" {
+		return "", fmt.Errorf("userInput 不能为空")
+	}
+
+	if a.ledger != nil {
+		a.ledger.Reset()
+		ctx = evidence.WithLedger(ctx, a.ledger)
+	}
+
+	if a.jobMgr != nil {
+		ctx = jobs.WithManager(ctx, a.jobMgr)
+		if note := a.jobMgr.DrainCompletedNote(); note != "" {
+			userInput = note + "\n\n" + userInput
+		}
+	}
+
+	if a.hooks != nil {
+		a.hooks.TriggerUserPromptSubmit(ctx, userInput)
+	}
+
+	userContent := userInput
+	if a.memQueue != nil && a.memQueue.Pending() {
+		update := a.memQueue.Flush()
+		if update != "" {
+			userContent = update + "\n\n" + userInput
+		}
+	}
+
+	a.messages = append(a.messages, provider.Message{
+		Role:    provider.RoleUser,
+		Content: userContent,
+	})
+
+	a.hasAttemptedReactiveCompact = false
+
+	for turn := 0; turn < a.cfg.MaxTurns; turn++ {
+		final, err := a.loopStepWithText(ctx, onText)
+		if err != nil {
+			return "", err
+		}
+		if final != "" {
+			_ = a.SaveCurrentSession()
+			return final, nil
+		}
+	}
+	return "", fmt.Errorf("%w (limit=%d)", ErrMaxTurnsExceeded, a.cfg.MaxTurns)
+}
+
 // Messages 返回当前消息历史（只读拷贝）
 func (a *Agent) Messages() []provider.Message {
 	out := make([]provider.Message, len(a.messages))

@@ -1,0 +1,14 @@
+{
+  "change": "add-bubbletea-tui-interface",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "2054581938f8a7b30fd1c966e8822505a94ca2c87aff1338e1b06b2ef9443766",
+  "files": [
+    { "path": "openspec/changes/add-bubbletea-tui-interface/proposal.md", "sha256": "071c18dd7ec42e278dbbf55416074f9741bf39f1c785aceacda0cd2bdc5078fb" },
+    { "path": "openspec/changes/add-bubbletea-tui-interface/design.md", "sha256": "c3144427c6650dbedce72913d90a0c3e69cb2704c8b5b612679f6ceb55fb9e45" },
+    { "path": "openspec/changes/add-bubbletea-tui-interface/tasks.md", "sha256": "b3fad6a3acda8a8d7fa6638d6d5c8ae8ab7a87d941f23084456b8c4507cb997f" },
+    { "path": "openspec/changes/add-bubbletea-tui-interface/specs/tui-chat-interface/spec.md", "sha256": "c3b67845bda146b2861ecabf71b13b9daa5646970b50229f2e3b5b541a4f32a6" }
+  ]
+}

@@ -76,6 +76,11 @@ func Kinds() []string {
 // Collect 消费流式 channel，收集为完整的 assistant Message + Usage。
 // 适用于不需要流式展示的场景（如压缩摘要、记忆提取）。
 func Collect(ch <-chan Chunk) (Message, *Usage, error) {
+	return CollectWithText(ch, nil)
+}
+
+// CollectWithText 与 Collect 相同，但在收到文本增量时可选调用 onText。
+func CollectWithText(ch <-chan Chunk, onText func(string)) (Message, *Usage, error) {
 	var text strings.Builder
 	var toolCalls []ToolCall
 	var usage *Usage
@@ -85,6 +90,9 @@ func Collect(ch <-chan Chunk) (Message, *Usage, error) {
 		switch chunk.Type {
 		case ChunkText:
 			text.WriteString(chunk.Text)
+			if onText != nil && chunk.Text != "" {
+				onText(chunk.Text)
+			}
 		case ChunkToolCallStart:
 			if chunk.ToolCall != nil {
 				toolCalls = append(toolCalls, *chunk.ToolCall)

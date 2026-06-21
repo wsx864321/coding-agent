@@ -22,7 +22,8 @@ write_file / edit_file / glob_file 五个工具。
 
 子命令：
   once  一次性对话
-  chat  交互式 REPL`,
+  chat  交互式 REPL
+  tui   Bubble Tea 交互式聊天`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
