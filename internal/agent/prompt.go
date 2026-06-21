@@ -52,6 +52,9 @@ func buildSystemPrompt(registry *tools.Registry, skills []skill.Skill) string {
 		if hasTaskTool(registry) {
 			b.WriteString(taskGuidance)
 		}
+		if hasBackgroundJobTools(registry) {
+			b.WriteString(backgroundJobGuidance)
+		}
 	}
 
 	prompt := b.String()
@@ -73,6 +76,11 @@ func hasTaskTool(registry *tools.Registry) bool {
 	return registry.Get("task") != nil
 }
 
+// hasBackgroundJobTools 检查 registry 中是否注册了后台任务相关工具
+func hasBackgroundJobTools(registry *tools.Registry) bool {
+	return registry.Get("bash_output") != nil && registry.Get("wait") != nil
+}
+
 const todoGuidance = `
 对于多步骤任务（3 步以上），使用 todo_write 和 complete_step 工具跟踪进度：
 - 动手之前先调 todo_write 列出所有步骤，第一步设为 in_progress，其余 pending
@@ -89,4 +97,15 @@ const taskGuidance = `
 - prompt 必须自包含——子 agent 看不到你的对话历史
 - 不要用 task 做简单的单步操作（如读一个文件），直接调对应工具更快
 - 子 agent 不能再派生子 agent（只支持一层嵌套）
+`
+
+const backgroundJobGuidance = `
+对于长命令（install/build/test/deploy）或耗时子任务，使用后台执行避免阻塞：
+- bash 的 run_in_background=true：立即返回 job_id，跨 turn 持续运行，不受 timeout 限制
+- task 的 run_in_background=true：子 agent 在后台运行，最终回答通过 bash_output 读取
+- 用 bash_output(job_id=...) 增量读取输出（非阻塞，可带 filter 正则过滤行）
+- 用 wait(job_ids=[...]) 阻塞等待完成（可设 timeout_seconds）
+- 用 kill_shell(job_id=...) 终止运行中的后台任务
+- 后台任务完成后，下一轮会自动收到完成通知
+- 不要对短命令（< 5 秒）使用后台执行，直接同步跑更快
 `

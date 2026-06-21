@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wsx864321/coding-agent/internal/jobs"
 )
 
 // =====================================================================
@@ -511,4 +513,154 @@ func TestBuildCommand_NoWorkdir(t *testing.T) {
 	if cmd.Dir != "" {
 		t.Errorf("cmd.Dir = %q, want empty", cmd.Dir)
 	}
+}
+
+// =====================================================================
+// run_in_background
+// =====================================================================
+
+func TestBashTool_RunInBackground_Success(t *testing.T) {
+	m := jobs.NewManager()
+	defer m.Close()
+	ctx := jobs.WithManager(context.Background(), m)
+
+	b := NewBashTool("")
+	out, err := b.Execute(ctx, map[string]any{
+		"command":           shellEchoCmd(),
+		"run_in_background": true,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out, "bash-1") {
+		t.Errorf("output %q should contain job id", out)
+	}
+	if !strings.Contains(out, "bash_output") {
+		t.Errorf("output %q should mention bash_output", out)
+	}
+}
+
+func TestBashTool_RunInBackground_NoManager(t *testing.T) {
+	b := NewBashTool("")
+	_, err := b.Execute(context.Background(), map[string]any{
+		"command":           shellEchoCmd(),
+		"run_in_background": true,
+	})
+	if err == nil {
+		t.Fatal("expected error when no manager in context")
+	}
+	if !strings.Contains(err.Error(), "jobs.Manager") {
+		t.Errorf("error %q should mention jobs.Manager", err.Error())
+	}
+}
+
+func TestBashTool_RunInBackground_ProducesOutput(t *testing.T) {
+	m := jobs.NewManager()
+	defer m.Close()
+	ctx := jobs.WithManager(context.Background(), m)
+
+	b := NewBashTool("")
+	out, err := b.Execute(ctx, map[string]any{
+		"command":           shellEchoCmd(),
+		"run_in_background": true,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	// 提取 job id（格式 "bash-N"）
+	jobID := extractJobID(t, out)
+
+	// 等待 job 完成
+	results := m.Wait(context.Background(), []string{jobID}, 5)
+	if len(results) != 1 {
+		t.Fatalf("Wait returned %d results, want 1", len(results))
+	}
+	if results[0].Status != jobs.Done {
+		t.Errorf("status = %q, want done", results[0].Status)
+	}
+	if !strings.Contains(results[0].Output, "hello") {
+		t.Errorf("output %q missing hello", results[0].Output)
+	}
+}
+
+func TestBashTool_RunInBackground_AllowedDirs(t *testing.T) {
+	m := jobs.NewManager()
+	defer m.Close()
+	ctx := jobs.WithManager(context.Background(), m)
+
+	allowed := t.TempDir()
+	outside := t.TempDir()
+	outsideAbs, _ := filepath.Abs(outside)
+
+	b := NewBashTool("")
+	b.AllowedDirs = []string{allowed}
+
+	_, err := b.Execute(ctx, map[string]any{
+		"command":           shellEchoCmd(),
+		"workdir":           outsideAbs,
+		"run_in_background": true,
+	})
+	if err == nil {
+		t.Fatal("expected error for workdir outside AllowedDirs")
+	}
+	if !strings.Contains(err.Error(), "白名单") {
+		t.Errorf("error %q should mention allowed dirs", err.Error())
+	}
+}
+
+func TestBashTool_RunInBackground_Killable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skip on windows: cmd.exe signal propagation unreliable for kill test")
+	}
+	m := jobs.NewManager()
+	defer m.Close()
+	ctx := jobs.WithManager(context.Background(), m)
+
+	b := NewBashTool("")
+	out, err := b.Execute(ctx, map[string]any{
+		"command":           shellSleepCmd(10),
+		"run_in_background": true,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	jobID := extractJobID(t, out)
+
+	time.Sleep(50 * time.Millisecond)
+	if !m.Kill(jobID) {
+		t.Fatal("Kill returned false for running job")
+	}
+	// 验证 job 终态为 killed
+	results := m.Wait(context.Background(), []string{jobID}, 5)
+	if len(results) != 1 {
+		t.Fatalf("Wait returned %d, want 1", len(results))
+	}
+	if results[0].Status != jobs.Killed {
+		t.Errorf("status = %q, want killed", results[0].Status)
+	}
+}
+
+func TestBashTool_Schema_ContainsRunInBackground(t *testing.T) {
+	b := NewBashTool("")
+	s := string(b.Schema())
+	if !strings.Contains(s, "run_in_background") {
+		t.Error("Schema should contain run_in_background")
+	}
+}
+
+// extractJobID 从 "bash-N" 格式的输出中提取 job id。
+func extractJobID(t *testing.T, out string) string {
+	t.Helper()
+	// out 形如：已启动后台任务 "bash-1"。...
+	start := strings.Index(out, "\"")
+	if start < 0 {
+		t.Fatalf("cannot find job id in %q", out)
+	}
+	rest := out[start+1:]
+	end := strings.Index(rest, "\"")
+	if end < 0 {
+		t.Fatalf("cannot find closing quote in %q", out)
+	}
+	return rest[:end]
 }

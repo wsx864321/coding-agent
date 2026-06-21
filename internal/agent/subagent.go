@@ -13,7 +13,16 @@ import (
 
 // SubagentMetaTools 返回 subagent 不应继承的 meta 工具名称列表。
 func SubagentMetaTools() []string {
-	return []string{"task", "todo_write", "complete_step", "run_skill", "install_skill"}
+	return []string{
+		"task",          // 防止递归 spawn（只允许一层嵌套）
+		"todo_write",    // 子 agent 的 todo 状态不应影响父 agent
+		"complete_step", // 同上
+		"run_skill",     // skill 执行是父 agent 的职责
+		"install_skill", // 同上
+		"bash_output",   // 后台任务操作是父 agent 的职责（子 agent 无 jobMgr）
+		"kill_shell",    // 同上
+		"wait",          // 同上
+	}
 }
 
 const DefaultSubagentSystemPrompt = `你是一个由父 agent 派生的子 agent，负责完成一个聚焦的子任务。

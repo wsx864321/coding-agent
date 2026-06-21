@@ -188,7 +188,16 @@ func TestRunSubAgent_DefaultMaxTurns(t *testing.T) {
 
 func TestSubagentMetaTools(t *testing.T) {
 	meta := SubagentMetaTools()
-	expected := map[string]bool{"task": true, "todo_write": true, "complete_step": true, "run_skill": true, "install_skill": true}
+	expected := map[string]bool{
+		"task":          true,
+		"todo_write":    true,
+		"complete_step": true,
+		"run_skill":     true,
+		"install_skill": true,
+		"bash_output":   true,
+		"kill_shell":    true,
+		"wait":          true,
+	}
 	for _, name := range meta {
 		if !expected[name] {
 			t.Errorf("unexpected meta tool: %q", name)

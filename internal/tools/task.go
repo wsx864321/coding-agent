@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
+
+	"github.com/wsx864321/coding-agent/internal/jobs"
 )
 
 // SubagentRunner 是 task 工具调用 subagent 的抽象接口。
@@ -52,8 +55,9 @@ func (t *TaskTool) Description() string {
 }
 
 type taskArgs struct {
-	Prompt      string `json:"prompt"`
-	Description string `json:"description,omitempty"`
+	Prompt          string `json:"prompt"`
+	Description     string `json:"description,omitempty"`
+	RunInBackground bool   `json:"run_in_background,omitempty"`
 }
 
 func (t *TaskTool) Schema() json.RawMessage {
@@ -67,6 +71,10 @@ func (t *TaskTool) Schema() json.RawMessage {
 			"description": map[string]any{
 				"type":        "string",
 				"description": "子任务的简短标签（3-7 个词），用于日志展示。",
+			},
+			"run_in_background": map[string]any{
+				"type":        "boolean",
+				"description": "后台执行：立即返回 job id，子 agent 跨 turn 持续运行。用 bash_output(job_id=...) 读取最终回答，wait 等待完成，kill_shell 终止。适合耗时的子任务。",
 			},
 		},
 		"required": []string{"prompt"},
@@ -89,10 +97,42 @@ func (t *TaskTool) Execute(ctx context.Context, args map[string]any) (string, er
 		return "", fmt.Errorf("subagent runner 未配置")
 	}
 
+	// 后台执行分支：通过 jobs.Manager 启动，立即返回 job id
+	if p.RunInBackground {
+		return t.runBackground(ctx, p)
+	}
+
 	answer, err := t.runner(ctx, p.Prompt)
 	if err != nil {
 		return "", fmt.Errorf("子 agent 执行失败: %w", err)
 	}
 
 	return answer, nil
+}
+
+// runBackground 在后台 goroutine 中运行子 agent，立即返回 job id。
+// 子 agent 的最终回答作为 job 的 result，模型用 bash_output 读取。
+func (t *TaskTool) runBackground(ctx context.Context, p taskArgs) (string, error) {
+	jm, ok := jobs.FromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("后台执行不可用：当前上下文未配置 jobs.Manager")
+	}
+
+	label := p.Description
+	if label == "" {
+		label = "task"
+	}
+	sessionID := jobs.SessionFromContext(ctx)
+	runner := t.runner
+
+	job := jm.StartForSession(sessionID, "task", label, func(jobCtx context.Context, out io.Writer) (string, error) {
+		answer, err := runner(jobCtx, p.Prompt)
+		if err != nil {
+			return "", fmt.Errorf("子 agent 执行失败: %w", err)
+		}
+		return answer, nil
+	})
+
+	return fmt.Sprintf("已启动后台子任务 %q。它跨 turn 持续运行；用 bash_output(job_id=%q) 读取最终回答，wait 等待完成，kill_shell(job_id=%q) 终止。",
+		job.ID, job.ID, job.ID), nil
 }

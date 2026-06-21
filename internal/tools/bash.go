@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/wsx864321/coding-agent/internal/jobs"
 )
 
 // BashTool 实现了跨平台（Windows / 类 Unix）命令行执行的工具
@@ -69,6 +72,10 @@ type bashArgs struct {
 	Workdir string `json:"workdir,omitempty"`
 	// Timeout 可选，单次执行超时时间（秒），0 表示不超时
 	Timeout int `json:"timeout,omitempty"`
+	// RunInBackground 可选，后台执行：立即返回 job id，跨 turn 持续运行。
+	// 用 bash_output 读输出，wait 等待，kill_shell 终止。
+	// 适合长命令（install/build/test/deploy）。
+	RunInBackground bool `json:"run_in_background,omitempty"`
 }
 
 // Schema 返回工具参数的 JSON Schema
@@ -89,6 +96,10 @@ func (b *BashTool) Schema() json.RawMessage {
 				"minimum":     0,
 				"description": "超时时间（秒），0 表示不超时，默认 60s",
 			},
+			"run_in_background": map[string]any{
+				"type":        "boolean",
+				"description": "后台执行：立即返回 job id，跨 turn 持续运行。用 bash_output 读输出，wait 等待，kill_shell 终止。适合长命令（install/build/test/deploy）。后台执行不受 timeout 限制。",
+			},
 		},
 		"required": []string{"command"},
 	}
@@ -106,6 +117,11 @@ func (b *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 	command := strings.TrimSpace(params.Command)
 	if command == "" {
 		return "", errors.New("command 不能为空")
+	}
+
+	// 后台执行分支：通过 jobs.Manager 启动，立即返回 job id
+	if params.RunInBackground {
+		return b.runBackground(ctx, params)
 	}
 
 	// 处理超时
@@ -231,4 +247,55 @@ func (l *limitedWriter) Write(p []byte) (int, error) {
 	_, _ = l.w.Write(p)
 	l.written += len(p)
 	return len(p), nil
+}
+
+// runBackground 通过 jobs.Manager 后台执行命令，立即返回 job id。
+// 后台 job 运行在 Manager 的 session context 下（跨 turn 存活），不受前台
+// timeout 限制。stdout/stderr 流入 job buffer，模型用 bash_output 增量读取。
+func (b *BashTool) runBackground(ctx context.Context, params bashArgs) (string, error) {
+	jm, ok := jobs.FromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("后台执行不可用：当前上下文未配置 jobs.Manager")
+	}
+
+	workdir := params.Workdir
+	// 校验工作目录白名单
+	if len(b.AllowedDirs) > 0 && workdir != "" {
+		ok, err := isInAllowedDirs(workdir, b.AllowedDirs)
+		if err != nil {
+			return "", fmt.Errorf("校验 workdir 失败: %w", err)
+		}
+		if !ok {
+			return "", fmt.Errorf("workdir %q 不在允许的目录白名单中", workdir)
+		}
+	}
+
+	command := strings.TrimSpace(params.Command)
+	preview := commandPreview(command)
+	sessionID := jobs.SessionFromContext(ctx)
+
+	job := jm.StartForSession(sessionID, "bash", preview, func(jobCtx context.Context, out io.Writer) (string, error) {
+		cmd, err := buildCommand(jobCtx, command, workdir)
+		if err != nil {
+			return "", err
+		}
+		// 后台 job 的输出不限制单次大小（jobWriter 已有 10MB 上限防 OOM）
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return "", cmd.Run()
+	})
+
+	return fmt.Sprintf("已启动后台任务 %q。它跨 turn 持续运行；用 bash_output(job_id=%q) 读取输出，wait 等待完成，kill_shell(job_id=%q) 终止。",
+		job.ID, job.ID, job.ID), nil
+}
+
+// commandPreview 截取命令前若干字符作为 job label，便于日志展示。
+func commandPreview(cmd string) string {
+	const maxLen = 60
+	cmd = strings.ReplaceAll(cmd, "\n", " ")
+	cmd = strings.TrimSpace(cmd)
+	if len(cmd) > maxLen {
+		return cmd[:maxLen] + "..."
+	}
+	return cmd
 }

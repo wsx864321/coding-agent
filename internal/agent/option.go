@@ -2,6 +2,7 @@ package agent
 
 import (
 	"github.com/wsx864321/coding-agent/internal/hooks"
+	"github.com/wsx864321/coding-agent/internal/jobs"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/provider"
@@ -86,4 +87,18 @@ func (o memorySetOpt) apply(a *Agent) {
 // WithMemory 注入 memory Set
 func WithMemory(s *memory.Set) Option {
 	return memorySetOpt{s: s}
+}
+
+// jobManagerOpt 注入后台任务 Manager
+type jobManagerOpt struct{ m *jobs.Manager }
+
+func (o jobManagerOpt) apply(a *Agent) {
+	a.jobMgr = o.m
+}
+
+// WithJobManager 注入后台任务 Manager。注入后，bash(run_in_background) 和
+// task(run_in_background) 启动的后台 job 跨 turn 存活，bash_output/kill_shell/wait
+// 可操作它们。nil 表示禁用后台执行。
+func WithJobManager(m *jobs.Manager) Option {
+	return jobManagerOpt{m: m}
 }

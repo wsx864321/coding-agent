@@ -8,6 +8,7 @@ import (
 
 	"github.com/wsx864321/coding-agent/internal/evidence"
 	"github.com/wsx864321/coding-agent/internal/hooks"
+	"github.com/wsx864321/coding-agent/internal/jobs"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/provider"
@@ -45,6 +46,8 @@ type Agent struct {
 	// --- memory ---
 	memSet   *memory.Set
 	memQueue *memory.Queue
+	// --- background jobs ---
+	jobMgr *jobs.Manager
 	// --- pre-compact snapshot (for memory extraction) ---
 	preCompactSnapshot []provider.Message
 	// --- auto-extract throttling ---
@@ -236,6 +239,15 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		ctx = evidence.WithLedger(ctx, a.ledger)
 	}
 
+	// 注入后台任务 Manager 到 context，供 bash/task 的 run_in_background 及
+	// bash_output/kill_shell/wait 访问。同时 drain 上一 turn 完成的 job 通知。
+	if a.jobMgr != nil {
+		ctx = jobs.WithManager(ctx, a.jobMgr)
+		if note := a.jobMgr.DrainCompletedNote(); note != "" {
+			userInput = note + "\n\n" + userInput
+		}
+	}
+
 	if a.hooks != nil {
 		a.hooks.TriggerUserPromptSubmit(ctx, userInput)
 	}
@@ -348,6 +360,11 @@ func (a *Agent) MemorySet() *memory.Set {
 // MemoryQueue 返回记忆变更通知队列
 func (a *Agent) MemoryQueue() *memory.Queue {
 	return a.memQueue
+}
+
+// JobManager 返回后台任务 Manager（可能为 nil）。
+func (a *Agent) JobManager() *jobs.Manager {
+	return a.jobMgr
 }
 
 // PreCompactSnapshot 返回当前压缩前快照

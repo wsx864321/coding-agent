@@ -15,6 +15,7 @@ import (
 	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/hooks/builtin"
+	"github.com/wsx864321/coding-agent/internal/jobs"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/provider"
@@ -33,6 +34,7 @@ import (
 //	/hooks    查看已注册 hook 数量（按事件分组）
 //	/skills   查看已加载的 skill 列表
 //	/compact  手动触发一次上下文压缩（可选 focus 文本）
+//	/jobs     查看运行中的后台任务
 //	/<skill>  触发对应 skill（等效于向 agent 发送 run_skill 的结果）
 //	/exit     退出
 var chatCmd = &cobra.Command{
@@ -48,6 +50,7 @@ var chatCmd = &cobra.Command{
   /hooks    查看已注册 hook 数量
   /skills   查看已加载的 skill 列表
   /compact  手动触发一次上下文压缩
+  /jobs     查看运行中的后台任务
   /<skill>  触发对应 skill
   /exit     退出`,
 	RunE: runChat,
@@ -110,12 +113,17 @@ func runChat(cmd *cobra.Command, args []string) error {
 		},
 	}
 
+	// 初始化后台任务 Manager：生命周期与整个 chat 会话一致，退出时 Close 等待所有 job 退出
+	jobMgr := jobs.NewManager()
+	defer jobMgr.Close()
+
 	a, err := agent.NewAgent(cfg,
 		agent.WithRegistry(registry),
 		agent.WithChecker(checker),
 		agent.WithHooks(builtin.NewDefault(os.Stderr, workdir)),
 		agent.WithSkillStore(skillStore),
 		agent.WithMemory(memSet),
+		agent.WithJobManager(jobMgr),
 	)
 	if err != nil {
 		return err
@@ -228,6 +236,27 @@ func handleSlashCommand(ctx context.Context, a *agent.Agent, store *skill.Store,
 		}
 		fmt.Printf("[coding-agent] context compact 完成 (%s)\n", a.ContextStats())
 		return true, nil
+
+	case "/jobs":
+		mgr := a.JobManager()
+		if mgr == nil {
+			fmt.Println("[coding-agent] 后台任务未启用")
+			return true, nil
+		}
+		running := mgr.Running()
+		if len(running) == 0 {
+			fmt.Println("[coding-agent] 无运行中的后台任务")
+			return true, nil
+		}
+		fmt.Printf("[coding-agent] 运行中的后台任务 (%d):\n", len(running))
+		for _, v := range running {
+			label := v.ID
+			if v.Label != "" {
+				label = fmt.Sprintf("%s (%s)", v.ID, v.Label)
+			}
+			fmt.Printf("  %s\n", label)
+		}
+		return true, nil
 	}
 
 	// 尝试匹配 skill slash 命令：/<skill_name> [args]
@@ -286,6 +315,7 @@ func printChatHelp(store *skill.Store) {
 	fmt.Println("  /hooks    查看已注册 hook 数量")
 	fmt.Println("  /skills   查看已加载的 skill 列表")
 	fmt.Println("  /compact  手动触发一次上下文压缩（可附 focus）")
+	fmt.Println("  /jobs     查看运行中的后台任务")
 	fmt.Println("  /exit     退出")
 
 	if store != nil {
