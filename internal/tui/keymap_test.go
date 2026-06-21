@@ -173,6 +173,50 @@ func TestJKTypeWhenInputNotEmpty(t *testing.T) {
 	}
 }
 
+func TestStreamErrorAfterInterruptDoesNotSetLastError(t *testing.T) {
+	m := New()
+	m.busy = true
+	m.interrupted = true
+
+	next, cmd := m.Update(StreamErrorMsg{Err: errors.New("cancelled")})
+	if cmd != nil {
+		t.Fatal("StreamErrorMsg after interrupt should not return a command")
+	}
+	updated := next.(Model)
+	if updated.lastError != "" {
+		t.Fatalf("lastError=%q, want empty when error follows interrupt", updated.lastError)
+	}
+	if updated.interrupted {
+		t.Fatal("interrupted flag should be cleared after stream error")
+	}
+}
+
+func TestUpDownScrollWhenInputEmptyEvenIfBusy(t *testing.T) {
+	m := New()
+	m.width = 40
+	m.height = 12
+	m.messages = longMessageHistory()
+	m = m.clampScrollToBottom()
+	m.busy = true
+	m.input = ""
+	bottom := m.scrollOffset
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if cmd != nil {
+		t.Fatal("KeyUp while busy should not return a command")
+	}
+	updated := next.(Model)
+	if updated.scrollOffset >= bottom {
+		t.Fatalf("scrollOffset=%d, want < %d for KeyUp while busy with empty input", updated.scrollOffset, bottom)
+	}
+
+	next, _ = updated.Update(tea.KeyMsg{Type: tea.KeyDown})
+	scrolledDown := next.(Model)
+	if scrolledDown.scrollOffset <= updated.scrollOffset {
+		t.Fatalf("scrollOffset=%d, want > %d for KeyDown after KeyUp while busy", scrolledDown.scrollOffset, updated.scrollOffset)
+	}
+}
+
 func TestCtrlCInterruptsBusyBeforeQuit(t *testing.T) {
 	m := NewWithRunner(&stubRunner{})
 	m.busy = true
