@@ -21,7 +21,7 @@ Status: done
 
 ## Commits
 
-- （提交后填写）
+- 2e88c19 feat(tui): refine message/input/status/error layout hierarchy
 
 ## Concerns
 
