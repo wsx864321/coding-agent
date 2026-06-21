@@ -14,10 +14,6 @@ import (
 
 	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/hooks"
-	"github.com/wsx864321/coding-agent/internal/hooks/builtin"
-	"github.com/wsx864321/coding-agent/internal/jobs"
-	"github.com/wsx864321/coding-agent/internal/memory"
-	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/provider"
 	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
@@ -64,33 +60,31 @@ func init() {
 
 func runChat(cmd *cobra.Command, args []string) error {
 	workdir := resolveWorkdir(cmd)
-	registry := tools.DefaultRegistry(workdir)
-
-	// 初始化 skill store：扫描 project / global / builtin 技能
-	skillStore := skill.NewStore(skill.StoreOptions{Workdir: workdir})
-
-	// 注册 skill 工具到 registry
-	registry.Register(skill.NewRunSkillTool(skillStore, nil))
-	registry.Register(skill.NewInstallSkillTool(skillStore))
-
-	// 加载 memory
-	memSet := memory.Load(memory.Options{CWD: workdir, Workdir: workdir})
-
-	// --- session 持久化 ---
-	list, _ := cmd.Flags().GetBool("list")
-	resume, _ := cmd.Flags().GetString("resume")
-
 	cfg := buildConfig(cmd)
 	// SessionDir 需要在 NewAgent(resolve) 之前确定，以便 --list / --resume 使用
 	sessionBucket := agent.SessionBucket(agent.ResolveSessionDir(cfg.SessionDir), workdir)
+
+	list, _ := cmd.Flags().GetBool("list")
 	if list {
 		return listAndPrintSessions(sessionBucket)
 	}
 
+	setup, err := setupChatAgent(cmd)
+	if err != nil {
+		return err
+	}
+	defer setup.cleanup()
+
+	a := setup.Agent
+	skillStore := setup.SkillStore
+	registry := setup.Registry
+
+	resume, _ := cmd.Flags().GetString("resume")
+
 	fmt.Printf("[coding-agent] REPL 已启动，workdir=%s\n", workdir)
 	fmt.Printf("[coding-agent] 已注册工具: %s\n", joinToolNames(registry))
 
-	if len(memSet.Docs) > 0 {
+	if memSet := a.MemorySet(); memSet != nil && len(memSet.Docs) > 0 {
 		fmt.Printf("[coding-agent] 已加载 %d 个层级文档\n", len(memSet.Docs))
 	}
 
@@ -102,35 +96,6 @@ func runChat(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("[coding-agent] 已加载 skills: %s\n", strings.Join(names, ", "))
 	}
-
-	asker := &permission.StdinAsker{Reader: os.Stdin, Writer: os.Stderr}
-
-	checker := &permission.Pipeline{
-		Deny: []permission.Checker{
-			permission.NewDenyListChecker(),
-			permission.NewBashAskChecker(asker),
-			permission.NewWorkdirChecker(workdir, asker),
-		},
-	}
-
-	// 初始化后台任务 Manager：生命周期与整个 chat 会话一致，退出时 Close 等待所有 job 退出
-	jobMgr := jobs.NewManager()
-	defer jobMgr.Close()
-
-	a, err := agent.NewAgent(cfg,
-		agent.WithRegistry(registry),
-		agent.WithChecker(checker),
-		agent.WithHooks(builtin.NewDefault(os.Stderr, workdir)),
-		agent.WithSkillStore(skillStore),
-		agent.WithMemory(memSet),
-		agent.WithJobManager(jobMgr),
-	)
-	if err != nil {
-		return err
-	}
-	a.WireTaskTool()
-	a.WireSkillTools()
-	a.WireMemoryTools()
 
 	// 绑定 session 路径（--resume 恢复已有 session，否则新建）
 	if resume != "" {

@@ -23,6 +23,11 @@ const (
 // loopStep 跑一次"调用 LLM → 处理 tool_calls → 收集 tool 结果"循环。
 // 返回 final assistant content 表示结束；返回 (空, nil) 表示还有下一步。
 func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
+	return a.loopStepWithText(ctx, nil)
+}
+
+// loopStepWithText 与 loopStep 相同，但在流式收集时可推送文本增量。
+func (a *Agent) loopStepWithText(ctx context.Context, onText func(string)) (final string, err error) {
 	// 修复历史里的孤儿 tool 消息，避免 provider 400
 	a.messages = provider.SanitizeToolPairing(a.messages)
 
@@ -41,7 +46,7 @@ func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
 		return "", fmt.Errorf("调用 LLM 失败: %w", err)
 	}
 
-	msg, usage, streamErr := provider.Collect(ch)
+	msg, usage, streamErr := provider.CollectWithText(ch, onText)
 	if streamErr != nil {
 		// 流中断恢复：如果已有部分输出且在恢复次数内，注入恢复 prompt 重试
 		if provider.IsStreamInterrupted(streamErr) {
