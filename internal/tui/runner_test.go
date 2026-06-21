@@ -238,6 +238,35 @@ func TestStreamErrorClearsBusy(t *testing.T) {
 	}
 }
 
+func TestSubmitAfterRecoverableErrorStartsNewTurn(t *testing.T) {
+	runner := &stubRunner{chunks: []string{"retry-ok"}}
+	m := NewWithRunner(runner)
+	m.busy = true
+	m.lastError = "network down"
+
+	next, _ := m.Update(StreamErrorMsg{Err: errors.New("network down")})
+	afterErr := next.(Model)
+	if afterErr.busy {
+		t.Fatal("should be idle after recoverable error")
+	}
+
+	afterErr.input = "try again"
+	next, cmd := afterErr.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("Enter after error should start new turn")
+	}
+	updated := next.(Model)
+	if updated.lastError != "" {
+		t.Fatalf("lastError=%q, want cleared on new submit", updated.lastError)
+	}
+	if msg := cmd(); msg == nil {
+		t.Fatal("stream command returned nil after error recovery submit")
+	}
+	if runner.prompt != "try again" {
+		t.Fatalf("runner prompt=%q, want try again", runner.prompt)
+	}
+}
+
 func TestEnterSubmitEndToEndWithStubRunner(t *testing.T) {
 	runner := &stubRunner{chunks: []string{"A", "B"}}
 	m := NewWithRunner(runner)

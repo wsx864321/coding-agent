@@ -76,6 +76,36 @@ func TestEscInterruptsBusyTurn(t *testing.T) {
 	}
 }
 
+func TestBusyBlocksInputEditing(t *testing.T) {
+	m := New()
+	m.busy = true
+	m.input = ""
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	updated := next.(Model)
+	if updated.input != "" {
+		t.Fatalf("input=%q, want empty while busy", updated.input)
+	}
+
+	next, _ = updated.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	updated = next.(Model)
+	if updated.input != "" {
+		t.Fatalf("backspace while busy should not change input")
+	}
+}
+
+func TestRecoverableErrorHelpAffordance(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m.lastError = "timeout"
+
+	view := m.View()
+	if !strings.Contains(view, "可继续输入") {
+		t.Fatalf("error state should hint next action:\n%s", view)
+	}
+}
+
 func TestEscInterruptAllowsInputAfter(t *testing.T) {
 	m := NewWithRunner(&stubRunner{})
 	m.busy = true
