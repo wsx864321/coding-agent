@@ -273,3 +273,77 @@ func longMessageHistory() []Message {
 	}
 	return msgs
 }
+
+func TestWindowResizeClampsScrollOffset(t *testing.T) {
+	m := New()
+	m.width = 40
+	m.height = 20
+	m.messages = longMessageHistory()
+	m = m.clampScrollToBottom()
+	before := m.scrollOffset
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 8})
+	updated := next.(Model)
+	if updated.scrollOffset < 0 || updated.scrollOffset > updated.maxScrollOffset() {
+		t.Fatalf("scrollOffset=%d out of range [0,%d] after resize",
+			updated.scrollOffset, updated.maxScrollOffset())
+	}
+	if before > 0 && updated.scrollOffset > before {
+		t.Fatalf("scrollOffset=%d should not increase when viewport shrinks (was %d)",
+			updated.scrollOffset, before)
+	}
+}
+
+func TestStatusAppearanceStabilizesScroll(t *testing.T) {
+	m := NewWithRunner(&stubRunner{})
+	m.width = 40
+	m.height = 12
+	m.messages = longMessageHistory()
+	m = m.clampScrollToBottom()
+	maxBefore := m.maxScrollOffset()
+	m.scrollOffset = maxBefore + 3 // 模拟 overhead 变化前未钳制的偏移
+
+	m.busy = true
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated := next.(Model)
+	if updated.scrollOffset < 0 || updated.scrollOffset > updated.maxScrollOffset() {
+		t.Fatalf("scrollOffset=%d out of range [0,%d] after interrupt status",
+			updated.scrollOffset, updated.maxScrollOffset())
+	}
+}
+
+func TestStatusDisappearanceStabilizesScroll(t *testing.T) {
+	m := NewWithRunner(&stubRunner{chunks: []string{"ok"}})
+	m.width = 40
+	m.height = 12
+	m.messages = longMessageHistory()
+	m.statusMsg = interruptedStatusMsg
+	m = m.clampScrollToBottom()
+	if m.scrollOffset != m.maxScrollOffset() {
+		t.Fatalf("setup: scrollOffset=%d, want bottom=%d", m.scrollOffset, m.maxScrollOffset())
+	}
+
+	m.input = "continue"
+	updated, _ := m.submit()
+	if updated.scrollOffset < 0 || updated.scrollOffset > updated.maxScrollOffset() {
+		t.Fatalf("scrollOffset=%d out of range [0,%d] after status cleared",
+			updated.scrollOffset, updated.maxScrollOffset())
+	}
+}
+
+func TestStreamChunkKeepsBottomFollow(t *testing.T) {
+	m := New()
+	m.width = 40
+	m.height = 12
+	m.messages = longMessageHistory()
+	m = m.withMessage(RoleAssistant, "")
+	m.busy = true
+	m.scrollOffset = 0 // 用户曾上滚
+
+	next, _ := m.Update(StreamChunkMsg{Text: "new tail content"})
+	updated := next.(Model)
+	if updated.scrollOffset != updated.maxScrollOffset() {
+		t.Fatalf("scrollOffset=%d, want bottom=%d during streaming",
+			updated.scrollOffset, updated.maxScrollOffset())
+	}
+}

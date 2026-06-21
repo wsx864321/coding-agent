@@ -77,11 +77,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.lastError = msg.Err.Error()
 		}
-		return m, nil
+		return m.stabilizeScroll(), nil
 	case streamClosedMsg:
 		m.busy = false
 		m.streamCh = nil
-		return m, nil
+		return m.stabilizeScroll(), nil
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
@@ -142,6 +142,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.interrupted = false
 	m = m.withMessage(RoleUser, text)
 	m = m.withMessage(RoleAssistant, "")
+	m = m.stabilizeScroll()
 
 	ch := make(chan any, 16)
 	runner := m.runner
@@ -214,6 +215,12 @@ func (m Model) clampScroll(offset int) int {
 	return offset
 }
 
+// stabilizeScroll 在 overhead（错误/状态行）或视口变化后重新钳制 scrollOffset。
+func (m Model) stabilizeScroll() Model {
+	m.scrollOffset = m.clampScroll(m.scrollOffset)
+	return m
+}
+
 func (m Model) interruptTurn() Model {
 	if !m.busy {
 		return m
@@ -226,7 +233,7 @@ func (m Model) interruptTurn() Model {
 	m.streamCh = nil
 	m.statusMsg = interruptedStatusMsg
 	m.interrupted = true
-	return m
+	return m.stabilizeScroll()
 }
 
 func (m Model) messageViewportHeight() int {
