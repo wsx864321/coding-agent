@@ -8,7 +8,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const interruptedStatusMsg = "已中断"
+const (
+	interruptedStatusMsg = "已中断"
+	processingStatusMsg  = "处理中..."
+)
 
 // Model 是 Bubble Tea 聊天界面的状态机。
 type Model struct {
@@ -64,6 +67,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamCh = nil
 		m.turnCancel = nil
 		m.interrupted = false
+		m.statusMsg = ""
 		m = m.clampScrollToBottom()
 		return m, nil
 	case StreamErrorMsg:
@@ -72,8 +76,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turnCancel = nil
 		if m.interrupted {
 			m.interrupted = false
-			return m, nil
+			return m.stabilizeScroll(), nil
 		}
+		m.statusMsg = ""
 		if msg.Err != nil {
 			m.lastError = msg.Err.Error()
 		}
@@ -81,6 +86,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamClosedMsg:
 		m.busy = false
 		m.streamCh = nil
+		m.turnCancel = nil
+		m.interrupted = false
+		m.statusMsg = ""
 		return m.stabilizeScroll(), nil
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -138,7 +146,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.input = ""
 	m.busy = true
 	m.lastError = ""
-	m.statusMsg = ""
+	m.statusMsg = processingStatusMsg
 	m.interrupted = false
 	m = m.withMessage(RoleUser, text)
 	m = m.withMessage(RoleAssistant, "")

@@ -29,6 +29,33 @@ func TestScrollWithKAndJ(t *testing.T) {
 	}
 }
 
+func TestEscInterrupt(t *testing.T) {
+	m := NewWithRunner(&stubRunner{chunks: []string{"partial"}})
+	m.busy = true
+	m.statusMsg = processingStatusMsg
+	m.streamCh = make(chan any, 1)
+	m.width = 80
+	m.height = 24
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("Esc interrupt should not return a command")
+	}
+	updated := next.(Model)
+	if updated.busy {
+		t.Fatal("busy should be false after Esc interrupt")
+	}
+	if updated.statusMsg != interruptedStatusMsg {
+		t.Fatalf("statusMsg = %q, want %q", updated.statusMsg, interruptedStatusMsg)
+	}
+	if strings.Contains(updated.View(), processingStatusMsg) {
+		t.Fatalf("View should not keep processing status after interrupt:\n%s", updated.View())
+	}
+	if !strings.Contains(updated.View(), interruptedStatusMsg) {
+		t.Fatalf("View should show interrupted feedback:\n%s", updated.View())
+	}
+}
+
 func TestEscInterruptsBusyTurn(t *testing.T) {
 	m := NewWithRunner(&stubRunner{chunks: []string{"partial"}})
 	m.busy = true

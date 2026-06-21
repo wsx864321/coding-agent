@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -87,9 +88,120 @@ func TestStreamChunksAppendAssistantContent(t *testing.T) {
 	}
 }
 
+func TestSubmitSetsProcessing(t *testing.T) {
+	runner := &stubRunner{chunks: []string{"ok"}}
+	m := NewWithRunner(runner)
+	m.input = "hello"
+	m.width = 80
+	m.height = 24
+
+	updated, cmd := m.submit()
+	if cmd == nil {
+		t.Fatal("submit should start async stream command")
+	}
+	if !updated.busy {
+		t.Fatal("busy should be true after submit")
+	}
+	if updated.statusMsg != processingStatusMsg {
+		t.Fatalf("statusMsg = %q, want %q", updated.statusMsg, processingStatusMsg)
+	}
+	view := updated.View()
+	if !strings.Contains(view, processingStatusMsg) {
+		t.Fatalf("View should show processing status:\n%s", view)
+	}
+	if !strings.Contains(view, "处理中") {
+		t.Fatalf("View should show processing hint in input pane:\n%s", view)
+	}
+}
+
+func TestStreamDoneClearsProcessing(t *testing.T) {
+	m := New()
+	m.busy = true
+	m.statusMsg = processingStatusMsg
+	m.width = 80
+	m.height = 24
+
+	next, cmd := m.Update(StreamDoneMsg{})
+	updated := next.(Model)
+	if updated.busy {
+		t.Fatal("busy should be false after StreamDoneMsg")
+	}
+	if updated.statusMsg != "" {
+		t.Fatalf("statusMsg = %q, want empty after done", updated.statusMsg)
+	}
+	if cmd != nil {
+		t.Fatal("StreamDoneMsg should not return follow-up command")
+	}
+	view := updated.View()
+	if strings.Contains(view, processingStatusMsg) {
+		t.Fatalf("View should not show processing after done:\n%s", view)
+	}
+}
+
+func TestStreamClosedResets(t *testing.T) {
+	m := New()
+	m.busy = true
+	m.statusMsg = processingStatusMsg
+	m.streamCh = make(chan any)
+	m.width = 80
+	m.height = 24
+
+	next, cmd := m.Update(streamClosedMsg{})
+	updated := next.(Model)
+	if updated.busy {
+		t.Fatal("busy should be false after stream closed")
+	}
+	if updated.statusMsg != "" {
+		t.Fatalf("statusMsg = %q, want empty after stream closed", updated.statusMsg)
+	}
+	if updated.streamCh != nil {
+		t.Fatal("streamCh should be nil after stream closed")
+	}
+	if cmd != nil {
+		t.Fatal("streamClosedMsg should not return follow-up command")
+	}
+
+	next, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("next")})
+	typed := next.(Model)
+	if typed.input != "next" {
+		t.Fatalf("input = %q, want next after stream closed", typed.input)
+	}
+}
+
+func TestInterruptDoesNotAppend(t *testing.T) {
+	m := NewWithRunner(&stubRunner{})
+	m.busy = true
+	m = m.withMessage(RoleUser, "q")
+	m = m.withMessage(RoleAssistant, "partial")
+	m.width = 80
+	m.height = 24
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	interrupted := next.(Model)
+	bodyBefore := interrupted.messages[len(interrupted.messages)-1].Content
+
+	next, _ = interrupted.Update(StreamErrorMsg{Err: errors.New("context canceled")})
+	updated := next.(Model)
+	bodyAfter := updated.messages[len(updated.messages)-1].Content
+	if bodyAfter != bodyBefore {
+		t.Fatalf("message body changed after interrupted error: before=%q after=%q", bodyBefore, bodyAfter)
+	}
+	if updated.lastError != "" {
+		t.Fatalf("lastError = %q, want empty for interrupted stream error", updated.lastError)
+	}
+	if updated.statusMsg != interruptedStatusMsg {
+		t.Fatalf("statusMsg = %q, want %q", updated.statusMsg, interruptedStatusMsg)
+	}
+	view := updated.View()
+	if strings.Contains(view, "context canceled") {
+		t.Fatalf("interrupted error must not appear in view:\n%s", view)
+	}
+}
+
 func TestStreamDoneClearsBusy(t *testing.T) {
 	m := New()
 	m.busy = true
+	m.statusMsg = processingStatusMsg
 	m = m.withMessage(RoleAssistant, "done")
 
 	next, cmd := m.Update(StreamDoneMsg{})
@@ -97,19 +209,26 @@ func TestStreamDoneClearsBusy(t *testing.T) {
 	if updated.busy {
 		t.Fatal("busy should be false after StreamDoneMsg")
 	}
+	if updated.statusMsg != "" {
+		t.Fatalf("statusMsg = %q, want empty after done", updated.statusMsg)
+	}
 	if cmd != nil {
 		t.Fatal("StreamDoneMsg should not return follow-up command")
 	}
 }
 
-func TestStreamErrorClearsBusyAndStoresError(t *testing.T) {
+func TestStreamErrorClearsBusy(t *testing.T) {
 	m := New()
 	m.busy = true
+	m.statusMsg = processingStatusMsg
 
 	next, cmd := m.Update(StreamErrorMsg{Err: errors.New("network down")})
 	updated := next.(Model)
 	if updated.busy {
 		t.Fatal("busy should be false after StreamErrorMsg")
+	}
+	if updated.statusMsg != "" {
+		t.Fatalf("statusMsg = %q, want empty after error", updated.statusMsg)
 	}
 	if updated.lastError != "network down" {
 		t.Fatalf("lastError = %q, want network down", updated.lastError)
