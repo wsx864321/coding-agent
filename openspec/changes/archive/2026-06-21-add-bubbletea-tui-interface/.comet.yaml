@@ -17,7 +17,7 @@ verification_report: docs/superpowers/reports/2026-06-21-add-bubbletea-tui-inter
 branch_status: handled
 created_at: 2026-06-21
 verified_at: 2026-06-21
-archived: false
+archived: true
 handoff_context: openspec/changes/add-bubbletea-tui-interface/.comet/handoff/design-context.json
 handoff_hash: 2054581938f8a7b30fd1c966e8822505a94ca2c87aff1338e1b06b2ef9443766
 build_command: /mnt/c/Users/Admin/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.4.windows-amd64/bin/go.exe build -o coding-agent.exe ./cmd

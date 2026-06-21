@@ -2,6 +2,7 @@
 change: add-bubbletea-tui-interface
 design-doc: docs/superpowers/specs/2026-06-21-bubbletea-tui-interface-design.md
 base-ref: 98e431618c4c5a5fe26f1bb4dc31fade2651891c
+archived-with: 2026-06-21-add-bubbletea-tui-interface
 ---
 
 # Bubble Tea TUI Implementation Plan

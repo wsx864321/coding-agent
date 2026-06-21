@@ -2,6 +2,8 @@
 comet_change: add-bubbletea-tui-interface
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-21-add-bubbletea-tui-interface
+status: final
 ---
 
 # Bubble Tea TUI Chat Design
