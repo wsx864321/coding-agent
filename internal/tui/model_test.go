@@ -347,3 +347,86 @@ func TestStreamChunkKeepsBottomFollow(t *testing.T) {
 			updated.scrollOffset, updated.maxScrollOffset())
 	}
 }
+
+func TestMessageViewportHeightAccountsForSectionSeparators(t *testing.T) {
+	m := New()
+	m.height = 24
+
+	base := m.messageViewportHeight()
+	if want := m.height - 6; base != want {
+		t.Fatalf("base viewport=%d, want %d (height minus title/input/help separators)", base, want)
+	}
+
+	m.lastError = "network down"
+	withError := m.messageViewportHeight()
+	if delta := base - withError; delta != 2 {
+		t.Fatalf("error section should reduce viewport by 2 (blank+line), got delta %d", delta)
+	}
+
+	m.statusMsg = processingStatusMsg
+	withBoth := m.messageViewportHeight()
+	if delta := withError - withBoth; delta != 2 {
+		t.Fatalf("status section should reduce viewport by 2 (blank+line), got delta %d", delta)
+	}
+}
+
+func TestViewLineCountMatchesHeightWhenMessagesOverflow(t *testing.T) {
+	m := New()
+	m.width = 40
+	m.height = 15
+	m.messages = longMessageHistory()
+	m.lastError = "err"
+	m.statusMsg = processingStatusMsg
+	m = m.clampScrollToBottom()
+
+	lineCount := strings.Count(m.View(), "\n") + 1
+	if lineCount != m.height {
+		t.Fatalf("view line count=%d, want terminal height=%d", lineCount, m.height)
+	}
+}
+
+func TestStreamDoneStabilizesScrollWithoutForcingBottom(t *testing.T) {
+	m := New()
+	m.width = 40
+	m.height = 12
+	m.messages = longMessageHistory()
+	m.busy = true
+	m.statusMsg = processingStatusMsg
+	m.scrollOffset = 0
+
+	next, _ := m.Update(StreamDoneMsg{})
+	updated := next.(Model)
+	if updated.scrollOffset != 0 {
+		t.Fatalf("StreamDoneMsg should stabilize scroll, not force bottom: offset=%d", updated.scrollOffset)
+	}
+}
+
+func TestStreamClosedStabilizesScrollWithoutForcingBottom(t *testing.T) {
+	m := New()
+	m.width = 40
+	m.height = 12
+	m.messages = longMessageHistory()
+	m.busy = true
+	m.statusMsg = processingStatusMsg
+	m.scrollOffset = 0
+
+	next, _ := m.Update(streamClosedMsg{})
+	updated := next.(Model)
+	if updated.scrollOffset != 0 {
+		t.Fatalf("streamClosedMsg should stabilize scroll, not force bottom: offset=%d", updated.scrollOffset)
+	}
+}
+
+func TestSubmitStabilizesScrollWithoutForcingBottom(t *testing.T) {
+	m := NewWithRunner(&stubRunner{})
+	m.width = 40
+	m.height = 12
+	m.messages = longMessageHistory()
+	m.scrollOffset = 0
+	m.input = "next"
+
+	updated, _ := m.submit()
+	if updated.scrollOffset != 0 {
+		t.Fatalf("submit should stabilize scroll without forcing bottom: offset=%d", updated.scrollOffset)
+	}
+}

@@ -68,8 +68,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.turnCancel = nil
 		m.interrupted = false
 		m.statusMsg = ""
-		m = m.clampScrollToBottom()
-		return m, nil
+		return m.stabilizeScroll(), nil
 	case StreamErrorMsg:
 		m.busy = false
 		m.streamCh = nil
@@ -245,12 +244,12 @@ func (m Model) interruptTurn() Model {
 }
 
 func (m Model) messageViewportHeight() int {
-	overhead := 5 // title block + input + help
+	overhead := 6 // title + separators + input + help
 	if m.lastError != "" {
-		overhead++
+		overhead += 2 // blank line + error row
 	}
 	if m.statusMsg != "" {
-		overhead++
+		overhead += 2 // blank line + status row
 	}
 	if m.height <= overhead {
 		return 1
