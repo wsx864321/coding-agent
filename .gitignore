@@ -19,3 +19,7 @@
 .coding-agent/
 .codegraph
 .reasonix
+
+node_modules
+package-lock.json
+package.json

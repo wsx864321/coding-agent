@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+"/mnt/c/Program Files/nodejs/node.exe" "E:/goproject/coding-agent/node_modules/@fission-ai/openspec/bin/openspec.js" "$@"
