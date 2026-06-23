@@ -24,9 +24,9 @@
 
 ## 4. TUI 迁移（chanEmitter → Sink）
 
-- [ ] 4.1 修改 `internal/tui/runner.go`：chanEmitter 改为实现 event.Sink
-- [ ] 4.2 修改 TUI model Update：根据 Event.Kind 分发渲染，替代原有多 message type
-- [ ] 4.3 更新 `cmd/cli/tui.go` / `cmd/cli/tui_runner.go`：装配 channel Sink
+- [x] 4.1 修改 `internal/tui/runner.go`：chanEmitter 改为实现 event.Sink
+- [x] 4.2 修改 TUI model Update：根据 Event.Kind 分发渲染，替代原有多 message type
+- [x] 4.3 更新 `cmd/cli/tui.go` / `cmd/cli/tui_runner.go`：装配 channel Sink
 
 ## 5. CLI 层装配
 

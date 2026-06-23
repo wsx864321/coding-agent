@@ -803,7 +803,7 @@ git commit -m "refactor(hooks): replace log.Printf with notify callback"
 - Produces: `func (s *TuiSink) Emit(e event.Event)`、`func (s *TuiSink) SetChan(ch chan<- event.Event)`
 - Produces: `type Runner interface { RunTurn(ctx context.Context, prompt string) error }`
 
-- [ ] **Step 1: 编写 TuiSink 失败测试**
+- [x] **Step 1: 编写 TuiSink 失败测试**
 
 创建 `internal/tui/sink_test.go`：
 
@@ -833,7 +833,7 @@ func TestTuiSink_NilChannelNoBlock(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 ```bash
 go test ./internal/tui/... -run TestTuiSink -count=1 -v
@@ -841,7 +841,7 @@ go test ./internal/tui/... -run TestTuiSink -count=1 -v
 
 Expected: FAIL — `TuiSink` 未定义
 
-- [ ] **Step 3: 实现 TuiSink**
+- [x] **Step 3: 实现 TuiSink**
 
 `internal/tui/sink.go`：
 
@@ -875,7 +875,7 @@ func (s *TuiSink) Emit(e event.Event) {
 }
 ```
 
-- [ ] **Step 4: 简化 runner.go**
+- [x] **Step 4: 简化 runner.go**
 
 ```go
 package tui
@@ -889,7 +889,7 @@ type Runner interface {
 
 删除 `StreamEmitter` alias、`chanEmitter` 全部方法。
 
-- [ ] **Step 5: 精简 stream.go**
+- [x] **Step 5: 精简 stream.go**
 
 仅保留：
 
@@ -902,7 +902,7 @@ type streamClosedMsg struct{}
 
 删除 `StreamChunkMsg`、`ToolStartMsg`、`ToolEndMsg`、`ApprovalRequestMsg`、`StreamDoneMsg`、`StreamErrorMsg`。
 
-- [ ] **Step 6: 重构 model.go — event.Event 分发**
+- [x] **Step 6: 重构 model.go — event.Event 分发**
 
 1. 字段变更：
 
@@ -989,7 +989,7 @@ case event.Event:
 
 6. 删除 `StreamChunkMsg`、`ToolStartMsg` 等旧 case 分支。
 
-- [ ] **Step 7: 迁移 runner_test.go stubRunner**
+- [x] **Step 7: 迁移 runner_test.go stubRunner**
 
 ```go
 type stubRunner struct {
@@ -1021,7 +1021,7 @@ func (s *stubRunner) RunTurn(_ context.Context, prompt string) error {
 
 测试中使用 `TuiSink` + channel 替代直接 `StreamChunkMsg`。
 
-- [ ] **Step 8: 删除 emitter_test.go，运行 TUI 测试**
+- [x] **Step 8: 删除 emitter_test.go，运行 TUI 测试**
 
 ```bash
 rm internal/tui/emitter_test.go
@@ -1030,7 +1030,7 @@ go test ./internal/tui/... -count=1 -v
 
 Expected: PASS（需同步修复 model_test.go 等引用旧 Msg 的测试）
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add internal/tui/
