@@ -1,20 +1,23 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+)
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true)
-	messageStyle  = lipgloss.NewStyle()
-	inputStyle    = lipgloss.NewStyle()
-	helpStyle     = lipgloss.NewStyle().Faint(true)
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	statusStyle   = lipgloss.NewStyle().Faint(true)
+	titleStyle   = lipgloss.NewStyle().Bold(true)
+	messageStyle = lipgloss.NewStyle()
+	inputStyle   = lipgloss.NewStyle()
+	helpStyle    = lipgloss.NewStyle().Faint(true)
+	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	statusStyle  = lipgloss.NewStyle().Faint(true)
 )
 
 // View 渲染标题、消息区、输入区与快捷键帮助。
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 
 	title := titleStyle.Render("coding-agent TUI")
@@ -31,7 +34,11 @@ func (m Model) View() string {
 		parts = append(parts, "", statusStyle.Render(m.statusMsg))
 	}
 	parts = append(parts, "", help)
-	return joinLines(parts)
+
+	v := tea.NewView(joinLines(parts))
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 func (m Model) renderMessagePane() string {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 type stubRunner struct {
@@ -124,7 +124,7 @@ func TestEnterSubmitEndToEndWithStubRunner(t *testing.T) {
 	m := NewWithRunner(runner)
 	m.input = "ping"
 
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("Enter should return stream command")
 	}

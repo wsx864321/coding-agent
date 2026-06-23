@@ -1,7 +1,7 @@
 package cli
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/tui"
@@ -33,7 +33,7 @@ func runTui(cmd *cobra.Command, args []string) error {
 	sessionBucket := agent.SessionBucket(agent.ResolveSessionDir(cfg.SessionDir), workdir)
 	setup.Agent.SetSessionPath(agent.NewSessionPath(sessionBucket, cfg.Model))
 
-	p := tea.NewProgram(tui.NewWithRunner(newAgentRunner(setup.Agent)), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewWithRunner(newAgentRunner(setup.Agent)))
 	if _, err := p.Run(); err != nil {
 		return err
 	}

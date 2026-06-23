@@ -4,8 +4,24 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
+
+func viewContent(m Model) string {
+	return m.View().Content
+}
+
+func applyKey(m Model, msg tea.KeyPressMsg) Model {
+	next, _ := m.Update(msg)
+	return next.(Model)
+}
+
+func typeText(m Model, text string) Model {
+	for _, r := range text {
+		m = applyKey(m, tea.KeyPressMsg{Code: r})
+	}
+	return m
+}
 
 func TestNewModelDefaults(t *testing.T) {
 	m := New()
@@ -44,7 +60,7 @@ func TestUpdateWindowSize(t *testing.T) {
 
 func TestUpdateCtrlCQuits(t *testing.T) {
 	m := New()
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Ctrl+C should return tea.Quit command")
 	}
@@ -70,11 +86,7 @@ func TestInitReturnsNil(t *testing.T) {
 
 func TestInsertInputAppendsRunes(t *testing.T) {
 	m := New()
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hi")})
-	if cmd != nil {
-		t.Fatal("rune input should not return a command")
-	}
-	updated := next.(Model)
+	updated := typeText(m, "hi")
 	if got := updated.input; got != "hi" {
 		t.Fatalf("input = %q, want %q", got, "hi")
 	}
@@ -83,8 +95,7 @@ func TestInsertInputAppendsRunes(t *testing.T) {
 func TestInsertInputAccumulates(t *testing.T) {
 	m := New()
 	m.input = "hel"
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("lo")})
-	updated := next.(Model)
+	updated := typeText(m, "lo")
 	if got := updated.input; got != "hello" {
 		t.Fatalf("input = %q, want %q", got, "hello")
 	}
@@ -93,7 +104,7 @@ func TestInsertInputAccumulates(t *testing.T) {
 func TestBackspaceRemovesLastRune(t *testing.T) {
 	m := New()
 	m.input = "hello"
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if cmd != nil {
 		t.Fatal("backspace should not return a command")
 	}
@@ -105,7 +116,7 @@ func TestBackspaceRemovesLastRune(t *testing.T) {
 
 func TestBackspaceOnEmptyInputIsNoop(t *testing.T) {
 	m := New()
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	updated := next.(Model)
 	if updated.input != "" {
 		t.Fatalf("input = %q, want empty", updated.input)
@@ -140,7 +151,7 @@ func TestScrollUpMovesAwayFromBottom(t *testing.T) {
 	m = m.clampScrollToBottom()
 
 	before := m.scrollOffset
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	if cmd != nil {
 		t.Fatal("scroll up should not return a command")
 	}
@@ -158,13 +169,13 @@ func TestScrollDownIncreasesOffsetTowardBottom(t *testing.T) {
 	m = m.clampScrollToBottom()
 	bottom := m.scrollOffset
 
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	scrolledUp := next.(Model)
 	if scrolledUp.scrollOffset >= bottom {
 		t.Fatalf("expected scroll up to move away from bottom, got offset %d (bottom=%d)", scrolledUp.scrollOffset, bottom)
 	}
 
-	next, _ = scrolledUp.Update(tea.KeyMsg{Type: tea.KeyDown})
+	next, _ = scrolledUp.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	scrolledDown := next.(Model)
 	if scrolledDown.scrollOffset <= scrolledUp.scrollOffset {
 		t.Fatalf("scrollOffset = %d, want > %d after KeyDown", scrolledDown.scrollOffset, scrolledUp.scrollOffset)
@@ -179,7 +190,7 @@ func TestScrollUpStopsAtTop(t *testing.T) {
 	m.scrollOffset = 0
 
 	for i := 0; i < 20; i++ {
-		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+		next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 		m = next.(Model)
 	}
 	if m.scrollOffset != 0 {
@@ -196,7 +207,7 @@ func TestScrollDownStopsAtBottom(t *testing.T) {
 	bottom := m.scrollOffset
 
 	for i := 0; i < 20; i++ {
-		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m = next.(Model)
 	}
 	if m.scrollOffset != bottom {
@@ -215,7 +226,7 @@ func TestViewRendersMessageInputAndHelpAreas(t *testing.T) {
 	}
 	m.input = "draft text"
 
-	view := m.View()
+	view := viewContent(m)
 	for _, want := range []string{
 		"coding-agent",
 		"user:",
@@ -251,13 +262,13 @@ func TestViewScrollHidesOlderMessages(t *testing.T) {
 	}
 	m = m.clampScrollToBottom()
 
-	bottomView := m.View()
+	bottomView := viewContent(m)
 	if !strings.Contains(bottomView, "last-visible-marker") {
 		t.Fatalf("bottom view should show latest message:\n%s", bottomView)
 	}
 
 	m.scrollOffset = 0
-	topView := m.View()
+	topView := viewContent(m)
 	if strings.Contains(topView, "last-visible-marker") {
 		t.Fatalf("top view should hide latest message when scrolled up:\n%s", topView)
 	}

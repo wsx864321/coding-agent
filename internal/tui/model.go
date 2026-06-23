@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 const interruptedStatusMsg = "已中断"
@@ -82,48 +82,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = false
 		m.streamCh = nil
 		return m, nil
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "ctrl+c":
 			m = m.interruptTurn()
 			m.quitting = true
 			return m, tea.Quit
-		case tea.KeyEsc:
+		case "esc":
 			return m.interruptTurn(), nil
-		case tea.KeyEnter:
+		case "enter":
 			return m.submit()
-		case tea.KeyRunes:
-			if len(msg.Runes) == 1 {
-				switch msg.Runes[0] {
-				case 'k':
-					if m.input == "" {
-						m.scrollOffset = m.clampScroll(m.scrollOffset - 1)
-					} else if !m.busy {
-						m.input += string(msg.Runes)
-					}
-				case 'j':
-					if m.input == "" {
-						m.scrollOffset = m.clampScroll(m.scrollOffset + 1)
-					} else if !m.busy {
-						m.input += string(msg.Runes)
-					}
-				default:
-					if !m.busy {
-						m.input += string(msg.Runes)
-					}
-				}
+		case "k":
+			if m.input == "" {
+				m.scrollOffset = m.clampScroll(m.scrollOffset - 1)
 			} else if !m.busy {
-				m.input += string(msg.Runes)
+				m.input += "k"
 			}
-		case tea.KeyBackspace:
+		case "j":
+			if m.input == "" {
+				m.scrollOffset = m.clampScroll(m.scrollOffset + 1)
+			} else if !m.busy {
+				m.input += "j"
+			}
+		case "backspace":
 			if !m.busy && m.input != "" {
 				_, size := utf8.DecodeLastRuneInString(m.input)
 				m.input = m.input[:len(m.input)-size]
 			}
-		case tea.KeyUp:
+		case "up":
 			m.scrollOffset = m.clampScroll(m.scrollOffset - 1)
-		case tea.KeyDown:
+		case "down":
 			m.scrollOffset = m.clampScroll(m.scrollOffset + 1)
+		default:
+			if !m.busy {
+				if s := msg.String(); len(s) == 1 {
+					m.input += s
+				}
+			}
 		}
 	}
 	return m, nil
