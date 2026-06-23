@@ -5,9 +5,13 @@
 
 ## Current Task
 
-- Task: Task 1: event 包核心定义（D1 + D2 + D3）
-- OpenSpec tasks: 1.1, 1.2, 1.3, 1.4
+- Task: Task 2: Agent 层迁移（D4）
+- OpenSpec tasks: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
 - Stage: implementing
-- Base commit: a7166d5
+- Base commit: b4fcb74
 - Commits: (pending)
 - Review: (pending)
+
+## Completed Tasks
+
+- Task 1: complete (commits a7166d5..01e8ea1)

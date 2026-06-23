@@ -368,7 +368,7 @@ git commit -m "feat(event): add unified Event/Sink/TextSink package"
 - Produces: `type SinkAsker struct { Sink event.Sink }` + `func (SinkAsker) Ask(...) bool`
 - Produces: `Run()` 在 turn 结束时 `a.sink.Emit(event.Event{Kind: event.TurnDone, Err: err})`
 
-- [ ] **Step 1: 编写 Agent Sink 集成失败测试**
+- [x] **Step 1: 编写 Agent Sink 集成失败测试**
 
 在 `internal/agent/sink_asker_test.go` 新建（从 emitter_asker_test 迁移逻辑）：
 
@@ -444,7 +444,7 @@ func TestCheckTodoGuard_EmitsNotice(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 ```bash
 go test ./internal/agent/... -run 'TestSinkAsker|TestCheckTodoGuard_EmitsNotice' -count=1 -v
@@ -452,7 +452,7 @@ go test ./internal/agent/... -run 'TestSinkAsker|TestCheckTodoGuard_EmitsNotice'
 
 Expected: FAIL — `SinkAsker` 未定义 / Notice 未发射
 
-- [ ] **Step 3: 添加 WithSink Option**
+- [x] **Step 3: 添加 WithSink Option**
 
 修改 `internal/agent/option.go`，追加：
 
@@ -472,7 +472,7 @@ func WithSink(s event.Sink) Option {
 }
 ```
 
-- [ ] **Step 4: Agent struct 添加 sink 字段 + NewAgent 默认值**
+- [x] **Step 4: Agent struct 添加 sink 字段 + NewAgent 默认值**
 
 修改 `internal/agent/agent.go`：
 
@@ -493,7 +493,7 @@ if a.sink == nil {
 }
 ```
 
-- [ ] **Step 5: 迁移 loop.go — sink.Emit 替代 emitter**
+- [x] **Step 5: 迁移 loop.go — sink.Emit 替代 emitter**
 
 修改 `internal/agent/loop.go`：
 
@@ -529,7 +529,7 @@ func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall) string {
 
 5. 添加 import `"github.com/wsx864321/coding-agent/internal/event"`。
 
-- [ ] **Step 6: Run() 发射 TurnDone，删除 RunStreaming**
+- [x] **Step 6: Run() 发射 TurnDone，删除 RunStreaming**
 
 修改 `internal/agent/agent.go` 的 `Run()`：
 
@@ -544,7 +544,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (final string, err er
 
 删除整个 `RunStreaming` 方法（约 L283-L333）。
 
-- [ ] **Step 7: 迁移 todo_guard.go**
+- [x] **Step 7: 迁移 todo_guard.go**
 
 修改 `internal/agent/todo_guard.go`：
 
@@ -565,7 +565,7 @@ a.sink.Emit(event.Event{
 })
 ```
 
-- [ ] **Step 8: 创建 sink_asker.go 替代 emitter_asker.go**
+- [x] **Step 8: 创建 sink_asker.go 替代 emitter_asker.go**
 
 `internal/agent/sink_asker.go`：
 
@@ -610,13 +610,13 @@ func (a SinkAsker) Ask(ctx context.Context, name string, args map[string]any, _ 
 }
 ```
 
-- [ ] **Step 9: 删除 emitter 相关文件**
+- [x] **Step 9: 删除 emitter 相关文件**
 
 ```bash
 rm internal/agent/emitter.go internal/agent/emitter_asker.go internal/agent/emitter_test.go internal/agent/emitter_asker_test.go
 ```
 
-- [ ] **Step 10: 运行 agent 测试**
+- [x] **Step 10: 运行 agent 测试**
 
 ```bash
 go test ./internal/agent/... -count=1 -v
@@ -624,7 +624,7 @@ go test ./internal/agent/... -count=1 -v
 
 Expected: PASS
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add internal/agent/

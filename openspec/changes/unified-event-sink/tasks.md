@@ -7,12 +7,12 @@
 
 ## 2. Agent 层迁移（StreamEmitter → Sink）
 
-- [ ] 2.1 修改 `internal/agent/option.go`：新增 `WithSink(event.Sink)` Option，移除 `WithEmitter` 相关
-- [ ] 2.2 修改 `internal/agent/agent.go`：Agent struct 新增 `sink event.Sink` 字段（nil 时用 Discard）
-- [ ] 2.3 修改 `internal/agent/loop.go`：所有 emitter.OnXxx 调用替换为 sink.Emit
-- [ ] 2.4 修改 `internal/agent/subagent.go`：subagent 的 Sink 传递
-- [ ] 2.5 删除 `internal/agent/emitter.go`：移除 StreamEmitter 接口及 context 注入
-- [ ] 2.6 更新 `internal/agent/agent_test.go`：适配 Sink，移除 StreamEmitter 依赖
+- [x] 2.1 修改 `internal/agent/option.go`：新增 `WithSink(event.Sink)` Option，移除 `WithEmitter` 相关
+- [x] 2.2 修改 `internal/agent/agent.go`：Agent struct 新增 `sink event.Sink` 字段（nil 时用 Discard）
+- [x] 2.3 修改 `internal/agent/loop.go`：所有 emitter.OnXxx 调用替换为 sink.Emit
+- [x] 2.4 修改 `internal/agent/subagent.go`：subagent 的 Sink 传递
+- [x] 2.5 删除 `internal/agent/emitter.go`：移除 StreamEmitter 接口及 context 注入
+- [x] 2.6 更新 `internal/agent/agent_test.go`：适配 Sink，移除 StreamEmitter 依赖
 
 ## 3. Hook 层迁移（log.Printf → notify）
 
