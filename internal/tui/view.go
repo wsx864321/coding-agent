@@ -28,7 +28,11 @@ func (m Model) View() tea.View {
 	var parts []string
 	parts = append(parts, title, "", messagePane, "", inputPane)
 	if m.busy {
-		parts = append(parts, "", spinnerStyle.Render(m.spinner.View()+" 思考中…"))
+		label := "思考中…"
+		if m.statusLabel != "" {
+			label = m.statusLabel
+		}
+		parts = append(parts, "", spinnerStyle.Render(m.spinner.View()+" "+label))
 	}
 	if m.lastError != "" {
 		parts = append(parts, "", errorStyle.Render("错误: "+m.lastError))

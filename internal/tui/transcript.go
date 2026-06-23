@@ -31,6 +31,15 @@ func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
 		e.Content = renderUserBubble(e.Raw, w)
 	case EntryAssistantChunk:
 		e.Content = renderAssistantText(e.Raw, w)
+	case EntryToolCard:
+		name, args, isError := decodeToolCardRaw(e.Raw)
+		if isError {
+			e.Content = renderToolCardError(name, args, w)
+		} else {
+			e.Content = renderToolCard(name, args, w)
+		}
+	case EntryToolOutput:
+		e.Content = renderToolOutput(e.Raw, toolOutputCollapseLines)
 	case EntryError:
 		e.Content = errorStyle.Render(e.Raw)
 	default:

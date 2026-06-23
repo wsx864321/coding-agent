@@ -25,7 +25,10 @@ type Model struct {
 	busy        bool
 	lastError   string
 	statusMsg   string
+	statusLabel string
 	interrupted bool
+	pendingToolName string
+	pendingToolArgs string
 	runner      Runner
 	streamCh    <-chan any
 	turnCancel  context.CancelFunc
@@ -74,11 +77,65 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case ToolStartMsg:
+		if !m.busy {
+			return m, nil
+		}
+		m.statusLabel = "running " + msg.Name + "..."
+		m.pendingToolName = msg.Name
+		m.pendingToolArgs = msg.Args
+		if m.streamCh != nil {
+			return m, waitStreamMsg(m.streamCh)
+		}
+		return m, nil
+
+	case ToolEndMsg:
+		if !m.busy {
+			return m, nil
+		}
+		name := msg.Name
+		if name == "" {
+			name = m.pendingToolName
+		}
+		args := m.pendingToolArgs
+		w := m.contentWidth()
+		if msg.IsError {
+			m = m.appendEntry(TranscriptEntry{
+				Kind:    EntryToolCard,
+				Content: renderToolCardError(name, msg.Result, w),
+				Raw:     encodeToolCardRaw(name, msg.Result, true),
+			})
+		} else {
+			m = m.appendEntry(TranscriptEntry{
+				Kind:    EntryToolCard,
+				Content: renderToolCard(name, args, w),
+				Raw:     encodeToolCardRaw(name, args, false),
+			})
+			if msg.Result != "" {
+				m = m.appendEntry(TranscriptEntry{
+					Kind:    EntryToolOutput,
+					Content: renderToolOutput(msg.Result, toolOutputCollapseLines),
+					Raw:     msg.Result,
+				})
+			}
+		}
+		m.pendingToolName = ""
+		m.pendingToolArgs = ""
+		m.statusLabel = "thinking"
+		m = m.syncViewportContent()
+		if m.streamCh != nil {
+			return m, waitStreamMsg(m.streamCh)
+		}
+		return m, nil
+
 	case StreamDoneMsg:
 		m.busy = false
 		m.streamCh = nil
 		m.turnCancel = nil
 		m.interrupted = false
+		m.statusLabel = ""
+		m.pendingToolName = ""
+		m.pendingToolArgs = ""
 		m = m.syncViewportContent()
 		return m, nil
 
@@ -187,6 +244,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.busy = true
 	m.lastError = ""
 	m.statusMsg = ""
+	m.statusLabel = ""
 	m.interrupted = false
 	m = m.appendUserMessage(text)
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})

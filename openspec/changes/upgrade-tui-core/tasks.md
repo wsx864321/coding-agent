@@ -25,10 +25,10 @@
 
 ## 4. 工具调用可视化（TUI 侧）
 
-- [ ] 4.1 在 Model 中增加工具调用状态跟踪（activeTools、toolResults）
-- [ ] 4.2 在 Update 中处理 ToolStartMsg 和 ToolEndMsg：更新 transcript、切换 spinner 文案
-- [ ] 4.3 实现 renderToolCard：工具卡片渲染（`● ToolName("args summary")`），包含颜色标记和参数截断
-- [ ] 4.4 实现工具输出折叠展示：结果超过 8 行时折叠，显示行数摘要
+- [x] 4.1 在 Model 中增加工具调用状态跟踪（activeTools、toolResults）
+- [x] 4.2 在 Update 中处理 ToolStartMsg 和 ToolEndMsg：更新 transcript、切换 spinner 文案
+- [x] 4.3 实现 renderToolCard：工具卡片渲染（`● ToolName("args summary")`），包含颜色标记和参数截断
+- [x] 4.4 实现工具输出折叠展示：结果超过 8 行时折叠，显示行数摘要
 
 ## 5. 审批交互（TUI 侧）
 
