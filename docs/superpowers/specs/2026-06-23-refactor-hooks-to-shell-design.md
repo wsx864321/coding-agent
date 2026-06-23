@@ -2,6 +2,8 @@
 comet_change: refactor-hooks-to-shell
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-23-refactor-hooks-to-shell
+status: final
 ---
 
 # Shell Hook Engine — 技术设计

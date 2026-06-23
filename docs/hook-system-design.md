@@ -2,145 +2,151 @@
 
 ## 目标
 
-把 agent 主循环里的"扩展点"抽出来，让循环只负责"触发"，业务逻辑（日志、权限、注入、收尾）由注册到 Registry 的回调承担。
+通过外部 shell 命令扩展 agent 行为：用户在 JSON 配置文件中声明 hook，agent 运行时 spawn 外部进程执行，通过 stdin JSON payload + exit code 通信。Agent 核心循环通过 `ToolHooks` interface 解耦，不直接依赖 hook 实现包。
 
 ## 包结构
 
 ```
+internal/agent/
+  hooks.go              // ToolHooks interface + SubsetHooks（subagent 视图）
+
 internal/hooks/
-  hooks.go              // 核心：Event 枚举 + 4 类 Hook 类型 + Registry
-  hooks_test.go         // Registry 行为测试（短路、计数、nil 安全）
-  builtin/
-    permission.go       // 4 个内置 hook + Sink
-    default.go          // Default() 一次性注册入口
+  hook.go               // Event 枚举、HookConfig、ResolvedHook、Payload、Decision 等核心类型
+  context.go            // subagent 上下文标记（WithSubagentFlag / IsSubagent）
+  load.go               // 从 JSON 配置文件加载 hook 声明
+  run.go                // 执行引擎：匹配 → spawn → exit code 决策
+  runner.go             // Runner 门面，实现 agent.ToolHooks interface
+  spawner.go            // DefaultSpawner（sh -c / cmd /c）
 ```
 
 ## 事件
 
-| 事件             | 触发时机                          | 入参                              | 返回值语义                                                                                                |
+| 事件             | 触发时机                          | Payload 字段                      | 返回值语义                                                                                                |
 |------------------|-----------------------------------|-----------------------------------|-----------------------------------------------------------------------------------------------------------|
-| UserPromptSubmit | Run 入口追加 user 消息前          | ctx, content                      | 仅通知；error 不阻断主流程                                                                                 |
-| PreToolUse       | 工具执行前                        | ctx, call                         | 首条返回非空 `block` 的 hook 阻断本次调用；其余 hook 不再触发                                             |
-| PostToolUse      | 工具执行后（含失败）              | ctx, call, output                 | 纯副作用；无返回值                                                                                       |
-| Stop             | 拿到 LLM final answer 后，循环退出前 | ctx, messages                  | 首条返回非空 `force` 的 hook 强制续跑：把 `force` 作为 user 消息注入，下一轮 LLM 必须继续                  |
+| UserPromptSubmit | Run 入口追加 user 消息前          | `event`, `cwd`, `prompt`          | 非阻塞型；error 不阻断主流程                                                                               |
+| PreToolUse       | 工具执行前                        | `event`, `cwd`, `toolName`, `toolArgs` | 阻塞型：exit 2 / 超时 → block，首个 block 短路后续 hook                                                   |
+| PostToolUse      | 工具执行后（含失败）              | `event`, `cwd`, `toolName`, `toolArgs`, `toolResult` | 非阻塞型；所有 hook 均顺序执行                                                                            |
+| Stop             | LLM final answer 后，循环退出前   | `event`, `cwd`                    | exit 2 + stdout 非空 → force 续跑（stdout 作为 user 消息注入）；首个 force 生效后短路                      |
 
-## 主循环中的 4 个 trigger 点
+## 执行模型
+
+### 决策矩阵
+
+| 条件 | 阻塞型事件 (PreToolUse) | 非阻塞型事件 (PostToolUse/Stop) |
+|------|------------------------|-------------------------------|
+| exit 0 | pass | pass |
+| exit 2 | **block** | warn（日志） |
+| 其它非零 | warn | warn |
+| 超时 | **block** | warn |
+| spawn 失败 | **error**（视为 block） | warn（日志） |
+
+### 短路语义
+
+- **PreToolUse**：首个 block 立即停止后续 hook，工具调用被阻止
+- **PostToolUse**：全部 hook 顺序执行，不短路
+- **Stop**：首个 force（exit 2 + stdout 非空）生效后停止后续 hook
+
+## 配置
+
+### JSON 配置文件
+
+两级配置，项目级先加载，全局级后追加：
+
+| 范围 | 路径 |
+|------|------|
+| 项目级 | `.coding-agent/hooks.json` |
+| 全局级 | `~/.coding-agent/hooks.json` |
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "command": "node .coding-agent/hooks/check-bash.js",
+        "match": "bash|shell",
+        "description": "Block dangerous shell commands",
+        "timeout": 5000
+      }
+    ]
+  }
+}
+```
+
+字段说明：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `command` | 是 | shell 命令 |
+| `match` | 否 | 工具名正则，仅 PreToolUse/PostToolUse 有效 |
+| `description` | 否 | 说明文本 |
+| `timeout` | 否 | 超时毫秒，默认 10000 |
+| `cwd` | 否 | 工作目录，默认项目根 |
+
+### stdin JSON Payload
+
+hook 进程通过 stdin 接收 JSON：
+
+```json
+{
+  "event": "PreToolUse",
+  "cwd": "/path/to/project",
+  "toolName": "bash",
+  "toolArgs": {"command": "rm -rf /"}
+}
+```
+
+## 主循环中的触发点
 
 ```text
-Run(userInput)
-  └─ TriggerUserPromptSubmit(userInput)        // 通知型，不阻断
+Run/RunStream(userInput)
+  └─ hooks.UserPromptSubmit(userInput)     // 非阻塞型
   └─ for turn in [0, MaxTurns):
        └─ loopStep
-            ├─ LLM.CreateChatCompletion
+            ├─ maybeCompact
+            ├─ LLM Stream
             └─ if no tool_calls:
-                 └─ TriggerStop(messages)      // 首个非空 force 强制续跑
+                 ├─ checkTodoGuard()       // 内置续跑检查（先于外部 hook）
+                 └─ hooks.Stop(messages)   // 首个 force 强制续跑
             └─ else:
                  └─ for tc in tool_calls:
-                      └─ executeToolCall
-                           └─ invokeTool
-                                ├─ TriggerPreToolUse(call)   // 首个非空 block 短路
-                                ├─ permission.Checker        // 系统级硬约束
-                                ├─ registry.Get + Execute
-                                └─ TriggerPostToolUse(call, output)
+                      └─ invokeTool
+                           ├─ hooks.PreToolUse(name, args) // 首个 block 短路
+                           ├─ permission.Checker           // 系统级硬约束（不可被 hook 绕过）
+                           ├─ tool.Execute
+                           └─ hooks.PostToolUse(name, args, result)
 ```
 
 ## 安全不变式
 
-**hook 可以"放水"（允许更多操作），但不能"开闸"（绕过系统硬拒绝）。**
+**hook 可以阻止操作，但不能绕过系统级安全检查。**
 
-`invokeTool` 内的执行顺序保证了这一点：
-
-1. PreToolUse hook 链依次触发；首个返回非空 `block` 的 hook 立即阻断
-2. hook 全部放行后，**仍要**走 `permission.Checker`（系统级 deny / ask）
+执行顺序保证：
+1. PreToolUse hook 先执行，可阻断工具调用
+2. hook 全部放行后，**仍要**走 `permission.Checker`（系统级 deny/ask）
 3. system deny 是不可被 hook 覆盖的安全底线
-
-集成测试 `TestRun_PreToolUse_HookAllowsButCheckerDenies` 显式验证了这一点：hook 放行 `echo`，但 system Checker 拒绝 `echo`，最终回填给 LLM 的仍是 `Permission denied`。
 
 ## 装配点（cmd/cli）
 
-`once` 和 `chat` 共用 `buildAgent` 构造 Agent + 工具注册表，差异在 hooks 装配：
+`once.go` 和 `chat_setup.go` 共用相同的 hook 装配流程：
 
-| 模式 | asker      | system Pipeline                | 触发顺序                                  |
-|------|------------|--------------------------------|-------------------------------------------|
-| once | nil        | 仅 Deny（无 TTY 故不装 Ask）   | hook（含 Ask 视作 Allow）→ system Deny    |
-| chat | StdinAsker | 仅 Deny（Ask 由 PermissionHook 承担，避免重复询问） | hook（Ask + 警告）→ system Deny           |
+```go
+resolved := hooks.Load(workdir)
+runner := hooks.NewRunner(resolved, workdir, hooks.DefaultSpawner)
+agent.WithHooks(runner)
+```
 
-`PermissionHook` 与 `system Pipeline` 的职责划分：
+### Subagent Hook 传递
 
-- **PermissionHook（业务级、用户友好）**：含 Ask 询问、stderr 警告、彩色提示
-- **system Pipeline（系统级、不可绕过）**：仅硬拒绝 deny 列表
+Subagent 通过 `SubsetHooks` 只继承 `PreToolUse` 和 `PostToolUse`，不继承 `UserPromptSubmit` 和 `Stop`。
 
-两层串联形成一个完整防御：hook 给出友好的"是否继续"询问，system deny 兜底"绝对禁止"。
+## TodoGuard（内置续跑逻辑）
 
-## 当前已注册的内置 hook
-
-通过 `builtin.Default(r, workdir, asker, out)` 一次性注入 5 个 hook（注册顺序即触发顺序）：
-
-1. **PermissionHook**（PreToolUse）— bash 硬拒绝关键字 / 破坏性关键字 / 写入工作区越界
-2. **LogHook**（PreToolUse）— 打印每次工具调用摘要，便于 debug / 审计
-3. **LargeOutputHook**（PostToolUse）— 输出超过 50KB 时打告警
-4. **ContextInjectHook**（UserPromptSubmit）— 打印 workdir 等上下文
-5. **SummaryHook**（Stop）— 退出前打印工具调用总次数
-
-## 未来演进路线
-
-> 本节记录的是**生产级目标**，与当前实现保持一定的距离；
-> 后续 PR 会按下面的顺序逐步落地。
-
-### 阶段 1：观察 / 配置化（短期）
-
-- [ ] `internal/hooks/config.go`：从 `settings.json`（或环境变量）读取 hook 开关
-  - 例：`HOOKS_LOG_ENABLED=false` 可关闭 LogHook 而不影响其他
-  - 例：`HOOKS_LARGE_OUTPUT_THRESHOLD=200000` 调大阈值
-- [ ] 写日志到文件：把 `Sink.W` 默认从 `os.Stderr` 改成可注入的 `*log.Logger`
-- [ ] `/hooks` 命令：增加详细列表（按事件分组、显示 hook 来源 + 描述）
-
-### 阶段 2：用户自定义 hook（中期）
-
-- [ ] **从 `settings.json` 加载外部脚本 hook**：
-  - 例：用户在项目根放 `.coding-agent/hooks.json`：
-    ```json
-    {
-      "PreToolUse": [
-        {
-          "name": "block-secrets",
-          "type": "command",
-          "command": "grep -E '(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32})' || exit 0",
-          "block-on-exit-code": 1
-        }
-      ]
-    }
-    ```
-  - hook 引擎读配置 → spawn 子进程 → 通过 stdin 传 JSON → 通过 exit code / stdout 拿阻断信号
-- [ ] **错误恢复**：单个 hook panic 不影响后续；引入 `defer recover` 包裹每个触发
-- [ ] **超时控制**：每个 hook 调用加 `context.WithTimeout`，避免慢 hook 拖垮主循环
-
-### 阶段 3：扩展事件 / 异步（长期）
-
-- [ ] **新事件**：
-  - `PreCompact`（消息历史压缩前）
-  - `PostCompact`
-  - `SubAgentStart` / `SubAgentStop`（子 Agent 边界）
-  - `PermissionRequest`（user 实际看到 Ask 弹窗前 / 后）
-- [ ] **异步执行**：PostToolUse 改为 fire-and-forget，避免日志 hook 阻塞主循环
-- [ ] **可观测性**：每次 hook 触发记录耗时，导出 Prometheus metric
-
-### 阶段 4：与外部系统的安全集成（远期）
-
-- [ ] **签名 / 校验**：外部脚本 hook 必须带 SHA256 摘要，未在 `settings.json.trustedScripts` 白名单中则拒绝执行
-- [ ] **隔离执行**：脚本 hook 跑在 OS 沙箱（macOS Seatbelt / Linux bwrap）里，与 agent 主进程隔离
-- [ ] **审计日志**：所有 hook 触发 + 阻断决策落 `~/.coding-agent/audit.log`，方便合规审查
+TodoGuard 是 agent 核心行为而非用户扩展逻辑，直接内联在 `loop.go` 的 Stop 判断处（`checkTodoGuard`），先于外部 Stop hook 执行。当检测到未完成的 todo 项时，注入 force 消息强制 agent 继续。
 
 ## 设计原则
 
-1. **最小核心 + 可组合**：`internal/hooks` 只提供 Registry + 4 个事件类型，**不**含任何业务规则
-2. **分层防御**：hooks（业务级 / 用户友好）+ permission.Checker（系统级 / 不可绕过）→ 任意一层失守另一层兜底
-3. **短路语义**：PreToolUse / Stop 首个非空返回即短路；PostToolUse 全部执行
-4. **可观察**：每个 hook 的执行结果（阻断 / 放行 / force）都应被测试覆盖，避免静默回归
-
-## 已知局限 / 注意点
-
-- **重复询问的隐患已规避**：chat 模式下 system Pipeline 不装 Ask 列表，避免对同一命令问两次
-- **hook error 容忍**：UserPromptSubmit 的 error 当前被静默忽略；生产级应至少打印到 stderr
-- **PostToolUse 输出包含 Error**：当 `tool.Execute` 返回 error 时，仍会触发 PostToolUse（让日志 hook 看到"失败"）；hook 需自行判断 `output` 字符串前缀
-- **once 模式无 TTY**：PermissionHook 内的 Ask 直接视为 Allow（与 system Pipeline 行为对齐）；如果有强需求，可加 `--interactive` flag 强制走 StdinAsker
+1. **外部化**：hook 逻辑由外部命令承担，agent 只负责触发和决策
+2. **分层防御**：hooks（用户级扩展）+ permission.Checker（系统级硬约束）→ 任意一层失守另一层兜底
+3. **短路语义**：PreToolUse 首个 block 即短路；Stop 首个 force 即短路；PostToolUse 全部执行
+4. **可注入**：Spawner 函数类型支持测试 mock，无需启动真实子进程
+5. **跨平台**：DefaultSpawner 在 Unix 用 `sh -c`，Windows 优先 `sh -c`，无 sh 时回退 `cmd /c`
