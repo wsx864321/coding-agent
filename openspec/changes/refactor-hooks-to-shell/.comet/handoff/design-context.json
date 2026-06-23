@@ -1,0 +1,14 @@
+{
+  "change": "refactor-hooks-to-shell",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "1b161c4d91a1a3298ba191d39ae09ead2f32bf58c9b52528b5a8012ec074e884",
+  "files": [
+    { "path": "openspec/changes/refactor-hooks-to-shell/proposal.md", "sha256": "8861247d3f0415ad524989775861481bb5ae4e926b91116b07c2a846e93c2195" },
+    { "path": "openspec/changes/refactor-hooks-to-shell/design.md", "sha256": "8bf786be3f21303a2a112c32ad875720d63e5e6ffd1b304e542077d2f0292ab3" },
+    { "path": "openspec/changes/refactor-hooks-to-shell/tasks.md", "sha256": "4a7e23ca9ea06351e688750c99a231092253da6862d269f7f00e649f24668135" },
+    { "path": "openspec/changes/refactor-hooks-to-shell/specs/shell-hook-engine/spec.md", "sha256": "33ec5b3d0645b081c0a3a1b9be0d2cd95d4081835b7e08e9768664825448598e" }
+  ]
+}
