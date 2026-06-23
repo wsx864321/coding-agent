@@ -342,7 +342,7 @@ go test ./internal/tui/... -run 'Textarea|Viewport|Spinner' -count=1 -v
   func (m Model) renderTranscriptContent() string
   ```
 
-- [ ] **Step 1: 编写 failing test**
+- [x] **Step 1: 编写 failing test**
 
 ```go
 func TestAppendUserEntryUpdatesViewport(t *testing.T) {
@@ -356,25 +356,25 @@ func TestAppendUserEntryUpdatesViewport(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实现 TranscriptEntry 与 append 逻辑（D8）**
+- [x] **Step 2: 实现 TranscriptEntry 与 append 逻辑（D8）**
 
 用户消息暂用 lipgloss 简单气泡样式（无需 Markdown）；助手 chunk 在 Task 8 接入 renderer。
 
-- [ ] **Step 3: 重构 submit/stream 使用 transcript**
+- [x] **Step 3: 重构 submit/stream 使用 transcript**
 
 `submit()` 追加 `EntryUserMessage`；`StreamChunkMsg` 暂直接追加 raw 文本到 pending（Task 9 改 flush）。
 
-- [ ] **Step 4: viewport.SetContent(renderTranscriptContent())**
+- [x] **Step 4: viewport.SetContent(renderTranscriptContent())**
 
 每次 transcript 变更后 rebuild viewport content 并 tail-follow。
 
-- [ ] **Step 5: WindowSizeMsg 触发 re-render**
+- [x] **Step 5: WindowSizeMsg 触发 re-render**
 
 从 Raw 字段重新渲染 assistant entries（width 变化时）。
 
-- [ ] **Step 6: 迁移现有 model_test 使用 transcript API**
+- [x] **Step 6: 迁移现有 model_test 使用 transcript API**
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ---
 
