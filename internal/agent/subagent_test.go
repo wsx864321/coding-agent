@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/provider"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
@@ -93,6 +94,53 @@ func TestRunSubAgent_CustomSystemPrompt(t *testing.T) {
 	}
 	if answer != "custom sub" {
 		t.Errorf("answer = %q, want 'custom sub'", answer)
+	}
+}
+
+func TestSubAgent_UsesDiscardSink(t *testing.T) {
+	f := newFakeLLM(t,
+		scriptedResponse{
+			toolCalls: []provider.ToolCall{
+				makeToolCall("sub_call_1", "echo", `{"input":"sub-hello"}`),
+			},
+		},
+		scriptedResponse{content: "sub done"},
+	)
+
+	var parentKinds []event.Kind
+	registry := tools.NewRegistry()
+	registry.Register(echoTool{})
+	prov, err := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "test-key", BaseURL: f.server.URL + "/v1",
+	})
+	if err != nil {
+		t.Fatalf("provider.New: %v", err)
+	}
+
+	parent, err := NewAgent(Config{
+		APIKey:   "test-key",
+		BaseURL:  f.server.URL + "/v1",
+		MaxTurns: 10,
+	},
+		WithRegistry(registry),
+		WithProvider(prov),
+		WithSink(event.FuncSink(func(e event.Event) {
+			parentKinds = append(parentKinds, e.Kind)
+		})),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	_, err = RunSubAgent(context.Background(), parent, "请调用 echo 工具", SubagentOptions{})
+	if err != nil {
+		t.Fatalf("RunSubAgent: %v", err)
+	}
+
+	for _, k := range parentKinds {
+		if k == event.Text || k == event.ToolDispatch || k == event.ToolResult {
+			t.Errorf("subagent event leaked to parent sink: kind=%v", k)
+		}
 	}
 }
 
