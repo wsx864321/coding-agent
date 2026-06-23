@@ -653,7 +653,7 @@ git commit -m "refactor(agent): replace StreamEmitter with event.Sink"
 - Produces: `func Run(ctx, payload, hooks, spawner, notify func(string)) Report`
 - Consumes: notify 为 nil 时内部替换为 `func(string) {}`
 
-- [ ] **Step 1: 编写 notify 回调失败测试**
+- [x] **Step 1: 编写 notify 回调失败测试**
 
 在 `internal/hooks/run_test.go` 追加：
 
@@ -685,7 +685,7 @@ func TestRun_NotifyOnInvalidRegex(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 ```bash
 go test ./internal/hooks/... -run 'TestRun_Notify' -count=1 -v
@@ -693,7 +693,7 @@ go test ./internal/hooks/... -run 'TestRun_Notify' -count=1 -v
 
 Expected: FAIL — `Run` 签名不匹配（缺少 notify 参数）
 
-- [ ] **Step 3: 修改 runner.go**
+- [x] **Step 3: 修改 runner.go**
 
 ```go
 type Runner struct {
@@ -716,7 +716,7 @@ func NewRunner(hooks []ResolvedHook, cwd string, spawner Spawner, notify func(st
 
 所有 `Run(ctx, payload, r.hooks, r.spawner)` 改为 `Run(ctx, payload, r.hooks, r.spawner, r.notify)`。
 
-- [ ] **Step 4: 修改 run.go — notify 替代 log.Printf**
+- [x] **Step 4: 修改 run.go — notify 替代 log.Printf**
 
 ```go
 func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spawner, notify func(string)) Report {
@@ -748,7 +748,7 @@ func matchesHook(h ResolvedHook, p Payload, notify func(string)) bool {
 }
 ```
 
-- [ ] **Step 5: 修改 load.go — 静默降级**
+- [x] **Step 5: 修改 load.go — 静默降级**
 
 删除全部 4 处 `log.Printf` 及 `"log"` import：
 
@@ -759,11 +759,11 @@ func matchesHook(h ResolvedHook, p Payload, notify func(string)) bool {
 | JSON 解析失败 | `return nil` |
 | 正则编译失败 | `continue`（跳过该 hook） |
 
-- [ ] **Step 6: 更新所有 NewRunner 调用处（测试文件）**
+- [x] **Step 6: 更新所有 NewRunner 调用处（测试文件）**
 
 `internal/hooks/runner_test.go`、`internal/hooks/runner_iface_test.go` 等所有 `NewRunner(...)` 调用追加第 4 参数 `nil`。
 
-- [ ] **Step 7: 运行 hooks 测试**
+- [x] **Step 7: 运行 hooks 测试**
 
 ```bash
 go test ./internal/hooks/... -count=1 -v
@@ -772,7 +772,7 @@ grep -r log.Printf internal/hooks/ || echo "OK: zero log.Printf"
 
 Expected: PASS + zero grep
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add internal/hooks/

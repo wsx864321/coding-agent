@@ -16,11 +16,11 @@
 
 ## 3. Hook 层迁移（log.Printf → notify）
 
-- [ ] 3.1 修改 `internal/hooks/runner.go`：NewRunner 增加 notify 参数，Runner 持有 notify 字段
-- [ ] 3.2 修改 `internal/hooks/run.go`：移除 3 处 log.Printf，非 pass outcome 通过 notify 输出
-- [ ] 3.3 修改 `internal/hooks/load.go`：移除 4 处 log.Printf，错误静默降级
-- [ ] 3.4 修改 `internal/agent/todo_guard.go`：移除 2 处 log.Printf，改为通过 Agent 的 sink 发 Notice
-- [ ] 3.5 更新 hook 相关测试：验证 notify 回调被正确调用，验证零 log.Printf
+- [x] 3.1 修改 `internal/hooks/runner.go`：NewRunner 增加 notify 参数，Runner 持有 notify 字段
+- [x] 3.2 修改 `internal/hooks/run.go`：移除 3 处 log.Printf，非 pass outcome 通过 notify 输出
+- [x] 3.3 修改 `internal/hooks/load.go`：移除 4 处 log.Printf，错误静默降级
+- [x] 3.4 修改 `internal/agent/todo_guard.go`：移除 2 处 log.Printf，改为通过 Agent 的 sink 发 Notice
+- [x] 3.5 更新 hook 相关测试：验证 notify 回调被正确调用，验证零 log.Printf
 
 ## 4. TUI 迁移（chanEmitter → Sink）
 
