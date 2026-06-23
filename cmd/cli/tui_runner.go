@@ -17,7 +17,7 @@ func newAgentRunner(a *agent.Agent) tui.Runner {
 }
 
 func (r agentRunner) RunTurn(ctx context.Context, prompt string, emit tui.StreamEmitter) error {
-	_, err := r.agent.RunStreaming(ctx, prompt, emit.OnChunk)
+	_, err := r.agent.RunStreaming(ctx, prompt, emit)
 	if err != nil {
 		emit.OnError(err)
 		return err

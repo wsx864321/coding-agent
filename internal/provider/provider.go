@@ -119,8 +119,9 @@ func CollectWithText(ch <-chan Chunk, onText func(string)) (Message, *Usage, err
 	return msg, usage, nil
 }
 
-// SanitizeToolPairing 修复消息历史中的孤儿 tool 消息，确保每条 tool 消息
-// 都紧跟在包含对应 tool_call_id 的 assistant 消息之后。
+// SanitizeToolPairing 修复消息历史中的配对问题，确保：
+// 1. 每条 tool 消息都紧跟在包含对应 tool_call_id 的 assistant 消息之后
+// 2. 每条含 tool_calls 的 assistant 消息都有对应的 tool result 跟随
 func SanitizeToolPairing(msgs []Message) []Message {
 	if len(msgs) == 0 {
 		return msgs
@@ -168,10 +169,51 @@ func SanitizeToolPairing(msgs []Message) []Message {
 		fixed = append(fixed, m)
 	}
 
+	fixed = patchUnmatchedToolCalls(fixed, &changed)
+
 	if changed {
 		return fixed
 	}
 	return msgs
+}
+
+// patchUnmatchedToolCalls 为含 tool_calls 但缺少对应 tool result 的 assistant
+// 消息补充占位 tool result，防止 API 返回 400 错误。
+func patchUnmatchedToolCalls(msgs []Message, changed *bool) []Message {
+	result := make([]Message, 0, len(msgs)+4)
+	for i, m := range msgs {
+		result = append(result, m)
+		if m.Role != RoleAssistant || len(m.ToolCalls) == 0 {
+			continue
+		}
+		following := collectFollowingToolIDs(msgs, i+1)
+		for _, tc := range m.ToolCalls {
+			if _, ok := following[tc.ID]; !ok {
+				*changed = true
+				result = append(result, Message{
+					Role:       RoleTool,
+					ToolCallID: tc.ID,
+					Name:       tc.Name,
+					Content:    "[工具调用被中断，未获得结果]",
+				})
+			}
+		}
+	}
+	return result
+}
+
+// collectFollowingToolIDs 收集紧跟在 assistant 消息之后的所有 tool result 的 ID 集合。
+func collectFollowingToolIDs(msgs []Message, start int) map[string]struct{} {
+	ids := make(map[string]struct{})
+	for j := start; j < len(msgs); j++ {
+		if msgs[j].Role != RoleTool {
+			break
+		}
+		if id := strings.TrimSpace(msgs[j].ToolCallID); id != "" {
+			ids[id] = struct{}{}
+		}
+	}
+	return ids
 }
 
 func previousNonToolMsg(msgs []Message) *Message {

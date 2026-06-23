@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -28,12 +27,9 @@ func setupChatAgent(cmd *cobra.Command) (*chatSetup, error) {
 	return setupAgentWithAsker(cmd, asker)
 }
 
-// setupTuiAgent 为 TUI 构造 agent：避免在 raw terminal 下阻塞式 stdin 询问。
+// setupTuiAgent 为 TUI 构造 agent：通过 StreamEmitter 在 TUI 横幅中请求用户审批。
 func setupTuiAgent(cmd *cobra.Command) (*chatSetup, error) {
-	// TUI 版本先采用安全默认：需要交互确认的操作直接拒绝，避免 stdin 死锁。
-	asker := permission.AskerFunc(func(_ context.Context, _ string, _ map[string]any, _ string) bool {
-		return false
-	})
+	asker := agent.EmitterAsker{}
 	return setupAgentWithAsker(cmd, asker)
 }
 

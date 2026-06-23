@@ -23,11 +23,16 @@ const (
 // loopStep 跑一次"调用 LLM → 处理 tool_calls → 收集 tool 结果"循环。
 // 返回 final assistant content 表示结束；返回 (空, nil) 表示还有下一步。
 func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
-	return a.loopStepWithText(ctx, nil)
+	return a.loopStepWithText(ctx, EmitterFromContext(ctx))
 }
 
-// loopStepWithText 与 loopStep 相同，但在流式收集时可推送文本增量。
-func (a *Agent) loopStepWithText(ctx context.Context, onText func(string)) (final string, err error) {
+// loopStepWithText 与 loopStep 相同，但在流式收集时可推送文本增量与工具事件。
+func (a *Agent) loopStepWithText(ctx context.Context, emitter StreamEmitter) (final string, err error) {
+	onText := func(s string) {
+		if emitter != nil {
+			emitter.OnChunk(s)
+		}
+	}
 	// 修复历史里的孤儿 tool 消息，避免 provider 400
 	a.messages = provider.SanitizeToolPairing(a.messages)
 
@@ -123,31 +128,48 @@ func compactFocusFromArgs(raw string) string {
 }
 
 // invokeTool 真正执行工具调用，返回结果字符串（成功或失败都返回字符串）
-func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall) string {
+func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall, emitter StreamEmitter) string {
+	name := tc.Name
+
+	if emitter != nil {
+		emitter.OnToolStart(name, tc.Arguments)
+	}
+
+	var result string
+	defer func() {
+		if emitter != nil {
+			isErr := strings.HasPrefix(result, "Error:") || strings.HasPrefix(result, "Permission denied")
+			emitter.OnToolEnd(name, result, isErr)
+		}
+	}()
+
 	var args map[string]any
 	if tc.Arguments != "" {
 		if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
-			return fmt.Sprintf("Error: 参数解析失败: %v (raw=%s)", err, tc.Arguments)
+			result = fmt.Sprintf("Error: 参数解析失败: %v (raw=%s)", err, tc.Arguments)
+			return result
 		}
 	}
-	name := tc.Name
 
 	if a.hooks != nil {
 		if blocked, reason := a.hooks.TriggerPreToolUse(ctx, name, args); blocked {
-			return fmt.Sprintf("Blocked by hook: %s", reason)
+			result = fmt.Sprintf("Blocked by hook: %s", reason)
+			return result
 		}
 	}
 
 	if a.checker != nil {
 		r := a.checker.Check(ctx, name, args)
 		if r.Decision == permission.DecisionDeny {
-			return fmt.Sprintf("Permission denied: %s", r.Reason)
+			result = fmt.Sprintf("Permission denied: %s", r.Reason)
+			return result
 		}
 	}
 
 	tool := a.registry.Get(name)
 	if tool == nil {
-		return fmt.Sprintf("Error: 工具 %q 未注册", name)
+		result = fmt.Sprintf("Error: 工具 %q 未注册", name)
+		return result
 	}
 
 	out, err := tool.Execute(ctx, args)
@@ -160,13 +182,15 @@ func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall) string {
 		if a.hooks != nil {
 			a.hooks.TriggerPostToolUse(ctx, name, args, fmt.Sprintf("Error: %v", err))
 		}
-		return fmt.Sprintf("Error: %v", err)
+		result = fmt.Sprintf("Error: %v", err)
+		return result
 	}
 
 	if a.hooks != nil {
 		a.hooks.TriggerPostToolUse(ctx, name, args, out)
 	}
-	return out
+	result = out
+	return result
 }
 
 // buildRequest 根据当前 messages 构造 provider.Request
@@ -212,16 +236,17 @@ type toolCallBatch struct {
 // executeBatch 分区执行一批 tool_calls
 func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) {
 	results := make([]string, len(calls))
+	emitter := EmitterFromContext(ctx)
 
 	for _, batch := range partitionToolCalls(a.registry, calls) {
 		if batch.parallel && batch.end-batch.start > 1 {
 			runParallel(batch.start, batch.end, func(i int) {
-				results[i] = a.invokeTool(ctx, calls[i])
+				results[i] = a.invokeTool(ctx, calls[i], emitter)
 			})
 			continue
 		}
 		for i := batch.start; i < batch.end; i++ {
-			results[i] = a.invokeTool(ctx, calls[i])
+			results[i] = a.invokeTool(ctx, calls[i], emitter)
 		}
 	}
 

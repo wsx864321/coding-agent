@@ -1,0 +1,23 @@
+workflow: full
+phase: archive
+context_compression: off
+build_mode: subagent-driven-development
+build_pause: null
+subagent_dispatch: confirmed
+tdd_mode: tdd
+review_mode: standard
+isolation: branch
+verify_mode: full
+auto_transition: true
+base_ref: d900d929d4bfe49010fc302349e6e9ce7e96d7a7
+design_doc: docs/superpowers/specs/2026-06-23-upgrade-tui-core-design.md
+plan: docs/superpowers/plans/2026-06-23-upgrade-tui-core.md
+verify_result: pass
+verification_report: docs/superpowers/reports/2026-06-23-upgrade-tui-core-verify.md
+branch_status: handled
+created_at: 2026-06-23
+verified_at: 2026-06-23
+archived: false
+handoff_context: openspec/changes/upgrade-tui-core/.comet/handoff/design-context.json
+handoff_hash: 6dc8c6b20f38fb0a183671623731511922d9bc755b4e0381f52b2d9989ede379
+build_command: /c/Users/麦子割/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.4.windows-amd64/bin/go.exe build ./cmd/...

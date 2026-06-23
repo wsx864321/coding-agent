@@ -4,8 +4,35 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
+
+func viewContent(m Model) string {
+	return m.View().Content
+}
+
+func applyKey(m Model, msg tea.KeyPressMsg) Model {
+	next, _ := m.Update(msg)
+	return next.(Model)
+}
+
+func typeText(m Model, text string) Model {
+	for _, r := range text {
+		m = applyKey(m, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	return m
+}
+
+func prepareScrollModel() Model {
+	m := New()
+	m.width = 40
+	m.height = 12
+	m.transcript = longTranscriptHistory()
+	m = m.rerenderTranscript()
+	m = m.syncLayout()
+	m = m.syncViewportContent()
+	return m
+}
 
 func TestNewModelDefaults(t *testing.T) {
 	m := New()
@@ -15,14 +42,14 @@ func TestNewModelDefaults(t *testing.T) {
 	if m.width != 0 || m.height != 0 {
 		t.Fatalf("initial size = %dx%d, want 0x0", m.width, m.height)
 	}
-	if len(m.messages) != 0 {
-		t.Fatalf("messages = %d, want 0", len(m.messages))
+	if len(m.transcript) != 0 {
+		t.Fatalf("transcript = %d, want 0", len(m.transcript))
 	}
-	if m.input != "" {
-		t.Fatalf("input = %q, want empty", m.input)
+	if m.textarea.Value() != "" {
+		t.Fatalf("textarea = %q, want empty", m.textarea.Value())
 	}
-	if m.scrollOffset != 0 {
-		t.Fatalf("scrollOffset = %d, want 0", m.scrollOffset)
+	if m.viewport.YOffset() != 0 {
+		t.Fatalf("viewport YOffset = %d, want 0", m.viewport.YOffset())
 	}
 }
 
@@ -44,7 +71,7 @@ func TestUpdateWindowSize(t *testing.T) {
 
 func TestUpdateCtrlCQuits(t *testing.T) {
 	m := New()
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Ctrl+C should return tea.Quit command")
 	}
@@ -70,137 +97,118 @@ func TestInitReturnsNil(t *testing.T) {
 
 func TestInsertInputAppendsRunes(t *testing.T) {
 	m := New()
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hi")})
-	if cmd != nil {
-		t.Fatal("rune input should not return a command")
-	}
-	updated := next.(Model)
-	if got := updated.input; got != "hi" {
-		t.Fatalf("input = %q, want %q", got, "hi")
+	updated := typeText(m, "hi")
+	if got := updated.textarea.Value(); got != "hi" {
+		t.Fatalf("textarea = %q, want %q", got, "hi")
 	}
 }
 
 func TestInsertInputAccumulates(t *testing.T) {
 	m := New()
-	m.input = "hel"
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("lo")})
-	updated := next.(Model)
-	if got := updated.input; got != "hello" {
-		t.Fatalf("input = %q, want %q", got, "hello")
+	m.textarea.SetValue("hel")
+	updated := typeText(m, "lo")
+	if got := updated.textarea.Value(); got != "hello" {
+		t.Fatalf("textarea = %q, want %q", got, "hello")
 	}
 }
 
 func TestBackspaceRemovesLastRune(t *testing.T) {
 	m := New()
-	m.input = "hello"
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	if cmd != nil {
-		t.Fatal("backspace should not return a command")
-	}
+	m.textarea.SetValue("hello")
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	updated := next.(Model)
-	if got := updated.input; got != "hell" {
-		t.Fatalf("input = %q, want %q", got, "hell")
+	if got := updated.textarea.Value(); got != "hell" {
+		t.Fatalf("textarea = %q, want %q", got, "hell")
 	}
 }
 
 func TestBackspaceOnEmptyInputIsNoop(t *testing.T) {
 	m := New()
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	updated := next.(Model)
-	if updated.input != "" {
-		t.Fatalf("input = %q, want empty", updated.input)
+	if updated.textarea.Value() != "" {
+		t.Fatalf("textarea = %q, want empty", updated.textarea.Value())
 	}
 }
 
-func TestAppendMessageStoresRoleAndContent(t *testing.T) {
+func TestAppendEntryStoresKindAndRaw(t *testing.T) {
 	m := New()
-	m = m.withMessage(RoleUser, "hello")
-	m = m.withMessage(RoleAssistant, "world")
-	m = m.withMessage(RoleSystem, "notice")
+	m.width = 80
+	m = m.appendEntry(TranscriptEntry{Kind: EntryUserMessage, Raw: "hello"})
+	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk, Raw: "world"})
+	m = m.appendEntry(TranscriptEntry{Kind: EntryError, Raw: "notice"})
 
-	if len(m.messages) != 3 {
-		t.Fatalf("messages = %d, want 3", len(m.messages))
+	if len(m.transcript) != 3 {
+		t.Fatalf("transcript = %d, want 3", len(m.transcript))
 	}
-	if m.messages[0].Role != RoleUser || m.messages[0].Content != "hello" {
-		t.Fatalf("messages[0] = %+v, want user/hello", m.messages[0])
+	if m.transcript[0].Kind != EntryUserMessage || m.transcript[0].Raw != "hello" {
+		t.Fatalf("transcript[0] = %+v, want user/hello", m.transcript[0])
 	}
-	if m.messages[1].Role != RoleAssistant || m.messages[1].Content != "world" {
-		t.Fatalf("messages[1] = %+v, want assistant/world", m.messages[1])
+	if m.transcript[1].Kind != EntryAssistantChunk || m.transcript[1].Raw != "world" {
+		t.Fatalf("transcript[1] = %+v, want assistant/world", m.transcript[1])
 	}
-	if m.messages[2].Role != RoleSystem || m.messages[2].Content != "notice" {
-		t.Fatalf("messages[2] = %+v, want system/notice", m.messages[2])
+	if m.transcript[2].Kind != EntryError || m.transcript[2].Raw != "notice" {
+		t.Fatalf("transcript[2] = %+v, want error/notice", m.transcript[2])
 	}
 }
 
 func TestScrollUpMovesAwayFromBottom(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m = m.clampScrollToBottom()
+	m := prepareScrollModel()
+	m.viewport.GotoBottom()
+	before := m.viewport.YOffset()
 
-	before := m.scrollOffset
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	if cmd != nil {
 		t.Fatal("scroll up should not return a command")
 	}
 	updated := next.(Model)
-	if updated.scrollOffset >= before {
-		t.Fatalf("scrollOffset = %d, want < %d after KeyUp", updated.scrollOffset, before)
+	if updated.viewport.YOffset() >= before {
+		t.Fatalf("YOffset = %d, want < %d after KeyUp", updated.viewport.YOffset(), before)
 	}
 }
 
 func TestScrollDownIncreasesOffsetTowardBottom(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m = m.clampScrollToBottom()
-	bottom := m.scrollOffset
+	m := prepareScrollModel()
+	m.viewport.GotoBottom()
+	bottom := m.viewport.YOffset()
 
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	scrolledUp := next.(Model)
-	if scrolledUp.scrollOffset >= bottom {
-		t.Fatalf("expected scroll up to move away from bottom, got offset %d (bottom=%d)", scrolledUp.scrollOffset, bottom)
+	if scrolledUp.viewport.YOffset() >= bottom {
+		t.Fatalf("expected scroll up to move away from bottom, got offset %d (bottom=%d)", scrolledUp.viewport.YOffset(), bottom)
 	}
 
-	next, _ = scrolledUp.Update(tea.KeyMsg{Type: tea.KeyDown})
+	next, _ = scrolledUp.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	scrolledDown := next.(Model)
-	if scrolledDown.scrollOffset <= scrolledUp.scrollOffset {
-		t.Fatalf("scrollOffset = %d, want > %d after KeyDown", scrolledDown.scrollOffset, scrolledUp.scrollOffset)
+	if scrolledDown.viewport.YOffset() <= scrolledUp.viewport.YOffset() {
+		t.Fatalf("YOffset = %d, want > %d after KeyDown", scrolledDown.viewport.YOffset(), scrolledUp.viewport.YOffset())
 	}
 }
 
 func TestScrollUpStopsAtTop(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m.scrollOffset = 0
+	m := prepareScrollModel()
+	m.viewport.GotoTop()
 
 	for i := 0; i < 20; i++ {
-		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+		next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 		m = next.(Model)
 	}
-	if m.scrollOffset != 0 {
-		t.Fatalf("scrollOffset = %d, want 0 at top boundary", m.scrollOffset)
+	if m.viewport.YOffset() != 0 {
+		t.Fatalf("YOffset = %d, want 0 at top boundary", m.viewport.YOffset())
 	}
 }
 
 func TestScrollDownStopsAtBottom(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m = m.clampScrollToBottom()
-	bottom := m.scrollOffset
+	m := prepareScrollModel()
+	m.viewport.GotoBottom()
+	bottom := m.viewport.YOffset()
 
 	for i := 0; i < 20; i++ {
-		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m = next.(Model)
 	}
-	if m.scrollOffset != bottom {
-		t.Fatalf("scrollOffset = %d, want %d at bottom boundary", m.scrollOffset, bottom)
+	if m.viewport.YOffset() != bottom {
+		t.Fatalf("YOffset = %d, want %d at bottom boundary", m.viewport.YOffset(), bottom)
 	}
 }
 
@@ -208,23 +216,21 @@ func TestViewRendersMessageInputAndHelpAreas(t *testing.T) {
 	m := New()
 	m.width = 80
 	m.height = 24
-	m.messages = []Message{
-		{Role: RoleUser, Content: "你好"},
-		{Role: RoleAssistant, Content: "你好，我是助手"},
-		{Role: RoleSystem, Content: "系统提示"},
-	}
-	m.input = "draft text"
+	m = m.appendUserMessage("你好")
+	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk, Raw: "你好，我是助手"})
+	m = m.appendEntry(TranscriptEntry{Kind: EntryToolOutput, Raw: "系统提示"})
+	m.textarea.SetValue("draft text")
+	m = m.syncLayout()
+	m = m.syncViewportContent()
 
-	view := m.View()
+	view := viewContent(m)
 	for _, want := range []string{
 		"coding-agent",
-		"user:",
 		"你好",
 		"assistant:",
 		"你好，我是助手",
-		"system:",
 		"系统提示",
-		"> draft text",
+		"draft text",
 		"Enter",
 		"Ctrl+C",
 	} {
@@ -238,26 +244,29 @@ func TestViewScrollHidesOlderMessages(t *testing.T) {
 	m := New()
 	m.width = 40
 	m.height = 10
-	m.messages = []Message{
-		{Role: RoleUser, Content: "first-visible-marker"},
-		{Role: RoleUser, Content: "line-2"},
-		{Role: RoleUser, Content: "line-3"},
-		{Role: RoleUser, Content: "line-4"},
-		{Role: RoleUser, Content: "line-5"},
-		{Role: RoleUser, Content: "line-6"},
-		{Role: RoleUser, Content: "line-7"},
-		{Role: RoleUser, Content: "line-8"},
-		{Role: RoleUser, Content: "last-visible-marker"},
+	for _, content := range []string{
+		"first-visible-marker",
+		"line-2",
+		"line-3",
+		"line-4",
+		"line-5",
+		"line-6",
+		"line-7",
+		"line-8",
+		"last-visible-marker",
+	} {
+		m = m.appendUserMessage(content)
 	}
-	m = m.clampScrollToBottom()
+	m = m.syncLayout()
+	m = m.syncViewportContent()
 
-	bottomView := m.View()
+	bottomView := viewContent(m)
 	if !strings.Contains(bottomView, "last-visible-marker") {
 		t.Fatalf("bottom view should show latest message:\n%s", bottomView)
 	}
 
-	m.scrollOffset = 0
-	topView := m.View()
+	m.viewport.GotoTop()
+	topView := viewContent(m)
 	if strings.Contains(topView, "last-visible-marker") {
 		t.Fatalf("top view should hide latest message when scrolled up:\n%s", topView)
 	}
@@ -266,10 +275,53 @@ func TestViewScrollHidesOlderMessages(t *testing.T) {
 	}
 }
 
-func longMessageHistory() []Message {
-	msgs := make([]Message, 0, 20)
-	for i := 1; i <= 20; i++ {
-		msgs = append(msgs, Message{Role: RoleUser, Content: strings.Repeat("x", i*3)})
+func TestSpaceKeyGoesToTextareaWhenHasText(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+	m.textarea.SetValue("hello")
+
+	next, _ := m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	updated := next.(Model)
+	if got := updated.textarea.Value(); !strings.Contains(got, " ") {
+		t.Fatalf("textarea = %q, want space in text when textarea has content", got)
 	}
-	return msgs
+}
+
+func TestSpaceKeyScrollsViewportWhenEmpty(t *testing.T) {
+	m := prepareScrollModel()
+	m.viewport.GotoTop()
+	before := m.viewport.YOffset()
+
+	next, _ := m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	updated := next.(Model)
+	if updated.viewport.YOffset() <= before {
+		t.Fatalf("YOffset = %d, want > %d when textarea empty and space pressed", updated.viewport.YOffset(), before)
+	}
+}
+
+func TestLetterKeysGoToTextareaWhenHasText(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+	m.textarea.SetValue("test")
+
+	for _, ch := range "bfudhjkl" {
+		next, _ := m.Update(tea.KeyPressMsg{Code: ch, Text: string(ch)})
+		m = next.(Model)
+	}
+	if got := m.textarea.Value(); got != "testbfudhjkl" {
+		t.Fatalf("textarea = %q, want %q", got, "testbfudhjkl")
+	}
+}
+
+func longTranscriptHistory() []TranscriptEntry {
+	entries := make([]TranscriptEntry, 0, 20)
+	for i := 1; i <= 20; i++ {
+		raw := strings.Repeat("x", i*3)
+		entries = append(entries, TranscriptEntry{Kind: EntryUserMessage, Raw: raw})
+	}
+	return entries
 }

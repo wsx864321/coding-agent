@@ -1,0 +1,182 @@
+package tui
+
+import (
+	"strings"
+
+	"charm.land/lipgloss/v2"
+	"github.com/mattn/go-runewidth"
+)
+
+var userBubbleStyle = lipgloss.NewStyle().
+	Padding(0, 1).
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("63"))
+
+func (m Model) appendEntry(e TranscriptEntry) Model {
+	if e.Content == "" {
+		e = m.renderEntry(e)
+	}
+	m.transcript = append(m.transcript, e)
+	return m
+}
+
+func (m Model) appendUserMessage(raw string) Model {
+	return m.appendEntry(TranscriptEntry{Kind: EntryUserMessage, Raw: raw})
+}
+
+func (m Model) appendAssistantRendered(rendered, raw string) Model {
+	if raw == "" {
+		return m
+	}
+	if len(m.transcript) == 0 || m.transcript[len(m.transcript)-1].Kind != EntryAssistantChunk {
+		e := TranscriptEntry{Kind: EntryAssistantChunk, Raw: raw, Content: m.formatAssistantBody(rendered)}
+		m.transcript = append(m.transcript, e)
+		return m
+	}
+	last := len(m.transcript) - 1
+	if m.transcript[last].Raw != "" {
+		m.transcript[last].Raw += "\n"
+	}
+	m.transcript[last].Raw += raw
+	if m.transcript[last].Content == "" {
+		m.transcript[last].Content = m.formatAssistantBody(rendered)
+	} else {
+		m.transcript[last].Content += "\n" + m.formatAssistantContinuation(rendered)
+	}
+	return m
+}
+
+func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
+	w := m.contentWidth()
+	switch e.Kind {
+	case EntryUserMessage:
+		e.Content = renderUserBubble(e.Raw, w)
+	case EntryAssistantChunk:
+		e.Content = m.renderAssistantText(e.Raw, w)
+	case EntryToolCard:
+		name, args, isError := decodeToolCardRaw(e.Raw)
+		if isError {
+			e.Content = renderToolCardError(name, args, w)
+		} else {
+			e.Content = renderToolCard(name, args, w)
+		}
+	case EntryToolOutput:
+		e.Content = renderToolOutput(e.Raw, toolOutputCollapseLines)
+	case EntryError:
+		e.Content = errorStyle.Render(e.Raw)
+	default:
+		if e.Content == "" {
+			e.Content = e.Raw
+		}
+	}
+	return e
+}
+
+func (m Model) contentWidth() int {
+	width := m.width
+	if width <= 0 {
+		width = 80
+	}
+	contentWidth := width - 2
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+	return contentWidth
+}
+
+func (m Model) assistantInnerWidth() int {
+	prefixWidth := runewidth.StringWidth("assistant: ")
+	w := m.contentWidth() - prefixWidth
+	if w < 4 {
+		w = 4
+	}
+	return w
+}
+
+func renderUserBubble(raw string, width int) string {
+	innerWidth := width - 4
+	if innerWidth < 4 {
+		innerWidth = 4
+	}
+	lines := WrapText(raw, innerWidth)
+	return userBubbleStyle.Width(width).Render(strings.Join(lines, "\n"))
+}
+
+func (m Model) renderAssistantText(raw string, width int) string {
+	prefix := "assistant: "
+	prefixWidth := runewidth.StringWidth(prefix)
+	innerWidth := width - prefixWidth
+	if innerWidth < 4 {
+		innerWidth = 4
+	}
+
+	var body string
+	if m.mdRenderer != nil {
+		body = strings.TrimRight(m.mdRenderer.Render(raw, innerWidth), "\n")
+	} else {
+		body = strings.Join(WrapText(raw, innerWidth), "\n")
+	}
+	return m.applyAssistantPrefix(body, prefix, prefixWidth)
+}
+
+func (m Model) formatAssistantBody(rendered string) string {
+	prefix := "assistant: "
+	prefixWidth := runewidth.StringWidth(prefix)
+	body := strings.TrimRight(rendered, "\n")
+	return m.applyAssistantPrefix(body, prefix, prefixWidth)
+}
+
+func (m Model) formatAssistantContinuation(rendered string) string {
+	prefix := "assistant: "
+	prefixWidth := runewidth.StringWidth(prefix)
+	body := strings.TrimRight(rendered, "\n")
+	if body == "" {
+		return ""
+	}
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		lines[i] = strings.Repeat(" ", prefixWidth) + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) applyAssistantPrefix(body, prefix string, prefixWidth int) string {
+	if body == "" {
+		return prefix
+	}
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if i == 0 {
+			lines[i] = prefix + line
+		} else {
+			lines[i] = strings.Repeat(" ", prefixWidth) + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) renderTranscriptContent() string {
+	if len(m.transcript) == 0 {
+		return "(暂无消息)"
+	}
+	parts := make([]string, len(m.transcript))
+	for i, e := range m.transcript {
+		parts[i] = e.Content
+	}
+	return joinLines(parts)
+}
+
+func (m Model) rebuildViewport() Model {
+	return m.syncViewportContent()
+}
+
+func (m Model) rerenderTranscript() Model {
+	for i := range m.transcript {
+		m.transcript[i] = m.renderEntry(m.transcript[i])
+	}
+	return m
+}
+
+func (m Model) rebuildTranscript() Model {
+	return m.rerenderTranscript()
+}
