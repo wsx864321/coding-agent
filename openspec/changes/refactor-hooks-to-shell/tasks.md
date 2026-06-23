@@ -29,14 +29,14 @@
 
 ## 5. CLI 装配层适配
 
-- [ ] 5.1 修改 `cmd/cli/once.go`：用 `hooks.Load()` + `hooks.NewRunner()` 替代 `builtin.NewDefault()`
-- [ ] 5.2 修改 `cmd/cli/chat_setup.go`：同 5.1 的 hook 装配变更
+- [x] 5.1 修改 `cmd/cli/once.go`：用 `hooks.Load()` + `hooks.NewRunner()` 替代 `builtin.NewDefault()`
+- [x] 5.2 修改 `cmd/cli/chat_setup.go`：同 5.1 的 hook 装配变更
 
 ## 6. 清理旧代码
 
-- [ ] 6.1 移除 `internal/hooks/builtin/` 整个目录（default.go、sink.go、log.go、large_output.go、context_inject.go、todo_guard.go、summary.go）
-- [ ] 6.2 移除旧 `internal/hooks/hooks.go` 中的 Registry、Register*、Trigger* 相关代码
-- [ ] 6.3 更新 `internal/agent/agent_test.go`：适配 ToolHooks interface，移除 Registry 依赖
+- [x] 6.1 移除 `internal/hooks/builtin/` 整个目录（default.go、sink.go、log.go、large_output.go、context_inject.go、todo_guard.go、summary.go）
+- [x] 6.2 移除旧 `internal/hooks/hooks.go` 中的 Registry、Register*、Trigger* 相关代码
+- [x] 6.3 更新 `internal/agent/agent_test.go`：适配 ToolHooks interface，移除 Registry 依赖
 
 ## 7. 测试与验证
 
