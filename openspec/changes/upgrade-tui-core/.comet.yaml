@@ -20,3 +20,4 @@ verified_at: null
 archived: false
 handoff_context: openspec/changes/upgrade-tui-core/.comet/handoff/design-context.json
 handoff_hash: 6dc8c6b20f38fb0a183671623731511922d9bc755b4e0381f52b2d9989ede379
+build_command: /c/Users/麦子割/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.4.windows-amd64/bin/go.exe build ./cmd/...

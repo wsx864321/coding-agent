@@ -40,14 +40,14 @@
 
 ## 6. Markdown ANSI 渲染
 
-- [ ] 6.1 引入 goldmark + chroma/v2 依赖
-- [ ] 6.2 实现 mdRenderer 结构体：goldmark AST walker → lipgloss-styled ANSI 字符串
-- [ ] 6.3 实现基础元素渲染：标题（粗体+颜色）、段落、粗体/斜体、内联代码（背景色）
-- [ ] 6.4 实现列表渲染：有序列表（数字前缀）、无序列表（bullet 前缀）、嵌套缩进
-- [ ] 6.5 实现代码块渲染：fenced code block + chroma 语法高亮 + 缩进 gutter
-- [ ] 6.6 实现引用块渲染：`│` 前缀 + dim 样式
-- [ ] 6.7 实现 GFM 表格渲染：列对齐、表头加粗、边框字符
-- [ ] 6.8 添加 Markdown 渲染单元测试（各元素类型 + 嵌套组合）
+- [x] 6.1 引入 glamour/v2 依赖（Design Doc D3 决定用 glamour 替代 goldmark+chroma）
+- [x] 6.2 实现 MarkdownRenderer 接口 + glamourRenderer 适配器
+- [x] 6.3 实现基础元素渲染：标题、段落、粗体/斜体、内联代码（glamour 内置）
+- [x] 6.4 实现列表渲染（glamour 内置）
+- [x] 6.5 实现代码块渲染：fenced code block + 语法高亮（glamour 内置 chroma）
+- [x] 6.6 实现引用块渲染（glamour 内置）
+- [x] 6.7 实现 GFM 表格渲染（glamour 内置）
+- [x] 6.8 添加 Markdown 渲染单元测试（代码块/列表/表格/引用/粗体）
 
 ## 7. 流式 Markdown 渲染优化
 
@@ -66,8 +66,8 @@
 
 ## 9. 集成测试 + 回归验证
 
-- [ ] 9.1 更新所有现有测试适配新的 Model 结构（textarea/viewport/spinner 嵌入）
-- [ ] 9.2 添加工具调用事件流测试：ToolStartMsg → spinner 文案变化 → ToolEndMsg → 工具卡片渲染
+- [x] 9.1 更新所有现有测试适配新的 Model 结构（textarea/viewport/spinner 嵌入）
+- [x] 9.2 添加工具调用事件流测试：ToolStartMsg → spinner 文案变化 → ToolEndMsg → 工具卡片渲染
 - [x] 9.3 添加审批流程测试：ApprovalRequestMsg → 审批模态 → y/n 响应 → 恢复正常状态
-- [ ] 9.4 添加 CJK + Markdown 渲染组合测试
-- [ ] 9.5 确认 `go build ./cmd` 编译通过、`go test ./...` 全部通过
+- [x] 9.4 添加 CJK + Markdown 渲染组合测试
+- [x] 9.5 确认 `go build ./cmd` 编译通过、`go test ./...` 全部通过
