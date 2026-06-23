@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/wsx864321/coding-agent/internal/evidence"
-	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/jobs"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
@@ -22,7 +21,7 @@ type Agent struct {
 	prov provider.Provider
 	registry *tools.Registry
 	checker  permission.Checker
-	hooks    *hooks.Registry
+	hooks    ToolHooks
 	messages []provider.Message
 	ledger   *evidence.Ledger
 	skillStore *skill.Store
@@ -138,8 +137,8 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 	return a, nil
 }
 
-// Hooks 返回底层 Registry（只读，外部不应触发 Trigger）
-func (a *Agent) Hooks() *hooks.Registry {
+// Hooks 返回当前注入的 ToolHooks（可能为 nil）
+func (a *Agent) Hooks() ToolHooks {
 	return a.hooks
 }
 
@@ -164,9 +163,9 @@ func (a *Agent) WireTaskTool() {
 		return
 	}
 	tt.SetRunner(func(ctx context.Context, prompt string) (string, error) {
-		var subHooks *hooks.Registry
+		var subHooks ToolHooks
 		if a.hooks != nil {
-			subHooks = a.hooks.WithoutStopAndPrompt()
+			subHooks = NewSubsetHooks(a.hooks)
 		}
 		return RunSubAgent(ctx, a, prompt, SubagentOptions{
 			Hooks:   subHooks,
@@ -186,9 +185,9 @@ func (a *Agent) WireSkillTools() {
 		return
 	}
 	rst.SetRunner(func(ctx context.Context, sk skill.Skill, task string) (string, error) {
-		var subHooks *hooks.Registry
+		var subHooks ToolHooks
 		if a.hooks != nil {
-			subHooks = a.hooks.WithoutStopAndPrompt()
+			subHooks = NewSubsetHooks(a.hooks)
 		}
 		sysPrompt := sk.Body
 		return RunSubAgent(ctx, a, task, SubagentOptions{
@@ -249,7 +248,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	}
 
 	if a.hooks != nil {
-		a.hooks.TriggerUserPromptSubmit(ctx, userInput)
+		_ = a.hooks.UserPromptSubmit(ctx, userInput)
 	}
 
 	userContent := userInput
@@ -302,7 +301,7 @@ func (a *Agent) RunStreaming(ctx context.Context, userInput string, emitter Stre
 	}
 
 	if a.hooks != nil {
-		a.hooks.TriggerUserPromptSubmit(ctx, userInput)
+		_ = a.hooks.UserPromptSubmit(ctx, userInput)
 	}
 
 	userContent := userInput

@@ -34,7 +34,7 @@ type SubagentOptions struct {
 	SystemPrompt string
 	MaxTurns     int
 	Registry     *tools.Registry
-	Hooks        *hooks.Registry
+	Hooks        ToolHooks
 	Checker      permission.Checker
 }
 

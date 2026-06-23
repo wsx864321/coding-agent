@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/provider"
 	_ "github.com/wsx864321/coding-agent/internal/provider/openai"
@@ -530,10 +529,11 @@ func TestRun_PreToolUse_HookBlocks(t *testing.T) {
 		scriptedResponse{content: "got it"},
 	)
 
-	hr := newTestHookRegistry()
-	hr.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
-		return "Blocked by hook: not allowed", "test"
-	})
+	hr := &stubToolHooks{
+		preToolUse: func(_ context.Context, _ string, _ map[string]any) (bool, string) {
+			return true, "not allowed"
+		},
+	}
 	a := newTestAgentWithHooks(t, f, hr)
 
 	out, err := a.Run(context.Background(), "test")
@@ -558,10 +558,11 @@ func TestRun_PreToolUse_HookAllowsButCheckerDenies(t *testing.T) {
 		scriptedResponse{content: "recovered"},
 	)
 
-	hr := newTestHookRegistry()
-	hr.RegisterPreToolUse(func(_ context.Context, _ string, _ map[string]any) (string, string) {
-		return "", ""
-	})
+	hr := &stubToolHooks{
+		preToolUse: func(_ context.Context, _ string, _ map[string]any) (bool, string) {
+			return false, ""
+		},
+	}
 
 	registry := tools.NewRegistry()
 	registry.Register(echoTool{})
@@ -597,12 +598,13 @@ func TestRun_PreToolUse_HookAllowsButCheckerDenies(t *testing.T) {
 func TestRun_UserPromptSubmit_Triggered(t *testing.T) {
 	f := newFakeLLM(t, scriptedResponse{content: "ok"})
 
-	hr := newTestHookRegistry()
 	got := ""
-	hr.RegisterUserPromptSubmit(func(_ context.Context, c string) error {
-		got = c
-		return nil
-	})
+	hr := &stubToolHooks{
+		userPromptSubmit: func(_ context.Context, c string) error {
+			got = c
+			return nil
+		},
+	}
 	a := newTestAgentWithHooks(t, f, hr)
 
 	_, _ = a.Run(context.Background(), "hello world")
@@ -617,15 +619,16 @@ func TestRun_Stop_ForceContinue(t *testing.T) {
 		scriptedResponse{content: "second answer"},
 	)
 
-	hr := newTestHookRegistry()
 	fired := false
-	hr.RegisterStop(func(_ context.Context, _ []provider.Message) (string, bool) {
-		if !fired {
-			fired = true
-			return "请继续", true
-		}
-		return "", false
-	})
+	hr := &stubToolHooks{
+		stop: func(_ context.Context, _ []provider.Message) (string, bool) {
+			if !fired {
+				fired = true
+				return "请继续", true
+			}
+			return "", false
+		},
+	}
 	a := newTestAgentWithHooks(t, f, hr)
 
 	out, err := a.Run(context.Background(), "test")
@@ -650,10 +653,11 @@ func TestRun_Stop_ForceContinue(t *testing.T) {
 func TestRun_Stop_NoForce(t *testing.T) {
 	f := newFakeLLM(t, scriptedResponse{content: "ok"})
 
-	hr := newTestHookRegistry()
-	hr.RegisterStop(func(_ context.Context, _ []provider.Message) (string, bool) {
-		return "", false
-	})
+	hr := &stubToolHooks{
+		stop: func(_ context.Context, _ []provider.Message) (string, bool) {
+			return "", false
+		},
+	}
 	a := newTestAgentWithHooks(t, f, hr)
 
 	out, err := a.Run(context.Background(), "test")
@@ -678,16 +682,17 @@ func TestRun_PostToolUse_Triggered(t *testing.T) {
 		scriptedResponse{content: "ok"},
 	)
 
-	hr := newTestHookRegistry()
 	type seen struct {
 		name   string
 		output string
 	}
 	var got seen
-	hr.RegisterPostToolUse(func(_ context.Context, name string, _ map[string]any, output string) {
-		got.name = name
-		got.output = output
-	})
+	hr := &stubToolHooks{
+		postToolUse: func(_ context.Context, name string, _ map[string]any, output string) {
+			got.name = name
+			got.output = output
+		},
+	}
 	a := newTestAgentWithHooks(t, f, hr)
 
 	_, err := a.Run(context.Background(), "test")
@@ -706,11 +711,7 @@ func TestRun_PostToolUse_Triggered(t *testing.T) {
 // 测试辅助
 // =====================================================================
 
-func newTestHookRegistry() *hooks.Registry {
-	return hooks.NewRegistry()
-}
-
-func newTestAgentWithHooks(t *testing.T, f *fakeLLMServer, hr *hooks.Registry) *Agent {
+func newTestAgentWithHooks(t *testing.T, f *fakeLLMServer, hr ToolHooks) *Agent {
 	t.Helper()
 	registry := tools.NewRegistry()
 	registry.Register(echoTool{})

@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/jobs"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
@@ -31,11 +30,11 @@ func (o checkerOpt) apply(a *Agent) {
 	a.checker = o.c
 }
 
-// hooksOpt 注入事件回调 Registry
-type hooksOpt struct{ r *hooks.Registry }
+// hooksOpt 注入 ToolHooks
+type hooksOpt struct{ h ToolHooks }
 
 func (o hooksOpt) apply(a *Agent) {
-	a.hooks = o.r
+	a.hooks = o.h
 }
 
 // providerOpt 注入 Provider 实例
@@ -55,9 +54,9 @@ func WithChecker(c permission.Checker) Option {
 	return checkerOpt{c: c}
 }
 
-// WithHooks 注入事件回调 Registry
-func WithHooks(r *hooks.Registry) Option {
-	return hooksOpt{r: r}
+// WithHooks 注入事件 hook 实现（可为 nil 或空 Runner）
+func WithHooks(h ToolHooks) Option {
+	return hooksOpt{h: h}
 }
 
 // WithProvider 注入 Provider 实例（用于 subagent 共享、测试 mock 等场景）

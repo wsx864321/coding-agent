@@ -218,6 +218,71 @@ func TestWireTaskTool_NoTaskTool(t *testing.T) {
 	a.WireTaskTool()
 }
 
+func TestWireTaskTool_SubsetHooksPassing(t *testing.T) {
+	f := newFakeLLM(t,
+		scriptedResponse{
+			toolCalls: []provider.ToolCall{
+				makeToolCall("sub_call_1", "echo", `{"input":"sub"}`),
+			},
+		},
+		scriptedResponse{content: "sub via subset"},
+	)
+
+	stopCalled := false
+	userCalled := false
+	preCalled := false
+	parentHooks := &stubToolHooks{
+		userPromptSubmit: func(context.Context, string) error {
+			userCalled = true
+			return nil
+		},
+		preToolUse: func(_ context.Context, _ string, _ map[string]any) (bool, string) {
+			preCalled = true
+			return false, ""
+		},
+		stop: func(context.Context, []provider.Message) (string, bool) {
+			stopCalled = true
+			return "parent stop", true
+		},
+	}
+
+	registry := tools.NewRegistry()
+	registry.Register(echoTool{})
+	prov, _ := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "test-key", BaseURL: f.server.URL + "/v1",
+	})
+	a, err := NewAgent(Config{
+		APIKey:   "test-key",
+		BaseURL:  f.server.URL + "/v1",
+		MaxTurns: 10,
+	}, WithRegistry(registry), WithProvider(prov), WithHooks(parentHooks))
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	tt := tools.NewTaskTool(nil)
+	registry.Register(tt)
+	a.WireTaskTool()
+
+	userCalled = false
+	stopCalled = false
+	preCalled = false
+
+	_, err = tt.Execute(context.Background(), map[string]any{"prompt": "do sub task"})
+	if err != nil {
+		t.Fatalf("TaskTool.Execute: %v", err)
+	}
+	if !preCalled {
+		t.Error("subagent should inherit PreToolUse via SubsetHooks")
+	}
+	if userCalled {
+		t.Error("subagent should not trigger parent UserPromptSubmit")
+	}
+	if stopCalled {
+		t.Error("subagent should not trigger parent Stop hook")
+	}
+}
+
 func TestWireTaskTool_WithTaskTool(t *testing.T) {
 	f := newFakeLLM(t,
 		scriptedResponse{content: "wired sub answer"},
