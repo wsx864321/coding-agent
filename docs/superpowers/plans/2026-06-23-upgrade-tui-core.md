@@ -492,7 +492,7 @@ go test ./internal/tui/... -run WrapText -count=1 -v
   func EmitterFromContext(ctx context.Context) StreamEmitter
   ```
 
-- [ ] **Step 1: 创建 emitter.go 与测试 stub**
+- [x] **Step 1: 创建 emitter.go 与测试 stub**
 
 ```go
 type recordingEmitter struct {
@@ -503,7 +503,7 @@ func (r *recordingEmitter) OnToolEnd(name, result string, isError bool) { r.tool
 // ... other methods no-op
 ```
 
-- [ ] **Step 2: 扩展 stream.go 消息类型（D5）**
+- [x] **Step 2: 扩展 stream.go 消息类型（D5）**
 
 ```go
 type ToolStartMsg struct { Name, Args string }
@@ -515,7 +515,7 @@ type ApprovalRequestMsg struct {
 }
 ```
 
-- [ ] **Step 3: 修改 loopStepWithText 签名（D5）**
+- [x] **Step 3: 修改 loopStepWithText 签名（D5）**
 
 ```go
 func (a *Agent) loopStepWithText(ctx context.Context, emitter StreamEmitter) (final string, err error) {
@@ -527,7 +527,7 @@ func (a *Agent) loopStepWithText(ctx context.Context, emitter StreamEmitter) (fi
 }
 ```
 
-- [ ] **Step 4: 修改 invokeTool 注入工具事件（D5）**
+- [x] **Step 4: 修改 invokeTool 注入工具事件（D5）**
 
 ```go
 func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall, emitter StreamEmitter) string {
@@ -545,7 +545,7 @@ func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall, emitter St
 
 同步更新 `executeBatch` 传递 emitter（从 context 或参数）。
 
-- [ ] **Step 5: 修改 RunStreaming 签名（D5）**
+- [x] **Step 5: 修改 RunStreaming 签名（D5）**
 
 ```go
 func (a *Agent) RunStreaming(ctx context.Context, userInput string, emitter StreamEmitter) (string, error) {
@@ -554,7 +554,7 @@ func (a *Agent) RunStreaming(ctx context.Context, userInput string, emitter Stre
 }
 ```
 
-- [ ] **Step 6: 更新 tui_runner.go 与 chanEmitter**
+- [x] **Step 6: 更新 tui_runner.go 与 chanEmitter**
 
 ```go
 func (r agentRunner) RunTurn(ctx context.Context, prompt string, emit tui.StreamEmitter) error {
@@ -571,13 +571,13 @@ type StreamEmitter = agent.StreamEmitter
 
 chanEmitter 实现 OnToolStart/OnToolEnd/OnApprovalRequest。
 
-- [ ] **Step 7: 运行测试**
+- [x] **Step 7: 运行测试**
 
 ```bash
 go test ./internal/agent/... ./internal/tui/... -count=1
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 勾选 `tasks.md` 3.1–3.6。
 
