@@ -40,7 +40,7 @@
 
 ## 7. 测试与验证
 
-- [ ] 7.1 编写端到端测试：创建临时 hooks.json + 简单 shell 脚本，验证 PreToolUse block 和 pass 流程
-- [ ] 7.2 验证无配置时 agent 正常运行（零 hook 降级）
-- [ ] 7.3 验证 TodoGuardHook 逻辑在 agent 主循环中正常工作
-- [ ] 7.4 `go build ./...` 编译通过，`go test ./...` 全量测试通过
+- [x] 7.1 编写端到端测试：创建临时 hooks.json + 简单 shell 脚本，验证 PreToolUse block 和 pass 流程
+- [x] 7.2 验证无配置时 agent 正常运行（零 hook 降级）
+- [x] 7.3 验证 TodoGuardHook 逻辑在 agent 主循环中正常工作
+- [x] 7.4 `go build ./...` 编译通过，`go test ./...` 全量测试通过
