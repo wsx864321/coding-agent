@@ -143,11 +143,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case StreamDoneMsg:
-		if m.pending.Len() > 0 {
-			rendered := m.mdRenderer.Render(m.pending.String(), m.contentWidth())
-			m = m.appendAssistantRendered(rendered, m.pending.String())
-			m.pending.Reset()
-		}
+		m = m.flushPending()
 		m.busy = false
 		m.streamCh = nil
 		m.turnCancel = nil
@@ -166,15 +162,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.interrupted = false
 			return m, nil
 		}
+		m = m.flushPending()
 		if msg.Err != nil {
 			m.lastError = msg.Err.Error()
 		}
+		m = m.syncViewportContent()
 		m = m.syncLayout()
 		return m, nil
 
 	case streamClosedMsg:
+		m = m.flushPending()
 		m.busy = false
 		m.streamCh = nil
+		m = m.syncViewportContent()
 		return m, nil
 
 	case ApprovalRequestMsg:
@@ -371,6 +371,15 @@ func (m Model) syncLayout() Model {
 	return m.layout()
 }
 
+func (m Model) flushPending() Model {
+	if m.pending.Len() > 0 {
+		rendered := m.mdRenderer.Render(m.pending.String(), m.contentWidth())
+		m = m.appendAssistantRendered(rendered, m.pending.String())
+		m.pending.Reset()
+	}
+	return m
+}
+
 func (m Model) interruptTurn() Model {
 	if !m.busy {
 		return m
@@ -379,11 +388,16 @@ func (m Model) interruptTurn() Model {
 		m.turnCancel()
 		m.turnCancel = nil
 	}
+	m = m.flushPending()
+	m.statusLabel = ""
+	m.pendingToolName = ""
+	m.pendingToolArgs = ""
 	m.busy = false
 	m.streamCh = nil
 	m.approval = nil
 	m.statusMsg = interruptedStatusMsg
 	m.interrupted = true
+	m = m.syncViewportContent()
 	m = m.syncLayout()
 	return m
 }

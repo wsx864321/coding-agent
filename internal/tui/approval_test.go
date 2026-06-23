@@ -110,6 +110,49 @@ func TestRenderApprovalBanner(t *testing.T) {
 	}
 }
 
+func TestRedactSensitiveArgs(t *testing.T) {
+	args := map[string]any{
+		"path":     "config.yaml",
+		"password": "hunter2",
+		"token":    "secret-token",
+		"api_key":  "sk-live-123",
+		"auth":     "Bearer xyz",
+	}
+	out := redactSensitiveArgs(args)
+	for _, key := range []string{"password", "token", "api_key", "auth"} {
+		if out[key] != "***" {
+			t.Errorf("key %q = %v, want ***", key, out[key])
+		}
+	}
+	if out["path"] != "config.yaml" {
+		t.Errorf("path = %v, want config.yaml", out["path"])
+	}
+}
+
+func TestApprovalArgSummaryOmitsRedactedSecretsFromToolArg(t *testing.T) {
+	summary := approvalArgSummary("write_file", map[string]any{
+		"path":     "config.yaml",
+		"password": "hunter2",
+	})
+	if strings.Contains(summary, "hunter2") {
+		t.Errorf("summary should not leak password: %s", summary)
+	}
+	if !strings.Contains(summary, "config.yaml") {
+		t.Errorf("summary should show path: %s", summary)
+	}
+}
+
+func TestApprovalArgSummaryTruncatesLongArgs(t *testing.T) {
+	long := strings.Repeat("x", 300)
+	summary := approvalArgSummary("bash", map[string]any{"command": long})
+	if len(summary) != approvalArgMaxLen+3 {
+		t.Fatalf("summary len = %d, want %d", len(summary), approvalArgMaxLen+3)
+	}
+	if !strings.HasSuffix(summary, "...") {
+		t.Fatalf("summary should end with ...: %s", summary)
+	}
+}
+
 func TestEscDuringApprovalCancelsTurn(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := NewWithRunner(&stubRunner{})
