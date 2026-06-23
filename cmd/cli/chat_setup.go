@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/wsx864321/coding-agent/internal/agent"
-	"github.com/wsx864321/coding-agent/internal/hooks/builtin"
+	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/jobs"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
@@ -53,10 +53,16 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker) (*chatSetup
 
 	jobMgr := jobs.NewManager()
 
+	hookRunner := hooks.NewRunner(
+		hooks.Load(hooks.LoadOptions{ProjectRoot: workdir}),
+		workdir,
+		hooks.DefaultSpawner,
+	)
+
 	a, err := agent.NewAgent(buildConfig(cmd),
 		agent.WithRegistry(registry),
 		agent.WithChecker(checker),
-		agent.WithHooks(builtin.NewDefault(os.Stderr, workdir)),
+		agent.WithHooks(hookRunner),
 		agent.WithSkillStore(skillStore),
 		agent.WithMemory(memSet),
 		agent.WithJobManager(jobMgr),

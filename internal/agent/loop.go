@@ -90,8 +90,16 @@ func (a *Agent) loopStepWithText(ctx context.Context, emitter StreamEmitter) (fi
 			a.maybeExtractMemories(ctx)
 		}
 
+		if force := a.checkTodoGuard(ctx); force != "" {
+			a.messages = append(a.messages, provider.Message{
+				Role:    provider.RoleUser,
+				Content: force,
+			})
+			return "", nil
+		}
+
 		if a.hooks != nil {
-			force, ok := a.hooks.TriggerStop(ctx, a.messages)
+			force, ok := a.hooks.Stop(ctx, a.messages)
 			if ok {
 				a.messages = append(a.messages, provider.Message{
 					Role:    provider.RoleUser,
@@ -152,8 +160,8 @@ func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall, emitter St
 	}
 
 	if a.hooks != nil {
-		if blocked, reason := a.hooks.TriggerPreToolUse(ctx, name, args); blocked {
-			result = fmt.Sprintf("Blocked by hook: %s", reason)
+		if blocked, msg := a.hooks.PreToolUse(ctx, name, args); blocked {
+			result = fmt.Sprintf("Blocked by hook: %s", msg)
 			return result
 		}
 	}
@@ -180,14 +188,14 @@ func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall, emitter St
 
 	if err != nil {
 		if a.hooks != nil {
-			a.hooks.TriggerPostToolUse(ctx, name, args, fmt.Sprintf("Error: %v", err))
+			a.hooks.PostToolUse(ctx, name, args, fmt.Sprintf("Error: %v", err))
 		}
 		result = fmt.Sprintf("Error: %v", err)
 		return result
 	}
 
 	if a.hooks != nil {
-		a.hooks.TriggerPostToolUse(ctx, name, args, out)
+		a.hooks.PostToolUse(ctx, name, args, out)
 	}
 	result = out
 	return result

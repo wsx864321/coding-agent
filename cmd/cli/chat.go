@@ -106,8 +106,8 @@ func runChat(cmd *cobra.Command, args []string) error {
 		a.SetSessionPath(agent.NewSessionPath(sessionBucket, cfg.Model))
 	}
 
-	if c := a.Hooks(); c != nil {
-		fmt.Printf("[coding-agent] 已注册 hooks: %s\n", formatHookCounts(c.Count()))
+	if info := hookCountInfo(a.Hooks()); info != "" {
+		fmt.Printf("[coding-agent] 已注册 hooks: %s\n", info)
 	}
 	fmt.Println("[coding-agent] 输入 /help 查看可用命令，Ctrl+C 中断当前轮")
 
@@ -183,8 +183,8 @@ func handleSlashCommand(ctx context.Context, a *agent.Agent, store *skill.Store,
 		return true, nil
 
 	case "/hooks":
-		if c := a.Hooks(); c != nil {
-			fmt.Printf("[coding-agent] 已注册 hooks: %s\n", formatHookCounts(c.Count()))
+		if info := hookCountInfo(a.Hooks()); info != "" {
+			fmt.Printf("[coding-agent] 已注册 hooks: %s\n", info)
 		} else {
 			fmt.Println("[coding-agent] 未配置 hooks")
 		}
@@ -259,6 +259,18 @@ func joinToolNames(r *tools.Registry) string {
 		names = append(names, t.Name())
 	}
 	return strings.Join(names, ", ")
+}
+
+// hookCountInfo 从 ToolHooks 提取 hook 数量摘要（仅 *hooks.Runner 支持 Count）。
+func hookCountInfo(h agent.ToolHooks) string {
+	if h == nil {
+		return ""
+	}
+	r, ok := h.(*hooks.Runner)
+	if !ok {
+		return "configured"
+	}
+	return formatHookCounts(r.Count())
 }
 
 // formatHookCounts 把 {Event: count} 拍平成可读字符串
