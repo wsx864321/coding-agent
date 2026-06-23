@@ -859,7 +859,7 @@ func (g glamourRenderer) Render(md string, width int) string {
   func flushableMarkdownPrefix(buf string) (renderable, remaining string)
   ```
 
-- [ ] **Step 1: 编写 flush test（D4，移植 Reasonix 逻辑）**
+- [x] **Step 1: 编写 flush test（D4，移植 Reasonix 逻辑）**
 
 ```go
 func TestFlushablePrefixHalfCodeBlock(t *testing.T) {
@@ -882,7 +882,7 @@ func TestFlushablePrefixCompleteBlock(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实现 flushableMarkdownPrefix（D4，参考 Reasonix chat_tui.go:2082-2099）**
+- [x] **Step 2: 实现 flushableMarkdownPrefix（D4，参考 Reasonix chat_tui.go:2082-2099）**
 
 ```go
 func flushableMarkdownPrefix(buf string) (renderable, remaining string) {
@@ -906,7 +906,7 @@ func flushableMarkdownPrefix(buf string) (renderable, remaining string) {
 }
 ```
 
-- [ ] **Step 3: 重构 StreamChunkMsg 处理（D4）**
+- [x] **Step 3: 重构 StreamChunkMsg 处理（D4）**
 
 ```go
 case StreamChunkMsg:
@@ -920,7 +920,7 @@ case StreamChunkMsg:
     m = m.followTailIfAtBottom()
 ```
 
-- [ ] **Step 4: StreamDoneMsg flush 剩余 pending**
+- [x] **Step 4: StreamDoneMsg flush 剩余 pending**
 
 ```go
 case StreamDoneMsg:
@@ -931,13 +931,13 @@ case StreamDoneMsg:
     }
 ```
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 ```bash
 go test ./internal/tui/... -run Flush -count=1 -v
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 勾选 `tasks.md` 7.1–7.4。
 
