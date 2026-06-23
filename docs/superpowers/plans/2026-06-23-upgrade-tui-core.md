@@ -202,7 +202,7 @@ git commit -m "refactor(tui): migrate Bubble Tea v1 to v2 API"
 - Consumes: `tea.View`、`tea.KeyPressMsg`（Task 1）
 - Produces: `textarea.Model`、`viewport.Model`、`spinner.Model` 嵌入 Model；`configureTextarea()` 配置
 
-- [ ] **Step 1: 编写 textarea 配置测试**
+- [x] **Step 1: 编写 textarea 配置测试**
 
 ```go
 func TestTextareaShiftEnterInsertsNewline(t *testing.T) {
@@ -218,7 +218,7 @@ func TestTextareaShiftEnterInsertsNewline(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实现 textarea 初始化（D2，参考 Reasonix configureChatTextarea）**
+- [x] **Step 2: 实现 textarea 初始化（D2，参考 Reasonix configureChatTextarea）**
 
 ```go
 import (
@@ -239,7 +239,7 @@ func newTextarea() textarea.Model {
 }
 ```
 
-- [ ] **Step 3: 实现 viewport 初始化（D2）**
+- [x] **Step 3: 实现 viewport 初始化（D2）**
 
 ```go
 import "charm.land/bubbles/v2/viewport"
@@ -252,7 +252,7 @@ func newViewport() viewport.Model {
 }
 ```
 
-- [ ] **Step 4: 实现 spinner 初始化（D2）**
+- [x] **Step 4: 实现 spinner 初始化（D2）**
 
 ```go
 import "charm.land/bubbles/v2/spinner"
@@ -264,7 +264,7 @@ func newSpinner() spinner.Model {
 }
 ```
 
-- [ ] **Step 5: 重构 Model 结构与 Update 路由**
+- [x] **Step 5: 重构 Model 结构与 Update 路由**
 
 ```go
 type Model struct {
@@ -283,7 +283,7 @@ Update 中：
 - Enter → 拦截提交（不传给 textarea）；其他键 → 转发 textarea
 - busy 时 Init 返回 `spinner.Tick`；StreamDone 停止
 
-- [ ] **Step 6: tail-follow 逻辑（D2）**
+- [x] **Step 6: tail-follow 逻辑（D2）**
 
 ```go
 func (m Model) followTailIfAtBottom() Model {
@@ -296,13 +296,13 @@ func (m Model) followTailIfAtBottom() Model {
 
 新 transcript 内容写入后调用。
 
-- [ ] **Step 7: 运行测试**
+- [x] **Step 7: 运行测试**
 
 ```bash
 go test ./internal/tui/... -run 'Textarea|Viewport|Spinner' -count=1 -v
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 勾选 `tasks.md` 1.3、1.4、1.5。
 
