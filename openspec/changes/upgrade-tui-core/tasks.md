@@ -51,10 +51,10 @@
 
 ## 7. 流式 Markdown 渲染优化
 
-- [ ] 7.1 实现 flushableMarkdownPrefix：检测段落边界（空行 + 不在 fenced block 内），返回可安全渲染的前缀
-- [ ] 7.2 重构流式更新逻辑：StreamChunkMsg 追加到 pending buffer → flushablePrefix → mdRenderer.Render → 写入 transcript
-- [ ] 7.3 在 StreamDoneMsg 时刷新剩余 pending 内容
-- [ ] 7.4 添加流式渲染的单元测试（半代码块、跨段落、空输出等边界场景）
+- [x] 7.1 实现 flushableMarkdownPrefix：检测段落边界（空行 + 不在 fenced block 内），返回可安全渲染的前缀
+- [x] 7.2 重构流式更新逻辑：StreamChunkMsg 追加到 pending buffer → flushablePrefix → mdRenderer.Render → 写入 transcript
+- [x] 7.3 在 StreamDoneMsg 时刷新剩余 pending 内容
+- [x] 7.4 添加流式渲染的单元测试（半代码块、跨段落、空输出等边界场景）
 
 ## 8. 布局 + 状态栏 + View 整合
 

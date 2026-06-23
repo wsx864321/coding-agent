@@ -24,6 +24,28 @@ func (m Model) appendUserMessage(raw string) Model {
 	return m.appendEntry(TranscriptEntry{Kind: EntryUserMessage, Raw: raw})
 }
 
+func (m Model) appendAssistantRendered(rendered, raw string) Model {
+	if raw == "" {
+		return m
+	}
+	if len(m.transcript) == 0 || m.transcript[len(m.transcript)-1].Kind != EntryAssistantChunk {
+		e := TranscriptEntry{Kind: EntryAssistantChunk, Raw: raw, Content: m.formatAssistantBody(rendered)}
+		m.transcript = append(m.transcript, e)
+		return m
+	}
+	last := len(m.transcript) - 1
+	if m.transcript[last].Raw != "" {
+		m.transcript[last].Raw += "\n"
+	}
+	m.transcript[last].Raw += raw
+	if m.transcript[last].Content == "" {
+		m.transcript[last].Content = m.formatAssistantBody(rendered)
+	} else {
+		m.transcript[last].Content += "\n" + m.formatAssistantContinuation(rendered)
+	}
+	return m
+}
+
 func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
 	w := m.contentWidth()
 	switch e.Kind {
@@ -85,10 +107,34 @@ func (m Model) renderAssistantText(raw string, width int) string {
 	} else {
 		body = strings.Join(WrapText(raw, innerWidth), "\n")
 	}
+	return m.applyAssistantPrefix(body, prefix, prefixWidth)
+}
+
+func (m Model) formatAssistantBody(rendered string) string {
+	prefix := "assistant: "
+	prefixWidth := runewidth.StringWidth(prefix)
+	body := strings.TrimRight(rendered, "\n")
+	return m.applyAssistantPrefix(body, prefix, prefixWidth)
+}
+
+func (m Model) formatAssistantContinuation(rendered string) string {
+	prefix := "assistant: "
+	prefixWidth := runewidth.StringWidth(prefix)
+	body := strings.TrimRight(rendered, "\n")
+	if body == "" {
+		return ""
+	}
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		lines[i] = strings.Repeat(" ", prefixWidth) + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) applyAssistantPrefix(body, prefix string, prefixWidth int) string {
 	if body == "" {
 		return prefix
 	}
-
 	lines := strings.Split(body, "\n")
 	for i, line := range lines {
 		if i == 0 {

@@ -69,20 +69,24 @@ func TestStreamChunksAppendAssistantContent(t *testing.T) {
 	m.busy = true
 	m.streamCh = ch
 
+	// No paragraph boundary yet — content stays in pending buffer.
 	next, cmd := m.Update(StreamChunkMsg{Text: "hel"})
 	updated := next.(Model)
-	if got := updated.transcript[1].Raw; got != "hel" {
-		t.Fatalf("assistant raw = %q, want %q", got, "hel")
+	if got := updated.transcript[1].Raw; got != "" {
+		t.Fatalf("assistant raw = %q, want empty before boundary", got)
+	}
+	if updated.pending.String() != "hel" {
+		t.Fatalf("pending = %q, want hel", updated.pending.String())
 	}
 	if cmd == nil {
 		t.Fatal("chunk update should continue listening for stream")
 	}
 
-	ch <- StreamChunkMsg{Text: "lo"}
+	ch <- StreamChunkMsg{Text: "lo\n\n"}
 	next, cmd = updated.Update(cmd())
 	updated = next.(Model)
-	if got := updated.transcript[1].Raw; got != "hello" {
-		t.Fatalf("assistant raw = %q, want %q", got, "hello")
+	if got := updated.transcript[1].Raw; got != "hello\n" {
+		t.Fatalf("assistant raw = %q, want hello\\n after paragraph flush", got)
 	}
 	if cmd == nil {
 		t.Fatal("chunk update should continue listening for stream")

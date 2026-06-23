@@ -27,7 +27,8 @@ type Model struct {
 	lastError   string
 	statusMsg   string
 	statusLabel string
-	interrupted bool
+	interrupted     bool
+	pending         strings.Builder
 	pendingToolName string
 	pendingToolArgs string
 	approval    *pendingApproval
@@ -73,7 +74,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.busy {
 			return m, nil
 		}
-		m = m.appendAssistantChunk(msg.Text)
+		m.pending.WriteString(msg.Text)
+		if renderable, rest := flushableMarkdownPrefix(m.pending.String()); renderable != "" {
+			rendered := m.mdRenderer.Render(renderable, m.contentWidth())
+			m = m.appendAssistantRendered(rendered, renderable)
+			m.pending.Reset()
+			m.pending.WriteString(rest)
+		}
 		m = m.syncViewportContent()
 		if m.streamCh != nil {
 			return m, waitStreamMsg(m.streamCh)
@@ -132,6 +139,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case StreamDoneMsg:
+		if m.pending.Len() > 0 {
+			rendered := m.mdRenderer.Render(m.pending.String(), m.contentWidth())
+			m = m.appendAssistantRendered(rendered, m.pending.String())
+			m.pending.Reset()
+		}
 		m.busy = false
 		m.streamCh = nil
 		m.turnCancel = nil
@@ -273,6 +285,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.statusMsg = ""
 	m.statusLabel = ""
 	m.interrupted = false
+	m.pending.Reset()
 	m = m.appendUserMessage(text)
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
