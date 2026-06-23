@@ -82,7 +82,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.pending.WriteString(msg.Text)
 		if renderable, rest := flushableMarkdownPrefix(m.pending.String()); renderable != "" {
-			rendered := m.mdRenderer.Render(renderable, m.contentWidth())
+			rendered := m.mdRenderer.Render(renderable, m.assistantInnerWidth())
 			m = m.appendAssistantRendered(rendered, renderable)
 			m.pending.Reset()
 			m.pending.WriteString(rest)
@@ -386,7 +386,7 @@ func (m Model) syncLayout() Model {
 
 func (m Model) flushPending() Model {
 	if m.pending.Len() > 0 {
-		rendered := m.mdRenderer.Render(m.pending.String(), m.contentWidth())
+		rendered := m.mdRenderer.Render(m.pending.String(), m.assistantInnerWidth())
 		m = m.appendAssistantRendered(rendered, m.pending.String())
 		m.pending.Reset()
 	}

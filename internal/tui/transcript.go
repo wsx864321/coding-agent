@@ -84,6 +84,15 @@ func (m Model) contentWidth() int {
 	return contentWidth
 }
 
+func (m Model) assistantInnerWidth() int {
+	prefixWidth := runewidth.StringWidth("assistant: ")
+	w := m.contentWidth() - prefixWidth
+	if w < 4 {
+		w = 4
+	}
+	return w
+}
+
 func renderUserBubble(raw string, width int) string {
 	innerWidth := width - 4
 	if innerWidth < 4 {
