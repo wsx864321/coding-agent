@@ -786,7 +786,7 @@ Allow Write("config.yaml")? [y]es [n]o
   func NewGlamourRenderer() MarkdownRenderer
   ```
 
-- [ ] **Step 1: 验证 glamour 依赖兼容性**
+- [x] **Step 1: 验证 glamour 依赖兼容性**
 
 ```bash
 go get github.com/charmbracelet/glamour@latest
@@ -794,7 +794,7 @@ go get github.com/charmbracelet/glamour@latest
 go test -run=NonExistent ./internal/tui/... # compile check
 ```
 
-- [ ] **Step 2: 编写 markdown test（D3）**
+- [x] **Step 2: 编写 markdown test（D3）**
 
 ```go
 func TestGlamourRendererCodeBlock(t *testing.T) {
@@ -810,7 +810,7 @@ func TestGlamourRendererCodeBlock(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: 实现 glamourRenderer（D3）**
+- [x] **Step 3: 实现 glamourRenderer（D3）**
 
 ```go
 func NewGlamourRenderer() MarkdownRenderer { return glamourRenderer{} }
@@ -829,13 +829,13 @@ func (g glamourRenderer) Render(md string, width int) string {
 }
 ```
 
-- [ ] **Step 4: 补充列表/表格/引用测试**
+- [x] **Step 4: 补充列表/表格/引用测试**
 
-- [ ] **Step 5: Model 注入 mdRenderer，助手消息渲染时使用**
+- [x] **Step 5: Model 注入 mdRenderer，助手消息渲染时使用**
 
 用户消息保持简单文本气泡；助手 EntryAssistantChunk 使用 renderer。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 勾选 `tasks.md` 6.1–6.8（glamour 替代 goldmark walker，符合 Design Doc D3）。
 
