@@ -281,11 +281,13 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	return "", fmt.Errorf("%w (limit=%d)", ErrMaxTurnsExceeded, a.cfg.MaxTurns)
 }
 
-// RunStreaming 与 Run 相同，但在 LLM 流式输出时将文本增量推送给 onText。
-func (a *Agent) RunStreaming(ctx context.Context, userInput string, onText func(string)) (string, error) {
+// RunStreaming 与 Run 相同，但在 LLM 流式输出时将事件推送给 emitter。
+func (a *Agent) RunStreaming(ctx context.Context, userInput string, emitter StreamEmitter) (string, error) {
 	if userInput == "" {
 		return "", fmt.Errorf("userInput 不能为空")
 	}
+
+	ctx = WithEmitter(ctx, emitter)
 
 	if a.ledger != nil {
 		a.ledger.Reset()
@@ -319,7 +321,7 @@ func (a *Agent) RunStreaming(ctx context.Context, userInput string, onText func(
 	a.hasAttemptedReactiveCompact = false
 
 	for turn := 0; turn < a.cfg.MaxTurns; turn++ {
-		final, err := a.loopStepWithText(ctx, onText)
+		final, err := a.loopStepWithText(ctx, emitter)
 		if err != nil {
 			return "", err
 		}

@@ -13,5 +13,25 @@ type StreamErrorMsg struct {
 	Err error
 }
 
+// ToolStartMsg 表示工具调用开始。
+type ToolStartMsg struct {
+	Name string
+	Args string
+}
+
+// ToolEndMsg 表示工具调用结束。
+type ToolEndMsg struct {
+	Name    string
+	Result  string
+	IsError bool
+}
+
+// ApprovalRequestMsg 表示需要用户审批的工具调用。
+type ApprovalRequestMsg struct {
+	Name    string
+	Args    map[string]any
+	Respond func(bool)
+}
+
 // streamClosedMsg 在流通道关闭且未收到显式完成/错误时触发。
 type streamClosedMsg struct{}

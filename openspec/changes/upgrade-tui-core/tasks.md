@@ -16,12 +16,12 @@
 
 ## 3. 事件系统扩展（工具调用 + 审批）
 
-- [ ] 3.1 扩展 `StreamEmitter` 接口：增加 OnToolStart(name, args)、OnToolEnd(name, result, err)、OnApprovalRequest(name, args, respond)
-- [ ] 3.2 定义新的 tea.Msg 类型：ToolStartMsg、ToolEndMsg、ApprovalRequestMsg、ApprovalResponseMsg
-- [ ] 3.3 修改 `internal/agent/loop.go` 的 loopStepWithText：在 invokeTool 前后调用 emitter 的 OnToolStart/OnToolEnd
+- [x] 3.1 扩展 `StreamEmitter` 接口：增加 OnToolStart(name, args)、OnToolEnd(name, result, err)、OnApprovalRequest(name, args, respond)
+- [x] 3.2 定义新的 tea.Msg 类型：ToolStartMsg、ToolEndMsg、ApprovalRequestMsg、ApprovalResponseMsg
+- [x] 3.3 修改 `internal/agent/loop.go` 的 loopStepWithText：在 invokeTool 前后调用 emitter 的 OnToolStart/OnToolEnd
 - [ ] 3.4 修改 `internal/agent/loop.go` 的 invokeTool：在 permission.Check 判定需要确认时调用 OnApprovalRequest 并等待 respond 回调
-- [ ] 3.5 更新 `cmd/cli/tui_runner.go`：适配扩展后的 StreamEmitter 接口，传递所有事件到 channel
-- [ ] 3.6 更新 chanEmitter：增加 OnToolStart、OnToolEnd、OnApprovalRequest 的 channel 实现
+- [x] 3.5 更新 `cmd/cli/tui_runner.go`：适配扩展后的 StreamEmitter 接口，传递所有事件到 channel
+- [x] 3.6 更新 chanEmitter：增加 OnToolStart、OnToolEnd、OnApprovalRequest 的 channel 实现
 
 ## 4. 工具调用可视化（TUI 侧）
 
