@@ -5,8 +5,8 @@
 | Dimension    | Status           |
 |--------------|------------------|
 | Completeness | 24/24 tasks ✓, 8 requirements (6 event-sink + 2 shell-hook-engine MODIFIED) |
-| Correctness  | 19/22 scenarios fully match spec (3 gaps) |
-| Coherence    | 6/7 design decisions fully implemented (D5 partial) |
+| Correctness  | 22/22 scenarios fully match spec |
+| Coherence    | 7/7 design decisions fully implemented |
 
 **Build**: `go build ./...` — exit 0 ✓（2026-06-23 本机 fresh run）
 **Tests**: `go test ./... -count=1` — 15 packages PASS ✓（2026-06-23 本机 fresh run）
@@ -208,8 +208,8 @@ None
 
 ### Final Assessment
 
-**Verdict: PASS WITH WARNINGS — 可进入 archive，建议先修复 WARNING #1**
+**Verdict: PASS — 所有 WARNING 已修复，可进入 archive**
 
-unified-event-sink change 的核心架构目标已达成：`internal/event` 包、Sink 统一事件流、Agent/TUI/CLI 三层迁移、StreamEmitter 与 log.Printf 清理均已完成。`go build ./...` 与 `go test ./... -count=1` 全部通过，24/24 task 已勾选，6/6 event-sink requirement 主体实现到位。
+unified-event-sink change 的核心架构目标已全部达成：`internal/event` 包、Sink 统一事件流、Agent/TUI/CLI 三层迁移、StreamEmitter 与 log.Printf 清理均已完成。`go build ./...` 与 `go test ./... -count=1` 全部通过，24/24 task 已勾选，22/22 scenario 覆盖，7/7 设计决策已实现。
 
-主要遗留 gap 是 **hook exit 2 warn/block 场景未调用 notify**（WARNING #1），这与 change 的核心动机（hook 消息在 TUI 可见）直接相关，建议在 archive 前修复。TextSink 工具摘要格式偏差（WARNING #2/#3）为 UX 级别，可后续迭代。
+验证首轮发现的 3 个 WARNING（hook exit 2 notify、TextSink 工具参数/错误摘要）已在 commit `49c3739` 中修复。修复后重新验证全部通过。
