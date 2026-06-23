@@ -7,30 +7,43 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"github.com/wsx864321/coding-agent/internal/event"
 )
 
 type stubRunner struct {
 	chunks []string
 	err    error
 	prompt string
+	sink   *TuiSink
 }
 
-func (s *stubRunner) RunTurn(_ context.Context, prompt string, emit StreamEmitter) error {
+func (s *stubRunner) RunTurn(_ context.Context, prompt string) error {
 	s.prompt = prompt
 	for _, c := range s.chunks {
-		emit.OnChunk(c)
+		if s.sink != nil {
+			s.sink.Emit(event.Event{Kind: event.Text, Text: c})
+		}
 	}
 	if s.err != nil {
-		emit.OnError(s.err)
+		if s.sink != nil {
+			s.sink.Emit(event.Event{Kind: event.TurnDone, Err: s.err})
+		}
 		return s.err
 	}
-	emit.OnDone()
+	if s.sink != nil {
+		s.sink.Emit(event.Event{Kind: event.TurnDone})
+	}
 	return nil
 }
 
+func newStubModel(chunks []string) (Model, *stubRunner) {
+	sink := &TuiSink{}
+	runner := &stubRunner{chunks: chunks, sink: sink}
+	return NewWithRunner(runner, sink), runner
+}
+
 func TestSubmitWritesUserMessageAndInvokesRunner(t *testing.T) {
-	runner := &stubRunner{chunks: []string{"ok"}}
-	m := NewWithRunner(runner)
+	m, _ := newStubModel([]string{"ok"})
 	m.textarea.SetValue("hello agent")
 
 	updated, cmd := m.submit()
@@ -61,7 +74,7 @@ func TestSubmitWritesUserMessageAndInvokesRunner(t *testing.T) {
 }
 
 func TestStreamChunksAppendAssistantContent(t *testing.T) {
-	ch := make(chan any, 1)
+	ch := make(chan event.Event, 1)
 	m := New()
 	m.width = 80
 	m = m.appendUserMessage("q")
@@ -70,7 +83,7 @@ func TestStreamChunksAppendAssistantContent(t *testing.T) {
 	m.streamCh = ch
 
 	// No paragraph boundary yet — content stays in pending buffer.
-	next, cmd := m.Update(StreamChunkMsg{Text: "hel"})
+	next, cmd := m.Update(event.Event{Kind: event.Text, Text: "hel"})
 	updated := next.(Model)
 	if got := updated.transcript[1].Raw; got != "" {
 		t.Fatalf("assistant raw = %q, want empty before boundary", got)
@@ -82,7 +95,7 @@ func TestStreamChunksAppendAssistantContent(t *testing.T) {
 		t.Fatal("chunk update should continue listening for stream")
 	}
 
-	ch <- StreamChunkMsg{Text: "lo\n\n"}
+	ch <- event.Event{Kind: event.Text, Text: "lo\n\n"}
 	next, cmd = updated.Update(cmd())
 	updated = next.(Model)
 	if got := updated.transcript[1].Raw; got != "hello\n" {
@@ -98,13 +111,13 @@ func TestStreamDoneClearsBusy(t *testing.T) {
 	m.busy = true
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk, Raw: "done"})
 
-	next, cmd := m.Update(StreamDoneMsg{})
+	next, cmd := m.Update(event.Event{Kind: event.TurnDone})
 	updated := next.(Model)
 	if updated.busy {
-		t.Fatal("busy should be false after StreamDoneMsg")
+		t.Fatal("busy should be false after TurnDone")
 	}
 	if cmd != nil {
-		t.Fatal("StreamDoneMsg should not return follow-up command")
+		t.Fatal("TurnDone should not return follow-up command")
 	}
 }
 
@@ -112,22 +125,21 @@ func TestStreamErrorClearsBusyAndStoresError(t *testing.T) {
 	m := New()
 	m.busy = true
 
-	next, cmd := m.Update(StreamErrorMsg{Err: errors.New("network down")})
+	next, cmd := m.Update(event.Event{Kind: event.TurnDone, Err: errors.New("network down")})
 	updated := next.(Model)
 	if updated.busy {
-		t.Fatal("busy should be false after StreamErrorMsg")
+		t.Fatal("busy should be false after TurnDone with error")
 	}
 	if updated.lastError != "network down" {
 		t.Fatalf("lastError = %q, want network down", updated.lastError)
 	}
 	if cmd != nil {
-		t.Fatal("StreamErrorMsg should not return follow-up command")
+		t.Fatal("TurnDone should not return follow-up command")
 	}
 }
 
 func TestEnterSubmitEndToEndWithStubRunner(t *testing.T) {
-	runner := &stubRunner{chunks: []string{"A", "B"}}
-	m := NewWithRunner(runner)
+	m, _ := newStubModel([]string{"A", "B"})
 	m.textarea.SetValue("ping")
 
 	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -166,11 +178,11 @@ func TestEnterSubmitEndToEndWithStubRunner(t *testing.T) {
 	dispatch:
 		next, cmd = updated.Update(msg)
 		updated = next.(Model)
-		if _, ok := msg.(StreamDoneMsg); ok {
+		if ev, ok := msg.(event.Event); ok && ev.Kind == event.TurnDone {
+			if ev.Err != nil {
+				t.Fatal("unexpected stream error")
+			}
 			break
-		}
-		if _, ok := msg.(StreamErrorMsg); ok {
-			t.Fatal("unexpected stream error")
 		}
 		if cmd == nil {
 			t.Fatal("expected follow-up command before done")
