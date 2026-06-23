@@ -5,19 +5,36 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/evidence"
 	"github.com/wsx864321/coding-agent/internal/provider"
 )
 
+func TestCheckTodoGuard_EmitsNotice(t *testing.T) {
+	var notices []event.Event
+	a := &Agent{sink: event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Notice {
+			notices = append(notices, e)
+		}
+	})}
+	l := evidence.NewLedger()
+	l.SetTodos([]evidence.TodoItem{{Content: "task", Status: "pending"}})
+	ctx := evidence.WithLedger(context.Background(), l)
+	_ = a.checkTodoGuard(ctx)
+	if len(notices) == 0 {
+		t.Fatal("expected Notice event from todo guard")
+	}
+}
+
 func TestCheckTodoGuard_NoLedger(t *testing.T) {
-	a := &Agent{}
+	a := &Agent{sink: event.Discard}
 	if got := a.checkTodoGuard(context.Background()); got != "" {
 		t.Errorf("checkTodoGuard() = %q, want empty", got)
 	}
 }
 
 func TestCheckTodoGuard_NoTodos(t *testing.T) {
-	a := &Agent{}
+	a := &Agent{sink: event.Discard}
 	l := evidence.NewLedger()
 	ctx := evidence.WithLedger(context.Background(), l)
 	if got := a.checkTodoGuard(ctx); got != "" {
@@ -26,7 +43,7 @@ func TestCheckTodoGuard_NoTodos(t *testing.T) {
 }
 
 func TestCheckTodoGuard_AllCompleted(t *testing.T) {
-	a := &Agent{}
+	a := &Agent{sink: event.Discard}
 	l := evidence.NewLedger()
 	l.SetTodos([]evidence.TodoItem{
 		{Content: "task A", Status: "completed"},
@@ -39,7 +56,7 @@ func TestCheckTodoGuard_AllCompleted(t *testing.T) {
 }
 
 func TestCheckTodoGuard_IncompleteTodos_ForcesContinue(t *testing.T) {
-	a := &Agent{}
+	a := &Agent{sink: event.Discard}
 	l := evidence.NewLedger()
 	l.SetTodos([]evidence.TodoItem{
 		{Content: "task A", Status: "completed"},
@@ -60,7 +77,7 @@ func TestCheckTodoGuard_IncompleteTodos_ForcesContinue(t *testing.T) {
 }
 
 func TestCheckTodoGuard_MultipleIncomplete(t *testing.T) {
-	a := &Agent{}
+	a := &Agent{sink: event.Discard}
 	l := evidence.NewLedger()
 	l.SetTodos([]evidence.TodoItem{
 		{Content: "task A", Status: "completed"},
@@ -82,7 +99,7 @@ func TestCheckTodoGuard_MultipleIncomplete(t *testing.T) {
 }
 
 func TestCheckTodoGuard_ExceedsMaxBlocks_AllowsThrough(t *testing.T) {
-	a := &Agent{}
+	a := &Agent{sink: event.Discard}
 	l := evidence.NewLedger()
 	l.SetTodos([]evidence.TodoItem{
 		{Content: "task A", Status: "in_progress"},

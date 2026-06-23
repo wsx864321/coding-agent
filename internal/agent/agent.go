@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/evidence"
 	"github.com/wsx864321/coding-agent/internal/jobs"
 	"github.com/wsx864321/coding-agent/internal/memory"
@@ -47,6 +48,7 @@ type Agent struct {
 	memQueue *memory.Queue
 	// --- background jobs ---
 	jobMgr *jobs.Manager
+	sink   event.Sink
 	// --- pre-compact snapshot (for memory extraction) ---
 	preCompactSnapshot []provider.Message
 	// --- auto-extract throttling ---
@@ -134,6 +136,9 @@ func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
 	a.sessionDir = a.cfg.SessionDir
 	a.extractInterval = DefaultMemoryExtractInterval
 	a.memExtractThresh = DefaultMemoryExtractThreshold
+	if a.sink == nil {
+		a.sink = event.Discard
+	}
 	return a, nil
 }
 
@@ -228,7 +233,10 @@ func (a *Agent) SkillStore() *skill.Store {
 }
 
 // Run 接收用户输入，驱动 Agent loop，最终返回 LLM 的最终回答
-func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
+func (a *Agent) Run(ctx context.Context, userInput string) (final string, err error) {
+	defer func() {
+		a.sink.Emit(event.Event{Kind: event.TurnDone, Err: err})
+	}()
 	if userInput == "" {
 		return "", fmt.Errorf("userInput 不能为空")
 	}
@@ -269,58 +277,6 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 	for turn := 0; turn < a.cfg.MaxTurns; turn++ {
 		final, err := a.loopStep(ctx)
-		if err != nil {
-			return "", err
-		}
-		if final != "" {
-			_ = a.SaveCurrentSession()
-			return final, nil
-		}
-	}
-	return "", fmt.Errorf("%w (limit=%d)", ErrMaxTurnsExceeded, a.cfg.MaxTurns)
-}
-
-// RunStreaming 与 Run 相同，但在 LLM 流式输出时将事件推送给 emitter。
-func (a *Agent) RunStreaming(ctx context.Context, userInput string, emitter StreamEmitter) (string, error) {
-	if userInput == "" {
-		return "", fmt.Errorf("userInput 不能为空")
-	}
-
-	ctx = WithEmitter(ctx, emitter)
-
-	if a.ledger != nil {
-		a.ledger.Reset()
-		ctx = evidence.WithLedger(ctx, a.ledger)
-	}
-
-	if a.jobMgr != nil {
-		ctx = jobs.WithManager(ctx, a.jobMgr)
-		if note := a.jobMgr.DrainCompletedNote(); note != "" {
-			userInput = note + "\n\n" + userInput
-		}
-	}
-
-	if a.hooks != nil {
-		_ = a.hooks.UserPromptSubmit(ctx, userInput)
-	}
-
-	userContent := userInput
-	if a.memQueue != nil && a.memQueue.Pending() {
-		update := a.memQueue.Flush()
-		if update != "" {
-			userContent = update + "\n\n" + userInput
-		}
-	}
-
-	a.messages = append(a.messages, provider.Message{
-		Role:    provider.RoleUser,
-		Content: userContent,
-	})
-
-	a.hasAttemptedReactiveCompact = false
-
-	for turn := 0; turn < a.cfg.MaxTurns; turn++ {
-		final, err := a.loopStepWithText(ctx, emitter)
 		if err != nil {
 			return "", err
 		}
