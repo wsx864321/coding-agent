@@ -23,7 +23,7 @@ func TestE2E_PreToolUse_BlockAndPass(t *testing.T) {
 		t.Fatalf("Load() len=%d, want 1", len(loaded))
 	}
 
-	runner := NewRunner(loaded, root, DefaultSpawner)
+	runner := NewRunner(loaded, root, DefaultSpawner, nil)
 
 	blocked, _ := runner.PreToolUse(context.Background(), "echo", map[string]any{"input": "x"})
 	if !blocked {
@@ -45,7 +45,7 @@ func TestZeroHookDegradation_LoadEmptyRunner(t *testing.T) {
 		t.Fatalf("Load() without config should be empty, got %d hooks", len(loaded))
 	}
 
-	runner := NewRunner(loaded, root, DefaultSpawner)
+	runner := NewRunner(loaded, root, DefaultSpawner, nil)
 
 	if err := runner.UserPromptSubmit(context.Background(), "hello"); err != nil {
 		t.Fatalf("UserPromptSubmit: %v", err)

@@ -3,11 +3,14 @@ package hooks
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 	"time"
 )
 
-func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spawner) Report {
+func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spawner, notify func(string)) Report {
+	if notify == nil {
+		notify = func(string) {}
+	}
 	rep := Report{Event: payload.Event}
 	blocking := isBlockingEvent(payload.Event)
 
@@ -15,13 +18,13 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 		if h.Event != payload.Event {
 			continue
 		}
-		if !matchesHook(h, payload) {
+		if !matchesHook(h, payload, notify) {
 			continue
 		}
 
 		body, err := json.Marshal(payload)
 		if err != nil {
-			log.Printf("[hooks] marshal payload for hook %q: %v", h.Command, err)
+			notify(fmt.Sprintf("[hooks] marshal payload for hook %q: %v", h.Command, err))
 			continue
 		}
 		cwd := h.Cwd
@@ -36,7 +39,7 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 			Timeout: time.Duration(h.Timeout) * time.Millisecond,
 		})
 		if res.Err != nil && !res.TimedOut {
-			log.Printf("[hooks] spawn failed for hook %q: %v", h.Command, res.Err)
+			notify(fmt.Sprintf("[hooks] spawn failed for hook %q: %v", h.Command, res.Err))
 		}
 		decision := decideOutcome(payload.Event, res)
 		out := Outcome{
@@ -68,7 +71,7 @@ func isBlockingEvent(e Event) bool {
 	return e == EventPreToolUse
 }
 
-func matchesHook(h ResolvedHook, p Payload) bool {
+func matchesHook(h ResolvedHook, p Payload, notify func(string)) bool {
 	if h.Match == "" {
 		return true
 	}
@@ -76,7 +79,7 @@ func matchesHook(h ResolvedHook, p Payload) bool {
 		return true
 	}
 	if h.compiledMatch == nil {
-		log.Printf("[hooks] invalid match regex %q in hook %q: not compiled", h.Match, h.Command)
+		notify(fmt.Sprintf("[hooks] invalid match regex %q in hook %q: not compiled", h.Match, h.Command))
 		return false
 	}
 	return h.compiledMatch.MatchString(p.ToolName)

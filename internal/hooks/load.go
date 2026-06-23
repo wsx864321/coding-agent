@@ -2,7 +2,6 @@ package hooks
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,7 +28,6 @@ func Load(opts LoadOptions) []ResolvedHook {
 		var err error
 		home, err = userHomeDir()
 		if err != nil {
-			log.Printf("[hooks] 无法获取用户目录，跳过全局 hook: %v", err)
 			return out
 		}
 	}
@@ -41,14 +39,10 @@ func Load(opts LoadOptions) []ResolvedHook {
 func loadFile(path string, scope Scope) []ResolvedHook {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Printf("[hooks] 读取 %s 失败: %v", path, err)
-		}
 		return nil
 	}
 	var settings Settings
 	if err := json.Unmarshal(data, &settings); err != nil {
-		log.Printf("[hooks] 解析 %s 失败: %v", path, err)
 		return nil
 	}
 	abs, _ := filepath.Abs(path)
@@ -70,7 +64,6 @@ func loadFile(path string, scope Scope) []ResolvedHook {
 			if cfg.Match != "" {
 				re, err := regexp.Compile(cfg.Match)
 				if err != nil {
-					log.Printf("[hooks] invalid match regex %q in hook %q (%s): %v", cfg.Match, cfg.Command, abs, err)
 					continue
 				}
 				h.compiledMatch = re
