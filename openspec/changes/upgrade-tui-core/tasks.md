@@ -58,11 +58,11 @@
 
 ## 8. 布局 + 状态栏 + View 整合
 
-- [ ] 8.1 重构 View 函数：三区布局（viewport + 状态/审批 + textarea + help）
-- [ ] 8.2 实现 bottomHeight 动态计算：textarea 高度 + 状态栏 + help + 可选审批横幅
-- [ ] 8.3 实现状态栏渲染：模型名称 + busy/idle 状态 + 可选耗时
-- [ ] 8.4 处理 WindowSizeMsg：调整 viewport/textarea 尺寸
-- [ ] 8.5 更新帮助文本：反映新的快捷键映射
+- [x] 8.1 重构 View 函数：三区布局（viewport + 状态/审批 + textarea + help）
+- [x] 8.2 实现 bottomHeight 动态计算：textarea 高度 + 状态栏 + help + 可选审批横幅
+- [x] 8.3 实现状态栏渲染：模型名称 + busy/idle 状态 + 可选耗时
+- [x] 8.4 处理 WindowSizeMsg：调整 viewport/textarea 尺寸
+- [x] 8.5 更新帮助文本：反映新的快捷键映射
 
 ## 9. 集成测试 + 回归验证
 

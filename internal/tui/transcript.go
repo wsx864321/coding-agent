@@ -167,3 +167,7 @@ func (m Model) rerenderTranscript() Model {
 	}
 	return m
 }
+
+func (m Model) rebuildTranscript() Model {
+	return m.rerenderTranscript()
+}

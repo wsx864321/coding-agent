@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -22,6 +23,8 @@ type Model struct {
 	mdRenderer  MarkdownRenderer
 	width       int
 	height      int
+	modelName   string
+	runStart    time.Time
 	quitting    bool
 	busy        bool
 	lastError   string
@@ -44,6 +47,7 @@ func New() Model {
 		viewport:   newViewport(),
 		spinner:    newSpinner(),
 		mdRenderer: NewGlamourRenderer(),
+		modelName:  "coding-agent",
 	}
 }
 
@@ -65,8 +69,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m = m.syncLayout()
-		m = m.rerenderTranscript()
+		m = m.layout()
+		m = m.rebuildTranscript()
 		m = m.syncViewportContent()
 		return m, nil
 
@@ -178,6 +182,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.approval = &pendingApproval{toolName: msg.Name, args: msg.Args, respond: msg.Respond}
+		m = m.syncLayout()
 		if m.streamCh != nil {
 			return m, waitStreamMsg(m.streamCh)
 		}
@@ -200,7 +205,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.approval != nil {
 			switch msg.String() {
 			case "y", "Y", "n", "N":
-				return m.handleApprovalKey(msg)
+				next, cmd := m.handleApprovalKey(msg)
+				next = next.syncLayout()
+				return next, cmd
 			case "esc":
 				m = m.interruptTurn()
 				m.approval = nil
@@ -281,6 +288,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.textarea.Reset()
 	m = m.syncLayout()
 	m.busy = true
+	m.runStart = time.Now()
 	m.lastError = ""
 	m.statusMsg = ""
 	m.statusLabel = ""
@@ -343,7 +351,7 @@ func (m Model) syncViewportContent() Model {
 	return m
 }
 
-func (m Model) syncLayout() Model {
+func (m Model) layout() Model {
 	contentWidth := m.width
 	if contentWidth <= 0 {
 		contentWidth = 80
@@ -351,27 +359,16 @@ func (m Model) syncLayout() Model {
 	m.textarea.SetWidth(contentWidth)
 	m.viewport.SetWidth(contentWidth)
 
-	overhead := 4 // title + gaps + help
-	if m.lastError != "" {
-		overhead++
+	vpHeight := m.height - m.bottomHeight()
+	if vpHeight < 1 {
+		vpHeight = 1
 	}
-	if m.statusMsg != "" {
-		overhead++
-	}
-	if m.busy {
-		overhead++
-	}
-	if m.approval != nil {
-		overhead++
-	}
-	overhead += m.textarea.Height()
-
-	viewportHeight := m.height - overhead
-	if viewportHeight < 1 {
-		viewportHeight = 1
-	}
-	m.viewport.SetHeight(viewportHeight)
+	m.viewport.SetHeight(vpHeight)
 	return m
+}
+
+func (m Model) syncLayout() Model {
+	return m.layout()
 }
 
 func (m Model) interruptTurn() Model {

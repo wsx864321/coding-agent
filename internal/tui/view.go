@@ -6,45 +6,33 @@ import (
 )
 
 var (
-	titleStyle   = lipgloss.NewStyle().Bold(true)
 	messageStyle = lipgloss.NewStyle()
 	helpStyle    = lipgloss.NewStyle().Faint(true)
 	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	statusStyle  = lipgloss.NewStyle().Faint(true)
-	spinnerStyle = lipgloss.NewStyle()
 )
 
-// View 渲染标题、消息区、输入区与快捷键帮助。
+const helpText = "Shift+Enter 换行 · Enter 发送 · Esc 中断 · Ctrl+C 退出"
+
+// View 渲染对话区、审批横幅、状态栏、输入区与快捷键帮助。
 func (m Model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
 
-	title := titleStyle.Render("coding-agent TUI")
-	messagePane := messageStyle.Render(m.viewport.View())
-	inputPane := m.textarea.View()
-	help := helpStyle.Render("↑↓/jk 滚动 · Shift+Enter 换行 · Enter 发送 · Esc 中断 · Ctrl+C 退出")
-
 	var parts []string
-	parts = append(parts, title, "", messagePane, "", inputPane)
-	if m.busy {
-		label := "思考中…"
-		if m.statusLabel != "" {
-			label = m.statusLabel
-		}
-		parts = append(parts, "", spinnerStyle.Render(m.spinner.View()+" "+label))
-	}
-	if m.lastError != "" {
-		parts = append(parts, "", errorStyle.Render("错误: "+m.lastError))
-	}
-	if m.statusMsg != "" {
-		parts = append(parts, "", statusStyle.Render(m.statusMsg))
-	}
+	parts = append(parts, messageStyle.Render(m.viewport.View()))
+
 	if m.approval != nil {
 		banner := renderApprovalBanner(*m.approval, m.contentWidth())
-		parts = append(parts, "", statusStyle.Render(banner))
+		parts = append(parts, statusStyle.Render(banner))
 	}
-	parts = append(parts, "", help)
+	if m.lastError != "" {
+		parts = append(parts, errorStyle.Render("错误: "+m.lastError))
+	}
+	parts = append(parts, statusStyle.Render(renderStatusBar(m)))
+	parts = append(parts, m.textarea.View())
+	parts = append(parts, helpStyle.Render(helpText))
 
 	v := tea.NewView(joinLines(parts))
 	v.AltScreen = true
