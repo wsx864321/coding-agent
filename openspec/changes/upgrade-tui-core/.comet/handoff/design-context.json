@@ -1,0 +1,14 @@
+{
+  "change": "upgrade-tui-core",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "6dc8c6b20f38fb0a183671623731511922d9bc755b4e0381f52b2d9989ede379",
+  "files": [
+    { "path": "openspec/changes/upgrade-tui-core/proposal.md", "sha256": "7a0216d4ed2b852da73184404d13f743a51a559bad1db10fd692d394cba1fe61" },
+    { "path": "openspec/changes/upgrade-tui-core/design.md", "sha256": "68b7f6c0321c75e4d4a547fa3680af92550dc5b53a1aefa22e61b32a4011d0ae" },
+    { "path": "openspec/changes/upgrade-tui-core/tasks.md", "sha256": "aaa3a462076ae42e8bf2c8a3a3372cbdc7d9e83339c5684427ad208692fdc2fc" },
+    { "path": "openspec/changes/upgrade-tui-core/specs/tui-chat-interface/spec.md", "sha256": "179632135ff68f950e11c2d5bf4555a955b7fc461436ea3fbac57cd408f9be82" }
+  ]
+}
