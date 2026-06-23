@@ -10,9 +10,9 @@
 
 ## 2. CJK 显示宽度修复
 
-- [ ] 2.1 引入 `go-runewidth` 依赖，重写 `wrapText` 函数使用 `runewidth.RuneWidth()` 计算显示宽度
-- [ ] 2.2 更新 `renderMessageLines` 中 prefix 宽度计算为显示宽度
-- [ ] 2.3 添加 CJK 换行的单元测试（中文、日文、emoji 混合场景）
+- [x] 2.1 引入 `go-runewidth` 依赖，重写 `wrapText` 函数使用 `runewidth.RuneWidth()` 计算显示宽度
+- [x] 2.2 更新 `renderMessageLines` 中 prefix 宽度计算为显示宽度
+- [x] 2.3 添加 CJK 换行的单元测试（中文、日文、emoji 混合场景）
 
 ## 3. 事件系统扩展（工具调用 + 审批）
 

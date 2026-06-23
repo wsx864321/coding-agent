@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"strings"
-	"unicode/utf8"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -290,34 +289,3 @@ func (m Model) interruptTurn() Model {
 	return m
 }
 
-func wrapText(text string, width int) []string {
-	if width <= 0 {
-		return []string{text}
-	}
-	if text == "" {
-		return []string{""}
-	}
-
-	var lines []string
-	var current strings.Builder
-	currentLen := 0
-
-	flush := func() {
-		if currentLen > 0 || current.Len() > 0 {
-			lines = append(lines, current.String())
-			current.Reset()
-			currentLen = 0
-		}
-	}
-
-	for _, r := range text {
-		runeLen := utf8.RuneLen(r)
-		if currentLen+runeLen > width {
-			flush()
-		}
-		current.WriteRune(r)
-		currentLen += runeLen
-	}
-	flush()
-	return lines
-}

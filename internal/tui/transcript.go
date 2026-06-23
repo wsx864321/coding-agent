@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattn/go-runewidth"
 )
 
 var userBubbleStyle = lipgloss.NewStyle().
@@ -57,17 +58,18 @@ func renderUserBubble(raw string, width int) string {
 	if innerWidth < 4 {
 		innerWidth = 4
 	}
-	lines := wrapText(raw, innerWidth)
+	lines := WrapText(raw, innerWidth)
 	return userBubbleStyle.Width(width).Render(strings.Join(lines, "\n"))
 }
 
 func renderAssistantText(raw string, width int) string {
 	prefix := "assistant: "
-	innerWidth := width - len(prefix)
+	prefixWidth := runewidth.StringWidth(prefix)
+	innerWidth := width - prefixWidth
 	if innerWidth < 4 {
 		innerWidth = 4
 	}
-	wrapped := wrapText(raw, innerWidth)
+	wrapped := WrapText(raw, innerWidth)
 	if len(wrapped) == 0 {
 		return prefix
 	}
@@ -76,7 +78,7 @@ func renderAssistantText(raw string, width int) string {
 		if i == 0 {
 			lines = append(lines, prefix+line)
 		} else {
-			lines = append(lines, strings.Repeat(" ", len(prefix))+line)
+			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
 		}
 	}
 	return strings.Join(lines, "\n")
