@@ -686,7 +686,7 @@ go test ./internal/tui/... -run Tool -count=1 -v
   func renderApprovalBanner(a pendingApproval, width int) string
   ```
 
-- [ ] **Step 1: 实现 requestApproval（D6，Design Doc 代码）**
+- [x] **Step 1: 实现 requestApproval（D6，Design Doc 代码）**
 
 ```go
 func requestApproval(ctx context.Context, emitter StreamEmitter, name string, args map[string]any) bool {
@@ -704,7 +704,7 @@ func requestApproval(ctx context.Context, emitter StreamEmitter, name string, ar
 }
 ```
 
-- [ ] **Step 2: 实现 emitterAsker（permission.Asker via context）**
+- [x] **Step 2: 实现 emitterAsker（permission.Asker via context）**
 
 ```go
 // internal/agent/emitter_asker.go
@@ -716,7 +716,7 @@ func (EmitterAsker) Ask(ctx context.Context, name string, args map[string]any, r
 }
 ```
 
-- [ ] **Step 3: 修改 chat_setup.go（D6）**
+- [x] **Step 3: 修改 chat_setup.go（D6）**
 
 ```go
 func setupTuiAgent(cmd *cobra.Command) (*chatSetup, error) {
@@ -725,7 +725,7 @@ func setupTuiAgent(cmd *cobra.Command) (*chatSetup, error) {
 }
 ```
 
-- [ ] **Step 4: Model 审批模态（D6）**
+- [x] **Step 4: Model 审批模态（D6）**
 
 ```go
 case ApprovalRequestMsg:
@@ -749,17 +749,17 @@ func (m Model) handleApprovalKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 }
 ```
 
-- [ ] **Step 5: renderApprovalBanner（D6）**
+- [x] **Step 5: renderApprovalBanner（D6）**
 
 ```
 Allow Write("config.yaml")? [y]es [n]o
 ```
 
-- [ ] **Step 6: 编写 approval_test.go**
+- [x] **Step 6: 编写 approval_test.go**
 
 测试 ApprovalRequestMsg → y → respond(true) 被调用一次；n → respond(false)；Esc → context cancel → false。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 勾选 `tasks.md` 5.1–5.5。
 
