@@ -963,7 +963,7 @@ go test ./internal/tui/... -run Flush -count=1 -v
   func (m Model) layout() // viewport H = term H - bottomHeight
   ```
 
-- [ ] **Step 1: 实现 bottomHeight（D8）**
+- [x] **Step 1: 实现 bottomHeight（D8）**
 
 ```go
 func (m Model) bottomHeight() int {
@@ -980,7 +980,7 @@ func (m Model) bottomHeight() int {
 }
 ```
 
-- [ ] **Step 2: WindowSizeMsg 布局（D8）**
+- [x] **Step 2: WindowSizeMsg 布局（D8）**
 
 ```go
 case tea.WindowSizeMsg:
@@ -993,7 +993,7 @@ case tea.WindowSizeMsg:
     m.rebuildTranscript() // re-render from Raw at new width
 ```
 
-- [ ] **Step 3: 实现 statusbar.go（D2）**
+- [x] **Step 3: 实现 statusbar.go（D2）**
 
 ```go
 func renderStatusBar(m Model) string {
@@ -1009,7 +1009,7 @@ func renderStatusBar(m Model) string {
 }
 ```
 
-- [ ] **Step 4: 重构 View() 布局拼接（D8）**
+- [x] **Step 4: 重构 View() 布局拼接（D8）**
 
 ```
 [viewport content]
@@ -1021,11 +1021,11 @@ func renderStatusBar(m Model) string {
 
 参考 Design Doc 布局 ASCII 图。
 
-- [ ] **Step 5: 更新帮助文本（tasks 8.5）**
+- [x] **Step 5: 更新帮助文本（tasks 8.5）**
 
 移除 j/k 滚动提示（改由 viewport 原生支持 PgUp/PgDn）。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 勾选 `tasks.md` 8.1–8.5。
 
