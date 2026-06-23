@@ -1057,7 +1057,7 @@ git commit -m "refactor(tui): migrate from StreamEmitter to event.Event channel"
 **Interfaces:**
 - Consumes: `event.TextSink`, `tui.TuiSink`, `agent.WithSink`, `agent.SinkAsker`, `hooks.NewRunner(..., notify)`
 
-- [ ] **Step 1: 修改 chat_setup.go**
+- [x] **Step 1: 修改 chat_setup.go**
 
 ```go
 import (
@@ -1124,7 +1124,7 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 }
 ```
 
-- [ ] **Step 2: 修改 chat.go runOneTurn**
+- [x] **Step 2: 修改 chat.go runOneTurn**
 
 ```go
 func runOneTurn(ctx context.Context, a *agent.Agent, prompt string) error {
@@ -1142,7 +1142,7 @@ func runOneTurn(ctx context.Context, a *agent.Agent, prompt string) error {
 
 REPL 启动信息、slash 命令的 `fmt.Printf` 保持不变（Design Doc D7 说明）。
 
-- [ ] **Step 3: 修改 once.go**
+- [x] **Step 3: 修改 once.go**
 
 ```go
 import (
@@ -1187,7 +1187,7 @@ func runOnce(cmd *cobra.Command, args []string) error {
 }
 ```
 
-- [ ] **Step 4: 修改 tui_runner.go**
+- [x] **Step 4: 修改 tui_runner.go**
 
 ```go
 func (r agentRunner) RunTurn(ctx context.Context, prompt string) error {
@@ -1196,13 +1196,13 @@ func (r agentRunner) RunTurn(ctx context.Context, prompt string) error {
 }
 ```
 
-- [ ] **Step 5: 修改 tui.go**
+- [x] **Step 5: 修改 tui.go**
 
 ```go
 p := tea.NewProgram(tui.NewWithRunner(newAgentRunner(setup.Agent), setup.TuiSink))
 ```
 
-- [ ] **Step 6: 编译验证**
+- [x] **Step 6: 编译验证**
 
 ```bash
 go build ./cmd/...
@@ -1211,7 +1211,7 @@ go build ./...
 
 Expected: 编译成功，零 StreamEmitter 引用
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cmd/cli/

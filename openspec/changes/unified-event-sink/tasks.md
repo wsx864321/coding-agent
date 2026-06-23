@@ -30,9 +30,9 @@
 
 ## 5. CLI 层装配
 
-- [ ] 5.1 修改 `cmd/cli/chat_setup.go`：创建 TextSink 传入 Agent，notify 桥接到 Sink
-- [ ] 5.2 修改 `cmd/cli/chat.go`：agent 运行时输出迁移到 TextSink（REPL 启动信息和 slash 命令保持 fmt）
-- [ ] 5.3 修改 `cmd/cli/once.go`：创建 TextSink（quiet 模式用精简 Sink），notify 桥接
+- [x] 5.1 修改 `cmd/cli/chat_setup.go`：创建 TextSink 传入 Agent，notify 桥接到 Sink
+- [x] 5.2 修改 `cmd/cli/chat.go`：agent 运行时输出迁移到 TextSink（REPL 启动信息和 slash 命令保持 fmt）
+- [x] 5.3 修改 `cmd/cli/once.go`：创建 TextSink（quiet 模式用精简 Sink），notify 桥接
 
 ## 6. 清理与验证
 
