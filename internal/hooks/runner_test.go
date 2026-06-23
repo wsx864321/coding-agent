@@ -3,7 +3,6 @@ package hooks
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 )
 
@@ -12,10 +11,7 @@ func TestRunner_PreToolUse_BlockChain(t *testing.T) {
 	sp := mockSpawner(map[string]SpawnResult{
 		"block-hook": {ExitCode: 2, Stderr: "denied"},
 	})
-	runner := NewRunner([]ResolvedHook{{
-		Event:      EventPreToolUse,
-		HookConfig: HookConfig{Command: "block-hook", Match: "echo", Timeout: 5000},
-	}}, dir, sp)
+	runner := NewRunner([]ResolvedHook{testHook(EventPreToolUse, HookConfig{Command: "block-hook", Match: "echo", Timeout: 5000})}, dir, sp)
 
 	blocked, msg := runner.PreToolUse(context.Background(), "echo", map[string]any{"input": "x"})
 	if !blocked {
@@ -96,10 +92,7 @@ func TestRunner_PostToolUse_CallsRun(t *testing.T) {
 		_ = json.Unmarshal([]byte(in.Stdin), &gotPayload)
 		return SpawnResult{ExitCode: 0}
 	})
-	runner := NewRunner([]ResolvedHook{{
-		Event:      EventPostToolUse,
-		HookConfig: HookConfig{Command: "post-hook", Match: "bash"},
-	}}, dir, sp)
+	runner := NewRunner([]ResolvedHook{testHook(EventPostToolUse, HookConfig{Command: "post-hook", Match: "bash"})}, dir, sp)
 
 	runner.PostToolUse(context.Background(), "bash", map[string]any{"cmd": "ls"}, "ok")
 
@@ -117,7 +110,7 @@ func TestRunner_PostToolUse_CallsRun(t *testing.T) {
 	}
 }
 
-func TestRunner_UserPromptSubmit_Block(t *testing.T) {
+func TestRunner_UserPromptSubmit_NonBlocking(t *testing.T) {
 	dir := t.TempDir()
 	sp := mockSpawner(map[string]SpawnResult{
 		"prompt-hook": {ExitCode: 2, Stdout: "bad prompt"},
@@ -128,11 +121,8 @@ func TestRunner_UserPromptSubmit_Block(t *testing.T) {
 	}}, dir, sp)
 
 	err := runner.UserPromptSubmit(context.Background(), "hello")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "blocked:") || !strings.Contains(err.Error(), "bad prompt") {
-		t.Fatalf("err=%v", err)
+	if err != nil {
+		t.Fatalf("UserPromptSubmit exit 2 should not block: %v", err)
 	}
 }
 

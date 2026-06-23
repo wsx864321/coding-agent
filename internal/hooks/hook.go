@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"context"
+	"regexp"
 	"time"
 )
 
@@ -35,9 +36,10 @@ const (
 
 type ResolvedHook struct {
 	HookConfig
-	Event  Event
-	Scope  Scope
-	Source string // settings file absolute path
+	Event         Event
+	Scope         Scope
+	Source        string // settings file absolute path
+	compiledMatch *regexp.Regexp
 }
 
 // Payload 是 stdin 传给外部 hook 命令的 JSON（D7）。

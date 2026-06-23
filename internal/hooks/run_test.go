@@ -2,10 +2,24 @@ package hooks
 
 import (
 	"context"
+	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 )
+
+func testHook(event Event, cfg HookConfig) ResolvedHook {
+	h := ResolvedHook{Event: event, HookConfig: cfg}
+	if cfg.Match != "" {
+		re, err := regexp.Compile(cfg.Match)
+		if err != nil {
+			panic(err)
+		}
+		h.compiledMatch = re
+	}
+	return h
+}
 
 func mockSpawner(responses map[string]SpawnResult) Spawner {
 	return func(_ context.Context, in SpawnInput) SpawnResult {
@@ -32,11 +46,10 @@ func TestRun_PreToolUse_Pass(t *testing.T) {
 }
 
 func TestRun_PreToolUse_BlockShortCircuit(t *testing.T) {
-	hooks := []ResolvedHook{{
-		Event: EventPreToolUse, HookConfig: HookConfig{Command: "block-hook", Match: "bash"},
-	}, {
-		Event: EventPreToolUse, HookConfig: HookConfig{Command: "second-hook"},
-	}}
+	hooks := []ResolvedHook{
+		testHook(EventPreToolUse, HookConfig{Command: "block-hook", Match: "bash"}),
+		testHook(EventPreToolUse, HookConfig{Command: "second-hook"}),
+	}
 	sp := mockSpawner(map[string]SpawnResult{
 		"block-hook":  {ExitCode: 2, Stderr: "denied"},
 		"second-hook": {ExitCode: 0},
@@ -53,9 +66,7 @@ func TestRun_PreToolUse_BlockShortCircuit(t *testing.T) {
 }
 
 func TestRun_PreToolUse_MatchFilter(t *testing.T) {
-	hooks := []ResolvedHook{{
-		Event: EventPreToolUse, HookConfig: HookConfig{Command: "only-bash", Match: "^bash$"},
-	}}
+	hooks := []ResolvedHook{testHook(EventPreToolUse, HookConfig{Command: "only-bash", Match: "^bash$"})}
 	called := false
 	sp := Spawner(func(_ context.Context, in SpawnInput) SpawnResult {
 		called = true
@@ -162,6 +173,53 @@ func TestRun_EventFilter(t *testing.T) {
 	}
 }
 
+func TestRun_Stop_ForceFirstWins(t *testing.T) {
+	hooks := []ResolvedHook{
+		{Event: EventStop, HookConfig: HookConfig{Command: "first-stop"}},
+		{Event: EventStop, HookConfig: HookConfig{Command: "second-stop"}},
+	}
+	sp := mockSpawner(map[string]SpawnResult{
+		"first-stop":  {ExitCode: 2, Stdout: "first force"},
+		"second-stop": {ExitCode: 2, Stdout: "second force"},
+	})
+	rep := Run(context.Background(), Payload{Event: EventStop, Cwd: "/tmp"}, hooks, sp)
+	if rep.Force != "first force" {
+		t.Fatalf("force=%q, want first hook to win", rep.Force)
+	}
+	if len(rep.Outcomes) != 1 {
+		t.Fatalf("expected short-circuit after first force, got %d outcomes", len(rep.Outcomes))
+	}
+}
+
+func TestRun_SpawnFailure_PreToolUseError(t *testing.T) {
+	hooks := []ResolvedHook{{
+		Event: EventPreToolUse, HookConfig: HookConfig{Command: "missing-hook"},
+	}}
+	sp := Spawner(func(context.Context, SpawnInput) SpawnResult {
+		return SpawnResult{Err: errors.New("exec: command not found")}
+	})
+	rep := Run(context.Background(), Payload{Event: EventPreToolUse, ToolName: "bash"}, hooks, sp)
+	if rep.Blocked {
+		t.Fatal("spawn failure should not block PreToolUse")
+	}
+	if len(rep.Outcomes) != 1 || rep.Outcomes[0].Decision != DecisionError {
+		t.Fatalf("rep=%+v", rep)
+	}
+}
+
+func TestRun_SpawnFailure_PostToolUseWarn(t *testing.T) {
+	hooks := []ResolvedHook{{
+		Event: EventPostToolUse, HookConfig: HookConfig{Command: "missing-hook"},
+	}}
+	sp := Spawner(func(context.Context, SpawnInput) SpawnResult {
+		return SpawnResult{Err: errors.New("exec: command not found")}
+	})
+	rep := Run(context.Background(), Payload{Event: EventPostToolUse, ToolName: "bash"}, hooks, sp)
+	if rep.Blocked || rep.Outcomes[0].Decision != DecisionWarn {
+		t.Fatalf("rep=%+v", rep)
+	}
+}
+
 func TestDecideOutcome(t *testing.T) {
 	tests := []struct {
 		event Event
@@ -172,9 +230,12 @@ func TestDecideOutcome(t *testing.T) {
 		{EventPreToolUse, SpawnResult{ExitCode: 2}, DecisionBlock},
 		{EventPreToolUse, SpawnResult{ExitCode: 1}, DecisionWarn},
 		{EventPreToolUse, SpawnResult{TimedOut: true}, DecisionBlock},
+		{EventPreToolUse, SpawnResult{Err: errors.New("spawn failed")}, DecisionError},
 		{EventPostToolUse, SpawnResult{ExitCode: 2}, DecisionWarn},
 		{EventPostToolUse, SpawnResult{ExitCode: 1}, DecisionWarn},
 		{EventPostToolUse, SpawnResult{TimedOut: true}, DecisionWarn},
+		{EventPostToolUse, SpawnResult{Err: errors.New("spawn failed")}, DecisionWarn},
+		{EventUserPromptSubmit, SpawnResult{ExitCode: 2}, DecisionWarn},
 		{EventStop, SpawnResult{ExitCode: 2}, DecisionWarn},
 	}
 	for _, tc := range tests {

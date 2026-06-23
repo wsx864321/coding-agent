@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,5 +80,52 @@ func TestLoad_DefaultTimeout(t *testing.T) {
 	got := Load(LoadOptions{ProjectRoot: root, HomeDir: t.TempDir()})
 	if len(got) != 1 || got[0].Timeout != defaultHookTimeoutMs {
 		t.Fatalf("timeout=%d, want %d", got[0].Timeout, defaultHookTimeoutMs)
+	}
+}
+
+func TestLoad_ProjectHooksWhenHomeDirFails(t *testing.T) {
+	root := t.TempDir()
+	writeHooksJSON(t, root, ".coding-agent/hooks.json", `{
+	  "hooks": {"PreToolUse": [{"command": "echo project", "match": "bash"}]}
+	}`)
+
+	old := userHomeDir
+	userHomeDir = func() (string, error) { return "", errors.New("no home") }
+	t.Cleanup(func() { userHomeDir = old })
+
+	got := Load(LoadOptions{ProjectRoot: root})
+	if len(got) != 1 {
+		t.Fatalf("expected project hook only, got %+v", got)
+	}
+	if got[0].Scope != ScopeProject || got[0].Command != "echo project" {
+		t.Errorf("project hook: %+v", got[0])
+	}
+	if got[0].compiledMatch == nil {
+		t.Fatal("expected compiled match for bash")
+	}
+}
+
+func TestLoad_InvalidMatchRegexSkipped(t *testing.T) {
+	root := t.TempDir()
+	writeHooksJSON(t, root, ".coding-agent/hooks.json", `{
+	  "hooks": {"PreToolUse": [{"command": "bad-hook", "match": "("}]}
+	}`)
+	got := Load(LoadOptions{ProjectRoot: root, HomeDir: t.TempDir()})
+	if len(got) != 0 {
+		t.Fatalf("invalid regex hook should be skipped, got %+v", got)
+	}
+}
+
+func TestLoad_CompilesMatchRegex(t *testing.T) {
+	root := t.TempDir()
+	writeHooksJSON(t, root, ".coding-agent/hooks.json", `{
+	  "hooks": {"PreToolUse": [{"command": "echo", "match": "^bash$"}]}
+	}`)
+	got := Load(LoadOptions{ProjectRoot: root, HomeDir: t.TempDir()})
+	if len(got) != 1 || got[0].compiledMatch == nil {
+		t.Fatalf("expected compiled match, got %+v", got)
+	}
+	if !got[0].compiledMatch.MatchString("bash") {
+		t.Fatal("compiled match should match bash")
 	}
 }

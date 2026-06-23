@@ -5,9 +5,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 const defaultHookTimeoutMs = 10000
+
+var userHomeDir = os.UserHomeDir
 
 type LoadOptions struct {
 	ProjectRoot string
@@ -15,20 +18,20 @@ type LoadOptions struct {
 }
 
 func Load(opts LoadOptions) []ResolvedHook {
-	home := opts.HomeDir
-	if home == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			log.Printf("[hooks] 无法获取用户目录: %v", err)
-			return nil
-		}
-	}
-
 	var out []ResolvedHook
 	if opts.ProjectRoot != "" {
 		p := filepath.Join(opts.ProjectRoot, ".coding-agent", "hooks.json")
 		out = append(out, loadFile(p, ScopeProject)...)
+	}
+
+	home := opts.HomeDir
+	if home == "" {
+		var err error
+		home, err = userHomeDir()
+		if err != nil {
+			log.Printf("[hooks] 无法获取用户目录，跳过全局 hook: %v", err)
+			return out
+		}
 	}
 	globalPath := filepath.Join(home, ".coding-agent", "hooks.json")
 	out = append(out, loadFile(globalPath, ScopeGlobal)...)
@@ -58,12 +61,21 @@ func loadFile(path string, scope Scope) []ResolvedHook {
 			if cfg.Timeout <= 0 {
 				cfg.Timeout = defaultHookTimeoutMs
 			}
-			resolved = append(resolved, ResolvedHook{
+			h := ResolvedHook{
 				HookConfig: cfg,
 				Event:      event,
 				Scope:      scope,
 				Source:     abs,
-			})
+			}
+			if cfg.Match != "" {
+				re, err := regexp.Compile(cfg.Match)
+				if err != nil {
+					log.Printf("[hooks] invalid match regex %q in hook %q (%s): %v", cfg.Match, cfg.Command, abs, err)
+					continue
+				}
+				h.compiledMatch = re
+			}
+			resolved = append(resolved, h)
 		}
 	}
 	return resolved

@@ -3,7 +3,7 @@ package hooks
 import (
 	"context"
 	"encoding/json"
-	"regexp"
+	"log"
 	"time"
 )
 
@@ -19,7 +19,11 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 			continue
 		}
 
-		body, _ := json.Marshal(payload)
+		body, err := json.Marshal(payload)
+		if err != nil {
+			log.Printf("[hooks] marshal payload for hook %q: %v", h.Command, err)
+			continue
+		}
 		cwd := h.Cwd
 		if cwd == "" {
 			cwd = payload.Cwd
@@ -31,6 +35,9 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 			Stdin:   string(body),
 			Timeout: time.Duration(h.Timeout) * time.Millisecond,
 		})
+		if res.Err != nil && !res.TimedOut {
+			log.Printf("[hooks] spawn failed for hook %q: %v", h.Command, res.Err)
+		}
 		decision := decideOutcome(payload.Event, res)
 		out := Outcome{
 			Hook:     h,
@@ -45,6 +52,7 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 
 		if payload.Event == EventStop && res.ExitCode == 2 && res.Stdout != "" {
 			rep.Force = res.Stdout
+			break
 		}
 		if decision == DecisionBlock {
 			rep.Blocked = true
@@ -57,7 +65,7 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 }
 
 func isBlockingEvent(e Event) bool {
-	return e == EventPreToolUse || e == EventUserPromptSubmit
+	return e == EventPreToolUse
 }
 
 func matchesHook(h ResolvedHook, p Payload) bool {
@@ -67,15 +75,21 @@ func matchesHook(h ResolvedHook, p Payload) bool {
 	if p.Event != EventPreToolUse && p.Event != EventPostToolUse {
 		return true
 	}
-	re, err := regexp.Compile(h.Match)
-	if err != nil {
+	if h.compiledMatch == nil {
+		log.Printf("[hooks] invalid match regex %q in hook %q: not compiled", h.Match, h.Command)
 		return false
 	}
-	return re.MatchString(p.ToolName)
+	return h.compiledMatch.MatchString(p.ToolName)
 }
 
 func decideOutcome(event Event, res SpawnResult) Decision {
 	blocking := isBlockingEvent(event)
+	if res.Err != nil && !res.TimedOut {
+		if blocking {
+			return DecisionError
+		}
+		return DecisionWarn
+	}
 	if res.TimedOut {
 		if blocking {
 			return DecisionBlock
