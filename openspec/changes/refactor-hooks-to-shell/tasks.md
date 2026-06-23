@@ -7,10 +7,10 @@
 
 ## 2. Spawner 与执行引擎
 
-- [ ] 2.1 实现 `DefaultSpawner`：Unix 用 `sh -c`，Windows 用 `cmd /c`，支持 stdin、timeout、stdout/stderr 捕获
-- [ ] 2.2 实现 `Run()` 函数：接收 Payload + []ResolvedHook + Spawner，按事件过滤、match 正则匹配、顺序执行、首 block 短路
-- [ ] 2.3 实现 `decideOutcome()`：根据 event 类型和 exit code 映射为 pass/block/warn 决策
-- [ ] 2.4 编写 Run 单元测试：覆盖 pass/block/warn、match 过滤、短路、超时、Stop force 语义
+- [x] 2.1 实现 `DefaultSpawner`：Unix 用 `sh -c`，Windows 用 `cmd /c`，支持 stdin、timeout、stdout/stderr 捕获
+- [x] 2.2 实现 `Run()` 函数：接收 Payload + []ResolvedHook + Spawner，按事件过滤、match 正则匹配、顺序执行、首 block 短路
+- [x] 2.3 实现 `decideOutcome()`：根据 event 类型和 exit code 映射为 pass/block/warn 决策
+- [x] 2.4 编写 Run 单元测试：覆盖 pass/block/warn、match 过滤、短路、超时、Stop force 语义
 
 ## 3. Runner 门面
 
