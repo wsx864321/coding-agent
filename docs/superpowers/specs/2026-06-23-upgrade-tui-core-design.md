@@ -2,6 +2,8 @@
 comet_change: upgrade-tui-core
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-23-upgrade-tui-core
+status: final
 ---
 
 # TUI Core Upgrade — Technical Design

@@ -2,6 +2,7 @@
 change: upgrade-tui-core
 design-doc: docs/superpowers/specs/2026-06-23-upgrade-tui-core-design.md
 base-ref: d900d929d4bfe49010fc302349e6e9ce7e96d7a7
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 # TUI Core Upgrade 实施计划
@@ -73,6 +74,7 @@ cmd/cli/
 └── chat_setup.go     # setupTuiAgent 使用 emitterAsker（D6）
 ```
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 1: Bubble Tea v2 依赖升级与 API 迁移（D1）
@@ -183,6 +185,7 @@ git commit -m "refactor(tui): migrate Bubble Tea v1 to v2 API"
 
 勾选 `tasks.md` 1.1、1.2、1.6、1.7。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 2: bubbles/v2 组件嵌入（D2）
@@ -306,6 +309,7 @@ go test ./internal/tui/... -run 'Textarea|Viewport|Spinner' -count=1 -v
 
 勾选 `tasks.md` 1.3、1.4、1.5。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 3: Transcript 数据模型（D8）
@@ -376,6 +380,7 @@ func TestAppendUserEntryUpdatesViewport(t *testing.T) {
 
 - [x] **Step 7: Commit**
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 4: CJK 显示宽度修复（D7）
@@ -459,6 +464,7 @@ go test ./internal/tui/... -run WrapText -count=1 -v
 
 勾选 `tasks.md` 2.1、2.2、2.3。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 5: StreamEmitter 扩展与 Agent 集成（D5）
@@ -581,6 +587,7 @@ go test ./internal/agent/... ./internal/tui/... -count=1
 
 勾选 `tasks.md` 3.1–3.6。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 6: 工具调用可视化（D5 + D8）
@@ -659,6 +666,7 @@ go test ./internal/tui/... -run Tool -count=1 -v
 
 勾选 `tasks.md` 4.1–4.4。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 7: 审批交互（D6）
@@ -763,6 +771,7 @@ Allow Write("config.yaml")? [y]es [n]o
 
 勾选 `tasks.md` 5.1–5.5。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 8: Markdown ANSI 渲染（D3）
@@ -839,6 +848,7 @@ func (g glamourRenderer) Render(md string, width int) string {
 
 勾选 `tasks.md` 6.1–6.8（glamour 替代 goldmark walker，符合 Design Doc D3）。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 9: 流式 Markdown 段落边界刷新（D4）
@@ -941,6 +951,7 @@ go test ./internal/tui/... -run Flush -count=1 -v
 
 勾选 `tasks.md` 7.1–7.4。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 10: 布局整合与状态栏（D2 + D8）
@@ -1029,6 +1040,7 @@ func renderStatusBar(m Model) string {
 
 勾选 `tasks.md` 8.1–8.5。
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Task 11: 集成测试与回归验证
@@ -1085,6 +1097,7 @@ go test ./... -count=1
 
 - [x] **Step 7: Commit + 勾选 tasks.md 9.1–9.5**
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 ## Self-Review 清单
@@ -1124,6 +1137,7 @@ Task 8 (markdown) → Task 9 (flush) ────────┤
                               Task 10 (layout) → Task 11 (integration)
 ```
 
+archived-with: 2026-06-23-upgrade-tui-core
 ---
 
 **Plan complete and saved to `docs/superpowers/plans/2026-06-23-upgrade-tui-core.md`.**

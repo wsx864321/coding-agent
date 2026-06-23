@@ -2,6 +2,7 @@
 change: refactor-hooks-to-shell
 design-doc: docs/superpowers/specs/2026-06-23-refactor-hooks-to-shell-design.md
 base-ref: d53a6aba309b446bb7a13b0671399a1ee71b8619
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 # Shell Hook Engine 实施计划
@@ -74,6 +75,7 @@ cmd/cli/
 └── chat.go            # /hooks 命令适配（修改）
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ## 第 1 组：核心类型与接口定义
@@ -147,6 +149,7 @@ git add internal/agent/hooks.go
 git commit -m "feat(agent): add ToolHooks interface and SubsetHooks wrapper"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 1.2: 定义 hooks 包核心类型（D2, D7）
@@ -289,6 +292,7 @@ git add internal/hooks/hook.go internal/hooks/context.go
 git commit -m "feat(hooks): add shell hook core types and subagent context helpers"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 1.3: 实现 Load() 配置加载（D2）
@@ -391,6 +395,7 @@ git add internal/hooks/load.go
 git commit -m "feat(hooks): implement JSON config Load for project and global scopes"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 1.4: Load 单元测试（D2）
@@ -503,6 +508,7 @@ git add internal/hooks/load_test.go
 git commit -m "test(hooks): add Load config merge and error handling tests"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ## 第 2 组：Spawner 与执行引擎
@@ -645,6 +651,7 @@ git add internal/hooks/spawner.go internal/hooks/spawner_test.go
 git commit -m "feat(hooks): add DefaultSpawner with timeout and platform shell detection"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 2.2: 实现 Run() 与 decideOutcome()（D3, D7）
@@ -772,6 +779,7 @@ git add internal/hooks/run.go
 git commit -m "feat(hooks): implement Run engine with exit-code decisions and short-circuit"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 2.3: Run 单元测试（D3）
@@ -887,6 +895,7 @@ git add internal/hooks/run_test.go
 git commit -m "test(hooks): add Run engine decision and short-circuit tests"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ## 第 3 组：Runner 门面
@@ -994,6 +1003,7 @@ git add internal/hooks/runner.go
 git commit -m "feat(hooks): add Runner facade implementing agent.ToolHooks"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 3.2: Runner 集成测试（D4）
@@ -1053,6 +1063,7 @@ git add internal/hooks/runner_test.go
 git commit -m "test(hooks): add Runner ToolHooks integration tests"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ## 第 4 组：Agent 集成改造
@@ -1107,6 +1118,7 @@ Expected: FAIL on `Trigger*` methods — 后续 Task 4.2–4.5 修复
 
 - [x] **Step 4: Commit（可与 4.2 合并提交，若中间态不可编译则 Task 4.1–4.5 同一 commit）**
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 4.2: UserPromptSubmit 触发点改造（D1）
@@ -1139,6 +1151,7 @@ if a.hooks != nil {
 Run: `go build ./internal/agent/...`
 Expected: 仍有 loop.go 编译错误（Pre/Post/Stop 未改）
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 4.3: PreToolUse / PostToolUse 触发点改造（D1）
@@ -1174,6 +1187,7 @@ a.hooks.PostToolUse(ctx, name, args, out)
 Run: `go build ./internal/agent/...`
 Expected: 仍有 Stop 相关编译错误
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 4.4: 内联 TodoGuard 逻辑（D5）
@@ -1289,6 +1303,7 @@ git add internal/agent/todo_guard.go internal/agent/todo_guard_test.go internal/
 git commit -m "feat(agent): inline TodoGuard before external Stop hooks"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 4.5: Stop 触发点改造（D1）
@@ -1302,6 +1317,7 @@ git commit -m "feat(agent): inline TodoGuard before external Stop hooks"
 
 Run: `grep -r TriggerStop internal/agent/` → 无匹配
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 4.6: Subagent hook 传递改造（D1）
@@ -1353,6 +1369,7 @@ git add internal/agent/subagent.go internal/agent/agent.go internal/agent/option
 git commit -m "refactor(agent): migrate hook triggers to ToolHooks interface"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ## 第 5 组：CLI 装配层适配
@@ -1400,6 +1417,7 @@ git add cmd/cli/once.go
 git commit -m "refactor(cli): wire shell hook Runner in once command"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 5.2: 修改 chat_setup.go（D4）
@@ -1433,6 +1451,7 @@ git add cmd/cli/chat_setup.go
 git commit -m "refactor(cli): wire shell hook Runner in chat/tui setup"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 5.3: 适配 chat.go /hooks 命令（D4）
@@ -1475,6 +1494,7 @@ git add cmd/cli/chat.go
 git commit -m "refactor(cli): adapt /hooks command for ToolHooks Runner"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ## 第 6 组：清理旧代码
@@ -1501,6 +1521,7 @@ git rm -r internal/hooks/builtin/
 git commit -m "refactor(hooks): remove builtin in-process hook implementations"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 6.2: 移除 Registry 并重写 hooks.go（D6）
@@ -1533,6 +1554,7 @@ git add internal/hooks/
 git commit -m "refactor(hooks): remove Registry-based in-process hook system"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 6.3: 适配 agent_test.go（D1）
@@ -1612,6 +1634,7 @@ git add internal/agent/agent_test.go
 git commit -m "test(agent): adapt hook integration tests to ToolHooks interface"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ## 第 7 组：测试与验证
@@ -1677,6 +1700,7 @@ git add internal/hooks/e2e_test.go
 git commit -m "test(hooks): add e2e PreToolUse block and pass verification"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 7.2: 零 hook 降级验证（D4）
@@ -1701,6 +1725,7 @@ go run ./cmd/cli once -m "say hi" -q
 ```
 Expected: 正常输出，无 hook 相关 panic
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 7.3: TodoGuard 集成验证（D5）
@@ -1721,6 +1746,7 @@ Expected: PASS
 
 - [x] **Step 3: Commit（若有新测试）**
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ### Task 7.4: 全量编译与测试（最终门禁）
@@ -1748,6 +1774,7 @@ git add openspec/changes/refactor-hooks-to-shell/tasks.md
 git commit -m "chore: mark refactor-hooks-to-shell tasks complete"
 ```
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 ## 任务依赖图
@@ -1784,6 +1811,7 @@ git commit -m "chore: mark refactor-hooks-to-shell tasks complete"
 
 **已知偏差说明:** openspec `design.md` D7 提到 Stop payload 含 `messages` 字段，但 canonical design doc（`docs/superpowers/specs/...`）的 `Payload` struct 与 `Runner.Stop` 仅传 `event+cwd`。本计划按 canonical design doc 实现；若后续需 messages，在 Task 3.1 扩展 `Payload` 并在 `Runner.Stop` 序列化最近 N 条即可。
 
+archived-with: 2026-06-23-refactor-hooks-to-shell
 ---
 
 **Plan complete and saved to `docs/superpowers/plans/2026-06-23-refactor-hooks-to-shell.md`.**
