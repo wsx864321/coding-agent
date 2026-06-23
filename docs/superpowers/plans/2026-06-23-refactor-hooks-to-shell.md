@@ -90,7 +90,7 @@ cmd/cli/
 
 **变更描述:** 在 agent 包内定义 hook 调用契约，Subagent 通过 `SubsetHooks` 屏蔽 UserPromptSubmit / Stop。
 
-- [ ] **Step 1: 创建 `internal/agent/hooks.go`**
+- [x] **Step 1: 创建 `internal/agent/hooks.go`**
 
 ```go
 package agent
@@ -135,12 +135,12 @@ func NewSubsetHooks(h ToolHooks) ToolHooks {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `go build ./internal/agent/...`
 Expected: PASS（此时 agent 仍使用旧 `*hooks.Registry`，本文件独立可编译）
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/agent/hooks.go

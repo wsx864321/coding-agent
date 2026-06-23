@@ -1,6 +1,6 @@
 ## 1. 核心类型与接口定义
 
-- [ ] 1.1 创建 `internal/agent/hooks.go`，定义 `ToolHooks` interface（4 个方法：UserPromptSubmit、PreToolUse、PostToolUse、Stop）
+- [x] 1.1 创建 `internal/agent/hooks.go`，定义 `ToolHooks` interface（4 个方法：UserPromptSubmit、PreToolUse、PostToolUse、Stop）
 - [ ] 1.2 创建 `internal/hooks/hook.go`（重写），定义 Event 枚举、HookConfig、ResolvedHook、Payload、SpawnInput/SpawnResult、Spawner 类型、决策枚举（pass/block/warn）
 - [ ] 1.3 实现 `Load()` 函数：从全局和项目级 JSON 配置文件加载 hook 声明，返回 `[]ResolvedHook`
 - [ ] 1.4 编写 Load 单元测试：覆盖全局+项目合并、仅全局、无配置、JSON 格式错误场景
