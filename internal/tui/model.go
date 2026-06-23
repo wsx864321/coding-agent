@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -312,11 +311,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.turnCancel = cancel
 	go func() {
 		defer close(ch)
-		defer func() {
-			if r := recover(); r != nil {
-				ch <- event.Event{Kind: event.TurnDone, Err: fmt.Errorf("panic: %v", r)}
-			}
-		}()
+		defer func() { _ = recover() }()
 		_ = runner.RunTurn(ctx, text)
 	}()
 

@@ -21,7 +21,15 @@ func (s *TuiSink) Emit(e event.Event) {
 	s.mu.Lock()
 	ch := s.ch
 	s.mu.Unlock()
-	if ch != nil {
+	if ch == nil {
+		return
+	}
+	if e.Kind == event.ApprovalRequest {
 		ch <- e
+		return
+	}
+	select {
+	case ch <- e:
+	default:
 	}
 }

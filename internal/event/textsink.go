@@ -3,14 +3,18 @@ package event
 import (
 	"fmt"
 	"io"
+	"sync"
 )
 
 type TextSink struct {
+	mu  sync.Mutex
 	Out io.Writer
 	Err io.Writer
 }
 
 func (s *TextSink) Emit(e Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	switch e.Kind {
 	case Text:
 		io.WriteString(s.Out, e.Text)
