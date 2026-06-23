@@ -32,7 +32,7 @@ type Model struct {
 	statusMsg   string
 	statusLabel string
 	interrupted     bool
-	pending         strings.Builder
+	pending         *strings.Builder
 	pendingToolName string
 	pendingToolArgs string
 	approval    *pendingApproval
@@ -49,6 +49,7 @@ func New() Model {
 		spinner:    newSpinner(),
 		mdRenderer: NewGlamourRenderer(),
 		modelName:  "coding-agent",
+		pending:    &strings.Builder{},
 	}
 }
 
