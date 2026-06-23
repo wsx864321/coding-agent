@@ -1,12 +1,12 @@
 ## 1. Bubble Tea v2 迁移 + 基础组件引入
 
-- [ ] 1.1 升级 go.mod 依赖：bubbletea v1→v2、引入 bubbles/v2、lipgloss/v2、go-runewidth
-- [ ] 1.2 迁移 `internal/tui/model.go` 到 v2 API：Model.View() 返回 tea.View、tea.KeyMsg 适配、tea.WindowSizeMsg 适配
+- [x] 1.1 升级 go.mod 依赖：bubbletea v1→v2、引入 bubbles/v2、lipgloss/v2、go-runewidth
+- [x] 1.2 迁移 `internal/tui/model.go` 到 v2 API：Model.View() 返回 tea.View、tea.KeyMsg 适配、tea.WindowSizeMsg 适配
 - [ ] 1.3 引入 bubbles/v2 textarea 替代 string 输入：配置 Shift+Enter 换行、Enter 提交、动态高度（1-5 行）、CharLimit、IME 支持
 - [ ] 1.4 引入 bubbles/v2 viewport 替代手动滚动：鼠标滚轮、PgUp/PgDn/Home/End、滚动条、tail-follow（流式时自动跟底）
 - [ ] 1.5 引入 bubbles/v2 spinner：配置 spinner 样式、在 busy 状态显示动画 + 耗时计数
-- [ ] 1.6 迁移 `cmd/cli/tui.go`：适配 v2 的 tea.NewProgram 选项（WithAltScreen → tea.View.AltScreen）
-- [ ] 1.7 修复所有现有测试适配 v2 API（model_test.go、keymap_test.go、runner_test.go）
+- [x] 1.6 迁移 `cmd/cli/tui.go`：适配 v2 的 tea.NewProgram 选项（WithAltScreen → tea.View.AltScreen）
+- [x] 1.7 修复所有现有测试适配 v2 API（model_test.go、keymap_test.go、runner_test.go）
 
 ## 2. CJK 显示宽度修复
 

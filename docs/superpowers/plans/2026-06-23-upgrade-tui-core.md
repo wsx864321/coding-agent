@@ -92,7 +92,7 @@ cmd/cli/
 **Interfaces:**
 - Produces: `func (m Model) View() tea.View`；`tea.KeyPressMsg` 键处理（v2 替代 `tea.KeyMsg.Type`）
 
-- [ ] **Step 1: 升级 go.mod 依赖**
+- [x] **Step 1: 升级 go.mod 依赖**
 
 ```bash
 go get charm.land/bubbletea/v2@latest
@@ -104,7 +104,7 @@ go mod tidy
 
 预期：`go.mod` 中 `github.com/charmbracelet/bubbletea` 被替换为 `charm.land/bubbletea/v2`。
 
-- [ ] **Step 2: 批量替换 import path**
+- [x] **Step 2: 批量替换 import path**
 
 在所有 `internal/tui/` 和 `cmd/cli/tui.go` 中：
 
@@ -118,7 +118,7 @@ tea "charm.land/bubbletea/v2"
 "charm.land/lipgloss/v2"
 ```
 
-- [ ] **Step 3: 迁移 View() 返回 tea.View（D1）**
+- [x] **Step 3: 迁移 View() 返回 tea.View（D1）**
 
 `internal/tui/view.go`:
 
@@ -137,7 +137,7 @@ func (m Model) View() tea.View {
 
 参考 Reasonix `chat_tui.go:2358-2360`。
 
-- [ ] **Step 4: 迁移 cmd/cli/tui.go（D1）**
+- [x] **Step 4: 迁移 cmd/cli/tui.go（D1）**
 
 ```go
 // Before
@@ -147,7 +147,7 @@ p := tea.NewProgram(m, tea.WithAltScreen())
 p := tea.NewProgram(m)
 ```
 
-- [ ] **Step 5: 迁移 KeyMsg → KeyPressMsg（D1）**
+- [x] **Step 5: 迁移 KeyMsg → KeyPressMsg（D1）**
 
 v2 使用 `tea.KeyPressMsg`，键匹配改为 `msg.String()` 或 `key.Matches(msg, binding)`：
 
@@ -165,7 +165,7 @@ case tea.KeyPressMsg:
 
 测试文件同步更新：`tea.KeyMsg{Type: tea.KeyCtrlC}` → `tea.KeyPressMsg{Code: tea.KeyCtrlC}` 或构造 helper。
 
-- [ ] **Step 6: 修复测试并验证**
+- [x] **Step 6: 修复测试并验证**
 
 ```bash
 go test ./internal/tui/... -count=1 -v
@@ -174,7 +174,7 @@ go build ./cmd/...
 
 预期：所有现有测试 PASS，行为与 v1 等价（纯文本模式暂保留）。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add go.mod go.sum internal/tui/ cmd/cli/tui.go
