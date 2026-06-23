@@ -2,10 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/wsx864321/coding-agent/internal/agent"
+	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/skill"
@@ -54,10 +56,19 @@ func runOnce(cmd *cobra.Command, args []string) error {
 		},
 	}
 
+	sink := &event.TextSink{Out: os.Stdout, Err: os.Stderr}
+	if onceQuiet {
+		sink = &event.TextSink{Out: os.Stdout, Err: io.Discard}
+	}
+	notify := func(msg string) {
+		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg})
+	}
+
 	hookRunner := hooks.NewRunner(
 		hooks.Load(hooks.LoadOptions{ProjectRoot: workdir}),
 		workdir,
 		hooks.DefaultSpawner,
+		notify,
 	)
 
 	a, err := agent.NewAgent(buildConfig(cmd),
@@ -65,6 +76,7 @@ func runOnce(cmd *cobra.Command, args []string) error {
 		agent.WithChecker(checker),
 		agent.WithHooks(hookRunner),
 		agent.WithSkillStore(skillStore),
+		agent.WithSink(sink),
 	)
 	if err != nil {
 		return err
@@ -76,12 +88,8 @@ func runOnce(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "[coding-agent] running once, message=%q\n", truncate(onceMessage, 60))
 	}
 
-	out, err := a.Run(cmd.Context(), onceMessage)
-	if err != nil {
-		return err
-	}
-	fmt.Println(out)
-	return nil
+	_, err = a.Run(cmd.Context(), onceMessage)
+	return err
 }
 
 func truncate(s string, n int) string {

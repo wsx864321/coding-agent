@@ -33,7 +33,7 @@ func runTui(cmd *cobra.Command, args []string) error {
 	sessionBucket := agent.SessionBucket(agent.ResolveSessionDir(cfg.SessionDir), workdir)
 	setup.Agent.SetSessionPath(agent.NewSessionPath(sessionBucket, cfg.Model))
 
-	p := tea.NewProgram(tui.NewWithRunner(newAgentRunner(setup.Agent)))
+	p := tea.NewProgram(tui.NewWithRunner(newAgentRunner(setup.Agent), setup.TuiSink))
 	if _, err := p.Run(); err != nil {
 		return err
 	}
