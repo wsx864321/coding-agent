@@ -1319,7 +1319,7 @@ git commit -m "test(agent): add Sink event sequence integration tests"
 
 **验证标准:** 下列 grep 全部零匹配（docs/openspec 归档文档除外）。
 
-- [ ] **Step 1: 搜索并修复遗留引用**
+- [x] **Step 1: 搜索并修复遗留引用**
 
 ```bash
 grep -r "StreamEmitter\|RunStreaming\|EmitterFromContext\|WithEmitter\|EmitterAsker" --include="*.go" .
@@ -1329,7 +1329,7 @@ grep -r "StreamChunkMsg\|ToolStartMsg\|StreamDoneMsg" internal/tui/
 
 Expected: 零匹配（或仅测试迁移遗漏，逐一修复）
 
-- [ ] **Step 2: 更新受影响的测试包**
+- [x] **Step 2: 更新受影响的测试包**
 
 重点检查：
 - `internal/tui/model_test.go` — 旧 Msg 类型 → `event.Event`
@@ -1337,7 +1337,7 @@ Expected: 零匹配（或仅测试迁移遗漏，逐一修复）
 - `internal/agent/hooks_test.go` — `NewRunner` 第 4 参数
 - `internal/hooks/e2e_test.go`
 
-- [ ] **Step 3: Commit（若有修复）**
+- [x] **Step 3: Commit（若有修复）**
 
 ```bash
 git add -A
@@ -1354,7 +1354,7 @@ git commit -m "chore: remove remaining StreamEmitter and log.Printf references"
 
 **验证标准:** Design Doc 迁移检查清单 6 项全部满足。
 
-- [ ] **Step 1: 全量编译**
+- [x] **Step 1: 全量编译**
 
 ```bash
 go build ./...
@@ -1362,7 +1362,7 @@ go build ./...
 
 Expected: 成功，零 error
 
-- [ ] **Step 2: 全量测试**
+- [x] **Step 2: 全量测试**
 
 ```bash
 go test ./... -count=1
@@ -1370,7 +1370,7 @@ go test ./... -count=1
 
 Expected: 全部 PASS
 
-- [ ] **Step 3: 合规 grep**
+- [x] **Step 3: 合规 grep**
 
 ```bash
 grep -r "StreamEmitter" --include="*.go" . | grep -v "docs/" | grep -v "openspec/"
@@ -1380,18 +1380,18 @@ grep -r "log\.Printf" internal/hooks/ internal/agent/
 
 Expected: 全部零输出
 
-- [ ] **Step 4: 确认文件已删除**
+- [x] **Step 4: 确认文件已删除**
 
 ```bash
 test ! -f internal/agent/emitter.go && echo "emitter.go deleted OK"
 test ! -f internal/agent/emitter_asker.go && echo "emitter_asker.go deleted OK"
 ```
 
-- [ ] **Step 5: 更新 tasks.md 全部打勾**
+- [x] **Step 5: 更新 tasks.md 全部打勾**
 
 打开 `openspec/changes/unified-event-sink/tasks.md`，将所有 `- [ ]` 改为 `- [x]`。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add openspec/changes/unified-event-sink/tasks.md

@@ -36,6 +36,6 @@
 
 ## 6. 清理与验证
 
-- [ ] 6.1 全量编译 `go build ./...`
-- [ ] 6.2 全量测试 `go test ./...`
-- [ ] 6.3 验证零 log.Printf：grep 确认 internal/hooks/ 和 internal/agent/ 无 log.Printf 调用
+- [x] 6.1 全量编译 `go build ./...`
+- [x] 6.2 全量测试 `go test ./...`
+- [x] 6.3 验证零 log.Printf：grep 确认 internal/hooks/ 和 internal/agent/ 无 log.Printf 调用
