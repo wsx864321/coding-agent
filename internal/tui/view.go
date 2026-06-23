@@ -40,6 +40,10 @@ func (m Model) View() tea.View {
 	if m.statusMsg != "" {
 		parts = append(parts, "", statusStyle.Render(m.statusMsg))
 	}
+	if m.approval != nil {
+		banner := renderApprovalBanner(*m.approval, m.contentWidth())
+		parts = append(parts, "", statusStyle.Render(banner))
+	}
 	parts = append(parts, "", help)
 
 	v := tea.NewView(joinLines(parts))

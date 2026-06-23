@@ -19,7 +19,7 @@
 - [x] 3.1 扩展 `StreamEmitter` 接口：增加 OnToolStart(name, args)、OnToolEnd(name, result, err)、OnApprovalRequest(name, args, respond)
 - [x] 3.2 定义新的 tea.Msg 类型：ToolStartMsg、ToolEndMsg、ApprovalRequestMsg、ApprovalResponseMsg
 - [x] 3.3 修改 `internal/agent/loop.go` 的 loopStepWithText：在 invokeTool 前后调用 emitter 的 OnToolStart/OnToolEnd
-- [ ] 3.4 修改 `internal/agent/loop.go` 的 invokeTool：在 permission.Check 判定需要确认时调用 OnApprovalRequest 并等待 respond 回调
+- [x] 3.4 修改 `internal/agent/loop.go` 的 invokeTool：在 permission.Check 判定需要确认时调用 OnApprovalRequest 并等待 respond 回调
 - [x] 3.5 更新 `cmd/cli/tui_runner.go`：适配扩展后的 StreamEmitter 接口，传递所有事件到 channel
 - [x] 3.6 更新 chanEmitter：增加 OnToolStart、OnToolEnd、OnApprovalRequest 的 channel 实现
 
@@ -32,11 +32,11 @@
 
 ## 5. 审批交互（TUI 侧）
 
-- [ ] 5.1 在 Model 中增加 pendingApproval 模态状态（工具名、参数、respond 回调）
-- [ ] 5.2 在 Update 中处理 ApprovalRequestMsg：进入审批模态，拦截按键路由
-- [ ] 5.3 实现 renderApprovalBanner：显示工具名、参数摘要、`[y]es [n]o` 选项
-- [ ] 5.4 处理审批按键（y/n）：调用 respond 回调（sync.Once 保护），退出审批模态
-- [ ] 5.5 修改 `cmd/cli/chat_setup.go`：TUI 模式不再使用全自动拒绝 AskerFunc，改为由 TUI 审批
+- [x] 5.1 在 Model 中增加 pendingApproval 模态状态（工具名、参数、respond 回调）
+- [x] 5.2 在 Update 中处理 ApprovalRequestMsg：进入审批模态，拦截按键路由
+- [x] 5.3 实现 renderApprovalBanner：显示工具名、参数摘要、`[y]es [n]o` 选项
+- [x] 5.4 处理审批按键（y/n）：调用 respond 回调（sync.Once 保护），退出审批模态
+- [x] 5.5 修改 `cmd/cli/chat_setup.go`：TUI 模式不再使用全自动拒绝 AskerFunc，改为由 TUI 审批
 
 ## 6. Markdown ANSI 渲染
 
@@ -68,6 +68,6 @@
 
 - [ ] 9.1 更新所有现有测试适配新的 Model 结构（textarea/viewport/spinner 嵌入）
 - [ ] 9.2 添加工具调用事件流测试：ToolStartMsg → spinner 文案变化 → ToolEndMsg → 工具卡片渲染
-- [ ] 9.3 添加审批流程测试：ApprovalRequestMsg → 审批模态 → y/n 响应 → 恢复正常状态
+- [x] 9.3 添加审批流程测试：ApprovalRequestMsg → 审批模态 → y/n 响应 → 恢复正常状态
 - [ ] 9.4 添加 CJK + Markdown 渲染组合测试
 - [ ] 9.5 确认 `go build ./cmd` 编译通过、`go test ./...` 全部通过

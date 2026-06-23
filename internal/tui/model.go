@@ -29,6 +29,7 @@ type Model struct {
 	interrupted bool
 	pendingToolName string
 	pendingToolArgs string
+	approval    *pendingApproval
 	runner      Runner
 	streamCh    <-chan any
 	turnCancel  context.CancelFunc
@@ -158,6 +159,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamCh = nil
 		return m, nil
 
+	case ApprovalRequestMsg:
+		if !m.busy {
+			return m, nil
+		}
+		m.approval = &pendingApproval{toolName: msg.Name, args: msg.Args, respond: msg.Respond}
+		if m.streamCh != nil {
+			return m, waitStreamMsg(m.streamCh)
+		}
+		return m, nil
+
 	case spinner.TickMsg:
 		if !m.busy {
 			return m, nil
@@ -172,9 +183,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyPressMsg:
+		if m.approval != nil {
+			switch msg.String() {
+			case "y", "Y", "n", "N":
+				return m.handleApprovalKey(msg)
+			case "esc":
+				m = m.interruptTurn()
+				m.approval = nil
+				return m, nil
+			default:
+				return m, nil
+			}
+		}
+
 		switch {
 		case msg.String() == "ctrl+c":
 			m = m.interruptTurn()
+			m.approval = nil
 			m.quitting = true
 			return m, tea.Quit
 
@@ -321,6 +346,9 @@ func (m Model) syncLayout() Model {
 	if m.busy {
 		overhead++
 	}
+	if m.approval != nil {
+		overhead++
+	}
 	overhead += m.textarea.Height()
 
 	viewportHeight := m.height - overhead
@@ -341,6 +369,7 @@ func (m Model) interruptTurn() Model {
 	}
 	m.busy = false
 	m.streamCh = nil
+	m.approval = nil
 	m.statusMsg = interruptedStatusMsg
 	m.interrupted = true
 	m = m.syncLayout()
