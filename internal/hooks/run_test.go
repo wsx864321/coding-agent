@@ -332,3 +332,35 @@ func TestRun_NotifyOnInvalidRegex(t *testing.T) {
 		t.Fatal("expected notify on invalid regex")
 	}
 }
+
+func TestRun_NotifyOnExit2Warn(t *testing.T) {
+	var notified string
+	hooks := []ResolvedHook{{
+		Event: EventPostToolUse, HookConfig: HookConfig{Command: "warn-hook"},
+	}}
+	sp := mockSpawner(map[string]SpawnResult{"warn-hook": {ExitCode: 2, Stderr: "lint failed"}})
+	notify := func(msg string) { notified = msg }
+	Run(context.Background(), Payload{Event: EventPostToolUse, ToolName: "bash"}, hooks, sp, notify)
+	if notified == "" {
+		t.Fatal("expected notify on exit 2 warn")
+	}
+	if !strings.Contains(notified, "warn") || !strings.Contains(notified, "lint failed") {
+		t.Fatalf("notify = %q", notified)
+	}
+}
+
+func TestRun_NotifyOnExit2Block(t *testing.T) {
+	var notified string
+	hooks := []ResolvedHook{{
+		Event: EventPreToolUse, HookConfig: HookConfig{Command: "block-hook"},
+	}}
+	sp := mockSpawner(map[string]SpawnResult{"block-hook": {ExitCode: 2, Stderr: "denied"}})
+	notify := func(msg string) { notified = msg }
+	Run(context.Background(), Payload{Event: EventPreToolUse, ToolName: "bash"}, hooks, sp, notify)
+	if notified == "" {
+		t.Fatal("expected notify on exit 2 block")
+	}
+	if !strings.Contains(notified, "block") || !strings.Contains(notified, "denied") {
+		t.Fatalf("notify = %q", notified)
+	}
+}

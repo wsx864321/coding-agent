@@ -19,10 +19,26 @@ func (s *TextSink) Emit(e Event) {
 	case Text:
 		io.WriteString(s.Out, e.Text)
 	case ToolDispatch:
-		fmt.Fprintf(s.Err, "  ⚡ %s\n", e.ToolName)
+		if e.ToolArgs != "" {
+			args := e.ToolArgs
+			if len(args) > 60 {
+				args = args[:60] + "..."
+			}
+			fmt.Fprintf(s.Err, "  ⚡ %s (%s)\n", e.ToolName, args)
+		} else {
+			fmt.Fprintf(s.Err, "  ⚡ %s\n", e.ToolName)
+		}
 	case ToolResult:
 		if e.ToolIsErr {
-			fmt.Fprintf(s.Err, "  ✗ %s\n", e.ToolName)
+			if e.ToolOutput != "" {
+				out := e.ToolOutput
+				if len(out) > 80 {
+					out = out[:80] + "..."
+				}
+				fmt.Fprintf(s.Err, "  ✗ %s: %s\n", e.ToolName, out)
+			} else {
+				fmt.Fprintf(s.Err, "  ✗ %s\n", e.ToolName)
+			}
 		} else {
 			fmt.Fprintf(s.Err, "  ✓ %s\n", e.ToolName)
 		}

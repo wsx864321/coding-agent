@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -52,6 +53,24 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 			Duration: time.Since(start),
 		}
 		rep.Outcomes = append(rep.Outcomes, out)
+
+		if decision == DecisionWarn || decision == DecisionBlock {
+			if res.Err == nil || res.TimedOut {
+				msg := strings.TrimSpace(res.Stderr)
+				if msg == "" {
+					msg = strings.TrimSpace(res.Stdout)
+				}
+				label := "warn"
+				if decision == DecisionBlock {
+					label = "block"
+				}
+				if msg != "" {
+					notify(fmt.Sprintf("[hooks] hook %q returned %s: %s", h.Command, label, msg))
+				} else {
+					notify(fmt.Sprintf("[hooks] hook %q returned %s (exit %d)", h.Command, label, res.ExitCode))
+				}
+			}
+		}
 
 		if payload.Event == EventStop && res.ExitCode == 2 && res.Stdout != "" {
 			rep.Force = res.Stdout

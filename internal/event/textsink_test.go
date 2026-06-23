@@ -27,6 +27,30 @@ func TestTextSink_ToolDispatch(t *testing.T) {
 	}
 }
 
+func TestTextSink_ToolDispatch_WithArgs(t *testing.T) {
+	var err bytes.Buffer
+	s := &TextSink{Err: &err}
+	s.Emit(Event{Kind: ToolDispatch, ToolName: "bash", ToolArgs: `{"command":"echo hello"}`})
+	got := err.String()
+	if !strings.Contains(got, "bash") {
+		t.Fatalf("stderr = %q, want tool name", got)
+	}
+	if !strings.Contains(got, "echo hello") {
+		t.Fatalf("stderr = %q, want args summary", got)
+	}
+}
+
+func TestTextSink_ToolDispatch_TruncatesLongArgs(t *testing.T) {
+	var err bytes.Buffer
+	s := &TextSink{Err: &err}
+	long := strings.Repeat("x", 100)
+	s.Emit(Event{Kind: ToolDispatch, ToolName: "bash", ToolArgs: long})
+	got := err.String()
+	if !strings.Contains(got, "...") {
+		t.Fatalf("stderr = %q, want truncated args", got)
+	}
+}
+
 func TestTextSink_ToolResult_OK(t *testing.T) {
 	var err bytes.Buffer
 	s := &TextSink{Err: &err}
@@ -43,6 +67,30 @@ func TestTextSink_ToolResult_Error(t *testing.T) {
 	got := err.String()
 	if !strings.Contains(got, "bash") {
 		t.Fatalf("stderr = %q", got)
+	}
+}
+
+func TestTextSink_ToolResult_ErrorWithOutput(t *testing.T) {
+	var err bytes.Buffer
+	s := &TextSink{Err: &err}
+	s.Emit(Event{Kind: ToolResult, ToolName: "bash", ToolIsErr: true, ToolOutput: "exit code 1: command not found"})
+	got := err.String()
+	if !strings.Contains(got, "bash:") {
+		t.Fatalf("stderr = %q, want tool name with colon", got)
+	}
+	if !strings.Contains(got, "exit code 1") {
+		t.Fatalf("stderr = %q, want error summary", got)
+	}
+}
+
+func TestTextSink_ToolResult_ErrorTruncatesLongOutput(t *testing.T) {
+	var err bytes.Buffer
+	s := &TextSink{Err: &err}
+	long := strings.Repeat("e", 100)
+	s.Emit(Event{Kind: ToolResult, ToolName: "bash", ToolIsErr: true, ToolOutput: long})
+	got := err.String()
+	if !strings.Contains(got, "...") {
+		t.Fatalf("stderr = %q, want truncated error output", got)
 	}
 }
 
