@@ -1232,7 +1232,7 @@ git commit -m "feat(cli): wire TextSink/TuiSink and notify bridge for all modes"
 - Modify: `internal/agent/subagent.go`（确认不传 WithSink）
 - Create/Modify: `internal/agent/loop_test.go` 或 `agent_test.go`
 
-- [ ] **Step 1: 编写 Agent Run + FuncSink 事件序列测试**
+- [x] **Step 1: 编写 Agent Run + FuncSink 事件序列测试**
 
 在 `internal/agent/agent_test.go` 追加：
 
@@ -1284,7 +1284,7 @@ func TestRun_EmitsTextAndToolEvents(t *testing.T) {
 
 （根据项目现有 fake 工具/provider 测试辅助函数调整具体构造方式。）
 
-- [ ] **Step 2: 确认 subagent 使用 Discard**
+- [x] **Step 2: 确认 subagent 使用 Discard**
 
 `internal/agent/subagent.go` 的 `NewAgent(subCfg, subOpts...)` 不传 `WithSink`，依赖 Task 2 中 `NewAgent` 默认 `event.Discard`。无需代码变更，测试验证：
 
@@ -1294,7 +1294,7 @@ func TestSubAgent_UsesDiscardSink(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: 运行测试**
+- [x] **Step 3: 运行测试**
 
 ```bash
 go test ./internal/agent/... -count=1 -v
@@ -1302,7 +1302,7 @@ go test ./internal/agent/... -count=1 -v
 
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/agent/
