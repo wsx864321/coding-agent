@@ -20,12 +20,12 @@
 
 ## 4. Agent 集成改造
 
-- [ ] 4.1 修改 `internal/agent/option.go`：`WithHooks` 参数从 `*hooks.Registry` 改为 `ToolHooks` interface
-- [ ] 4.2 修改 `internal/agent/agent.go`：UserPromptSubmit 触发点改用 `ToolHooks.UserPromptSubmit()`
-- [ ] 4.3 修改 `internal/agent/loop.go`：PreToolUse、PostToolUse 触发点改用 `ToolHooks` interface 调用
-- [ ] 4.4 修改 `internal/agent/loop.go`：将 TodoGuardHook 逻辑内联到 Stop 判断处（在外部 hook 之前检查）
-- [ ] 4.5 修改 `internal/agent/loop.go`：Stop 触发点改用 `ToolHooks.Stop()`，处理 force 续跑返回值
-- [ ] 4.6 修改 `internal/agent/agent.go`：subagent hook 传递改为 ToolHooks interface（PreToolUse + PostToolUse only）
+- [x] 4.1 修改 `internal/agent/option.go`：`WithHooks` 参数从 `*hooks.Registry` 改为 `ToolHooks` interface
+- [x] 4.2 修改 `internal/agent/agent.go`：UserPromptSubmit 触发点改用 `ToolHooks.UserPromptSubmit()`
+- [x] 4.3 修改 `internal/agent/loop.go`：PreToolUse、PostToolUse 触发点改用 `ToolHooks` interface 调用
+- [x] 4.4 修改 `internal/agent/loop.go`：将 TodoGuardHook 逻辑内联到 Stop 判断处（在外部 hook 之前检查）
+- [x] 4.5 修改 `internal/agent/loop.go`：Stop 触发点改用 `ToolHooks.Stop()`，处理 force 续跑返回值
+- [x] 4.6 修改 `internal/agent/agent.go`：subagent hook 传递改为 ToolHooks interface（PreToolUse + PostToolUse only）
 
 ## 5. CLI 装配层适配
 
