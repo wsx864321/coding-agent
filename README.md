@@ -173,7 +173,7 @@ CODING_AGENT_TEMPERATURE=0.7
 
 `task` 工具可派生子代理处理隔离子任务。子代理拥有独立的对话上下文和证据账本，共享文件系统和 LLM 客户端，支持配置模型和最大步数。禁止嵌套。
 
-[详细设计文档 →](docs/subagent-design.md)
+[详细设计文档 →](docs/subagent.md)
 
 ### 3. 长期记忆
 
@@ -189,13 +189,15 @@ Markdown 驱动的可复用技能系统。支持两种执行模式：`inline`（
 
 ### 5. Hook 系统
 
-四个生命周期事件：
-- `UserPromptSubmit` — 用户提交时（通知型）
-- `PreToolUse` — 工具执行前（可阻断）
-- `PostToolUse` — 工具执行后（副作用型）
-- `Stop` — 模型输出最终答案时（可强制续跑）
+外部 shell 命令驱动的扩展机制。通过 JSON 配置文件（`.coding-agent/hooks.json`）声明 hook，运行时 spawn 外部进程，通过 stdin JSON payload + exit code 通信。支持项目级和全局级配置。
 
-[详细设计文档 →](docs/hooks-design.md)
+四个生命周期事件：
+- `UserPromptSubmit` — 用户提交时（非阻塞型）
+- `PreToolUse` — 工具执行前（阻塞型，exit 2 可阻断）
+- `PostToolUse` — 工具执行后（非阻塞型）
+- `Stop` — 模型输出最终答案时（exit 2 + stdout 可强制续跑）
+
+[详细设计文档 →](docs/hook-system-design.md)
 
 ### 6. 权限管控
 
@@ -221,7 +223,7 @@ internal/
   agent/         ← Agent 循环、配置、压缩、子代理、System Prompt
   tools/         ← 工具接口 + 全部工具实现
   permission/    ← Allow/Deny 管线 + Asker 接口
-  hooks/         ← 事件 Hook 注册与触发
+  hooks/         ← 外部 Shell Hook 引擎（JSON 配置 + 进程 Spawn）
   memory/        ← 长期记忆（Store、Queue、Docs、BM25）
   retrieval/     ← 纯 Go BM25 搜索引擎
   skill/         ← Skill 发现、解析、目录
