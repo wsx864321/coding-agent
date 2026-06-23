@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -262,13 +263,19 @@ func isSubmitKey(msg tea.KeyPressMsg) bool {
 }
 
 func (m Model) shouldRouteScrollToViewport(msg tea.KeyPressMsg) bool {
-	if strings.TrimSpace(m.textarea.Value()) != "" {
-		switch msg.String() {
-		case "j", "k", "up", "down":
+	hasText := strings.TrimSpace(m.textarea.Value()) != ""
+	k := msg.String()
+
+	if hasText {
+		switch k {
+		case "pgup", "pgdown":
+			return true
+		default:
 			return false
 		}
 	}
-	switch msg.String() {
+
+	switch k {
 	case "up", "down", "j", "k", "pgup", "pgdown", "b", "f", "u", "d":
 		return true
 	default:
@@ -304,6 +311,11 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.turnCancel = cancel
 	go func() {
 		defer close(ch)
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- StreamErrorMsg{Err: fmt.Errorf("panic: %v", r)}
+			}
+		}()
 		emit := chanEmitter{ch: ch}
 		_ = runner.RunTurn(ctx, text, emit)
 	}()

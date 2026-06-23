@@ -275,6 +275,48 @@ func TestViewScrollHidesOlderMessages(t *testing.T) {
 	}
 }
 
+func TestSpaceKeyGoesToTextareaWhenHasText(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+	m.textarea.SetValue("hello")
+
+	next, _ := m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	updated := next.(Model)
+	if got := updated.textarea.Value(); !strings.Contains(got, " ") {
+		t.Fatalf("textarea = %q, want space in text when textarea has content", got)
+	}
+}
+
+func TestSpaceKeyScrollsViewportWhenEmpty(t *testing.T) {
+	m := prepareScrollModel()
+	m.viewport.GotoTop()
+	before := m.viewport.YOffset()
+
+	next, _ := m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	updated := next.(Model)
+	if updated.viewport.YOffset() <= before {
+		t.Fatalf("YOffset = %d, want > %d when textarea empty and space pressed", updated.viewport.YOffset(), before)
+	}
+}
+
+func TestLetterKeysGoToTextareaWhenHasText(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+	m.textarea.SetValue("test")
+
+	for _, ch := range "bfudhjkl" {
+		next, _ := m.Update(tea.KeyPressMsg{Code: ch, Text: string(ch)})
+		m = next.(Model)
+	}
+	if got := m.textarea.Value(); got != "testbfudhjkl" {
+		t.Fatalf("textarea = %q, want %q", got, "testbfudhjkl")
+	}
+}
+
 func longTranscriptHistory() []TranscriptEntry {
 	entries := make([]TranscriptEntry, 0, 20)
 	for i := 1; i <= 20; i++ {
