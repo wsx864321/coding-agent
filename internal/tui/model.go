@@ -16,7 +16,7 @@ const interruptedStatusMsg = "已中断"
 
 // Model 是 Bubble Tea 聊天界面的状态机。
 type Model struct {
-	messages    []Message
+	transcript  []TranscriptEntry
 	textarea    textarea.Model
 	viewport    viewport.Model
 	spinner     spinner.Model
@@ -60,6 +60,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m = m.syncLayout()
+		m = m.rerenderTranscript()
 		m = m.syncViewportContent()
 		return m, nil
 
@@ -188,8 +189,8 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.lastError = ""
 	m.statusMsg = ""
 	m.interrupted = false
-	m = m.withMessage(RoleUser, text)
-	m = m.withMessage(RoleAssistant, "")
+	m = m.appendUserMessage(text)
+	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
 
 	ch := make(chan any, 16)
@@ -223,35 +224,26 @@ func (m Model) appendAssistantChunk(text string) Model {
 	if text == "" {
 		return m
 	}
-	if len(m.messages) == 0 || m.messages[len(m.messages)-1].Role != RoleAssistant {
-		return m.withMessage(RoleAssistant, text)
+	if len(m.transcript) == 0 || m.transcript[len(m.transcript)-1].Kind != EntryAssistantChunk {
+		e := TranscriptEntry{Kind: EntryAssistantChunk, Raw: text}
+		e = m.renderEntry(e)
+		m.transcript = append(m.transcript, e)
+		return m
 	}
-	last := len(m.messages) - 1
-	m.messages[last].Content += text
-	return m
-}
-
-func (m Model) withMessage(role Role, content string) Model {
-	m.messages = append(m.messages, Message{Role: role, Content: content})
+	last := len(m.transcript) - 1
+	m.transcript[last].Raw += text
+	m.transcript[last] = m.renderEntry(m.transcript[last])
 	return m
 }
 
 func (m Model) syncViewportContent() Model {
-	wasAtBottom := m.viewport.AtBottom() || len(m.messages) == 0
-	content := m.renderMessageContent()
+	wasAtBottom := m.viewport.AtBottom() || len(m.transcript) == 0
+	content := m.renderTranscriptContent()
 	m.viewport.SetContent(content)
 	if wasAtBottom {
 		m.viewport.GotoBottom()
 	}
 	return m
-}
-
-func (m Model) renderMessageContent() string {
-	lines := m.renderMessageLines()
-	if len(lines) == 0 {
-		return "(暂无消息)"
-	}
-	return joinLines(lines)
 }
 
 func (m Model) syncLayout() Model {
@@ -296,43 +288,6 @@ func (m Model) interruptTurn() Model {
 	m.interrupted = true
 	m = m.syncLayout()
 	return m
-}
-
-func (m Model) renderMessageLines() []string {
-	if m.width <= 0 {
-		m.width = 80
-	}
-	contentWidth := m.width - 2
-	if contentWidth < 10 {
-		contentWidth = 10
-	}
-
-	var lines []string
-	for _, msg := range m.messages {
-		prefix := roleLabel(msg.Role) + ": "
-		wrapped := wrapText(msg.Content, contentWidth-len(prefix))
-		for i, line := range wrapped {
-			if i == 0 {
-				lines = append(lines, prefix+line)
-			} else {
-				lines = append(lines, strings.Repeat(" ", len(prefix))+line)
-			}
-		}
-	}
-	return lines
-}
-
-func roleLabel(role Role) string {
-	switch role {
-	case RoleUser:
-		return "user"
-	case RoleAssistant:
-		return "assistant"
-	case RoleSystem:
-		return "system"
-	default:
-		return "unknown"
-	}
 }
 
 func wrapText(text string, width int) []string {

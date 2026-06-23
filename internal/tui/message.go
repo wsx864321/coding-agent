@@ -1,16 +1,19 @@
 package tui
 
-// Role 标识消息来源。
-type Role int
+// EntryKind 标识 transcript 条目类型。
+type EntryKind int
 
 const (
-	RoleUser Role = iota
-	RoleAssistant
-	RoleSystem
+	EntryUserMessage EntryKind = iota
+	EntryAssistantChunk
+	EntryToolCard
+	EntryToolOutput
+	EntryError
 )
 
-// Message 是聊天区的一条消息。
-type Message struct {
-	Role    Role
-	Content string
+// TranscriptEntry 是聊天区的一条结构化 transcript 条目。
+type TranscriptEntry struct {
+	Kind    EntryKind
+	Content string // pre-rendered ANSI
+	Raw     string // raw for re-render on resize
 }

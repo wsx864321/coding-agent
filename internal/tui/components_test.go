@@ -23,7 +23,8 @@ func TestViewportPageDownScrolls(t *testing.T) {
 	m := New()
 	m.width = 40
 	m.height = 12
-	m.messages = longMessageHistory()
+	m.transcript = longTranscriptHistory()
+	m = m.rerenderTranscript()
 	m = m.syncLayout()
 	m = m.syncViewportContent()
 	m.viewport.GotoTop()
@@ -40,7 +41,8 @@ func TestViewportMouseWheelScrolls(t *testing.T) {
 	m := New()
 	m.width = 40
 	m.height = 12
-	m.messages = longMessageHistory()
+	m.transcript = longTranscriptHistory()
+	m = m.rerenderTranscript()
 	m = m.syncLayout()
 	m = m.syncViewportContent()
 	m.viewport.GotoTop()
@@ -83,12 +85,13 @@ func TestTailFollowKeepsBottomWhenAtBottom(t *testing.T) {
 	m := New()
 	m.width = 40
 	m.height = 12
-	m.messages = longMessageHistory()
+	m.transcript = longTranscriptHistory()
+	m = m.rerenderTranscript()
 	m = m.syncLayout()
 	m = m.syncViewportContent()
 	m.viewport.GotoBottom()
 
-	m = m.withMessage(RoleUser, "new tail message")
+	m = m.appendUserMessage("new tail message")
 	m = m.syncViewportContent()
 
 	if !m.viewport.AtBottom() {

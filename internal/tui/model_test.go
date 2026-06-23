@@ -27,7 +27,8 @@ func prepareScrollModel() Model {
 	m := New()
 	m.width = 40
 	m.height = 12
-	m.messages = longMessageHistory()
+	m.transcript = longTranscriptHistory()
+	m = m.rerenderTranscript()
 	m = m.syncLayout()
 	m = m.syncViewportContent()
 	return m
@@ -41,8 +42,8 @@ func TestNewModelDefaults(t *testing.T) {
 	if m.width != 0 || m.height != 0 {
 		t.Fatalf("initial size = %dx%d, want 0x0", m.width, m.height)
 	}
-	if len(m.messages) != 0 {
-		t.Fatalf("messages = %d, want 0", len(m.messages))
+	if len(m.transcript) != 0 {
+		t.Fatalf("transcript = %d, want 0", len(m.transcript))
 	}
 	if m.textarea.Value() != "" {
 		t.Fatalf("textarea = %q, want empty", m.textarea.Value())
@@ -130,23 +131,24 @@ func TestBackspaceOnEmptyInputIsNoop(t *testing.T) {
 	}
 }
 
-func TestAppendMessageStoresRoleAndContent(t *testing.T) {
+func TestAppendEntryStoresKindAndRaw(t *testing.T) {
 	m := New()
-	m = m.withMessage(RoleUser, "hello")
-	m = m.withMessage(RoleAssistant, "world")
-	m = m.withMessage(RoleSystem, "notice")
+	m.width = 80
+	m = m.appendEntry(TranscriptEntry{Kind: EntryUserMessage, Raw: "hello"})
+	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk, Raw: "world"})
+	m = m.appendEntry(TranscriptEntry{Kind: EntryError, Raw: "notice"})
 
-	if len(m.messages) != 3 {
-		t.Fatalf("messages = %d, want 3", len(m.messages))
+	if len(m.transcript) != 3 {
+		t.Fatalf("transcript = %d, want 3", len(m.transcript))
 	}
-	if m.messages[0].Role != RoleUser || m.messages[0].Content != "hello" {
-		t.Fatalf("messages[0] = %+v, want user/hello", m.messages[0])
+	if m.transcript[0].Kind != EntryUserMessage || m.transcript[0].Raw != "hello" {
+		t.Fatalf("transcript[0] = %+v, want user/hello", m.transcript[0])
 	}
-	if m.messages[1].Role != RoleAssistant || m.messages[1].Content != "world" {
-		t.Fatalf("messages[1] = %+v, want assistant/world", m.messages[1])
+	if m.transcript[1].Kind != EntryAssistantChunk || m.transcript[1].Raw != "world" {
+		t.Fatalf("transcript[1] = %+v, want assistant/world", m.transcript[1])
 	}
-	if m.messages[2].Role != RoleSystem || m.messages[2].Content != "notice" {
-		t.Fatalf("messages[2] = %+v, want system/notice", m.messages[2])
+	if m.transcript[2].Kind != EntryError || m.transcript[2].Raw != "notice" {
+		t.Fatalf("transcript[2] = %+v, want error/notice", m.transcript[2])
 	}
 }
 
@@ -214,11 +216,9 @@ func TestViewRendersMessageInputAndHelpAreas(t *testing.T) {
 	m := New()
 	m.width = 80
 	m.height = 24
-	m.messages = []Message{
-		{Role: RoleUser, Content: "你好"},
-		{Role: RoleAssistant, Content: "你好，我是助手"},
-		{Role: RoleSystem, Content: "系统提示"},
-	}
+	m = m.appendUserMessage("你好")
+	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk, Raw: "你好，我是助手"})
+	m = m.appendEntry(TranscriptEntry{Kind: EntryToolOutput, Raw: "系统提示"})
 	m.textarea.SetValue("draft text")
 	m = m.syncLayout()
 	m = m.syncViewportContent()
@@ -226,11 +226,9 @@ func TestViewRendersMessageInputAndHelpAreas(t *testing.T) {
 	view := viewContent(m)
 	for _, want := range []string{
 		"coding-agent",
-		"user:",
 		"你好",
 		"assistant:",
 		"你好，我是助手",
-		"system:",
 		"系统提示",
 		"draft text",
 		"Enter",
@@ -246,16 +244,18 @@ func TestViewScrollHidesOlderMessages(t *testing.T) {
 	m := New()
 	m.width = 40
 	m.height = 10
-	m.messages = []Message{
-		{Role: RoleUser, Content: "first-visible-marker"},
-		{Role: RoleUser, Content: "line-2"},
-		{Role: RoleUser, Content: "line-3"},
-		{Role: RoleUser, Content: "line-4"},
-		{Role: RoleUser, Content: "line-5"},
-		{Role: RoleUser, Content: "line-6"},
-		{Role: RoleUser, Content: "line-7"},
-		{Role: RoleUser, Content: "line-8"},
-		{Role: RoleUser, Content: "last-visible-marker"},
+	for _, content := range []string{
+		"first-visible-marker",
+		"line-2",
+		"line-3",
+		"line-4",
+		"line-5",
+		"line-6",
+		"line-7",
+		"line-8",
+		"last-visible-marker",
+	} {
+		m = m.appendUserMessage(content)
 	}
 	m = m.syncLayout()
 	m = m.syncViewportContent()
@@ -275,10 +275,11 @@ func TestViewScrollHidesOlderMessages(t *testing.T) {
 	}
 }
 
-func longMessageHistory() []Message {
-	msgs := make([]Message, 0, 20)
+func longTranscriptHistory() []TranscriptEntry {
+	entries := make([]TranscriptEntry, 0, 20)
 	for i := 1; i <= 20; i++ {
-		msgs = append(msgs, Message{Role: RoleUser, Content: strings.Repeat("x", i*3)})
+		raw := strings.Repeat("x", i*3)
+		entries = append(entries, TranscriptEntry{Kind: EntryUserMessage, Raw: raw})
 	}
-	return msgs
+	return entries
 }

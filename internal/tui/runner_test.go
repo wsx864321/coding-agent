@@ -44,14 +44,14 @@ func TestSubmitWritesUserMessageAndInvokesRunner(t *testing.T) {
 	if !updated.busy {
 		t.Fatal("busy should be true after submit")
 	}
-	if len(updated.messages) != 2 {
-		t.Fatalf("messages = %d, want 2 (user + assistant placeholder)", len(updated.messages))
+	if len(updated.transcript) != 2 {
+		t.Fatalf("transcript = %d, want 2 (user + assistant placeholder)", len(updated.transcript))
 	}
-	if updated.messages[0].Role != RoleUser || updated.messages[0].Content != "hello agent" {
-		t.Fatalf("messages[0] = %+v, want user/hello agent", updated.messages[0])
+	if updated.transcript[0].Kind != EntryUserMessage || updated.transcript[0].Raw != "hello agent" {
+		t.Fatalf("transcript[0] = %+v, want user/hello agent", updated.transcript[0])
 	}
-	if updated.messages[1].Role != RoleAssistant {
-		t.Fatalf("messages[1].Role = %v, want assistant placeholder", updated.messages[1].Role)
+	if updated.transcript[1].Kind != EntryAssistantChunk {
+		t.Fatalf("transcript[1].Kind = %v, want assistant placeholder", updated.transcript[1].Kind)
 	}
 
 	msg := cmd()
@@ -63,15 +63,16 @@ func TestSubmitWritesUserMessageAndInvokesRunner(t *testing.T) {
 func TestStreamChunksAppendAssistantContent(t *testing.T) {
 	ch := make(chan any, 1)
 	m := New()
-	m = m.withMessage(RoleUser, "q")
-	m = m.withMessage(RoleAssistant, "")
+	m.width = 80
+	m = m.appendUserMessage("q")
+	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m.busy = true
 	m.streamCh = ch
 
 	next, cmd := m.Update(StreamChunkMsg{Text: "hel"})
 	updated := next.(Model)
-	if got := updated.messages[1].Content; got != "hel" {
-		t.Fatalf("assistant content = %q, want %q", got, "hel")
+	if got := updated.transcript[1].Raw; got != "hel" {
+		t.Fatalf("assistant raw = %q, want %q", got, "hel")
 	}
 	if cmd == nil {
 		t.Fatal("chunk update should continue listening for stream")
@@ -80,8 +81,8 @@ func TestStreamChunksAppendAssistantContent(t *testing.T) {
 	ch <- StreamChunkMsg{Text: "lo"}
 	next, cmd = updated.Update(cmd())
 	updated = next.(Model)
-	if got := updated.messages[1].Content; got != "hello" {
-		t.Fatalf("assistant content = %q, want %q", got, "hello")
+	if got := updated.transcript[1].Raw; got != "hello" {
+		t.Fatalf("assistant raw = %q, want %q", got, "hello")
 	}
 	if cmd == nil {
 		t.Fatal("chunk update should continue listening for stream")
@@ -91,7 +92,7 @@ func TestStreamChunksAppendAssistantContent(t *testing.T) {
 func TestStreamDoneClearsBusy(t *testing.T) {
 	m := New()
 	m.busy = true
-	m = m.withMessage(RoleAssistant, "done")
+	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk, Raw: "done"})
 
 	next, cmd := m.Update(StreamDoneMsg{})
 	updated := next.(Model)
@@ -130,8 +131,8 @@ func TestEnterSubmitEndToEndWithStubRunner(t *testing.T) {
 		t.Fatal("Enter should return stream command")
 	}
 	updated := next.(Model)
-	if len(updated.messages) != 2 || updated.messages[0].Content != "ping" {
-		t.Fatalf("messages = %+v, want user ping committed", updated.messages)
+	if len(updated.transcript) != 2 || updated.transcript[0].Raw != "ping" {
+		t.Fatalf("transcript = %+v, want user ping committed", updated.transcript)
 	}
 
 	msg := cmd()
@@ -176,8 +177,8 @@ func TestEnterSubmitEndToEndWithStubRunner(t *testing.T) {
 		}
 	}
 
-	if got := updated.messages[len(updated.messages)-1].Content; got != "AB" {
-		t.Fatalf("assistant content = %q, want AB", got)
+	if got := updated.transcript[len(updated.transcript)-1].Raw; got != "AB" {
+		t.Fatalf("assistant raw = %q, want AB", got)
 	}
 	if updated.busy {
 		t.Fatal("busy should be false after stream completes")
