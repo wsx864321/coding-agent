@@ -25,29 +25,6 @@ import (
 	"github.com/wsx864321/coding-agent/internal/provider"
 )
 
-type subagentCtxKey struct{}
-
-// WithSubagentFlag 在 context 中标记当前正在 subagent 内运行。
-func WithSubagentFlag(ctx context.Context) context.Context {
-	return context.WithValue(ctx, subagentCtxKey{}, true)
-}
-
-// IsSubagent 检查当前 context 是否在 subagent 内
-func IsSubagent(ctx context.Context) bool {
-	v, _ := ctx.Value(subagentCtxKey{}).(bool)
-	return v
-}
-
-// Event 标识 4 类事件
-type Event string
-
-const (
-	EventUserPromptSubmit Event = "UserPromptSubmit"
-	EventPreToolUse       Event = "PreToolUse"
-	EventPostToolUse      Event = "PostToolUse"
-	EventStop             Event = "Stop"
-)
-
 // UserPromptSubmitHook 在追加 user 消息前被调用
 type UserPromptSubmitHook func(ctx context.Context, content string) error
 
