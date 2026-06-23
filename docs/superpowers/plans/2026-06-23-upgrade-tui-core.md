@@ -393,7 +393,7 @@ func TestAppendUserEntryUpdatesViewport(t *testing.T) {
 **Interfaces:**
 - Produces: `func WrapText(text string, width int) []string`
 
-- [ ] **Step 1: 编写 CJK failing test（D7）**
+- [x] **Step 1: 编写 CJK failing test（D7）**
 
 ```go
 func TestWrapTextCJKDoubleWidth(t *testing.T) {
@@ -415,7 +415,7 @@ func TestWrapTextEmoji(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实现 WrapText（D7）**
+- [x] **Step 2: 实现 WrapText（D7）**
 
 ```go
 import "github.com/mattn/go-runewidth"
@@ -445,17 +445,17 @@ func WrapText(text string, width int) []string {
 }
 ```
 
-- [ ] **Step 3: 更新 prefix 宽度计算（tasks 2.2）**
+- [x] **Step 3: 更新 prefix 宽度计算（tasks 2.2）**
 
 用户消息 prefix 宽度用 `runewidth.StringWidth(prefix)` 而非 `len(prefix)`。
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 ```bash
 go test ./internal/tui/... -run WrapText -count=1 -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 勾选 `tasks.md` 2.1、2.2、2.3。
 
