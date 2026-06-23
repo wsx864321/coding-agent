@@ -14,9 +14,9 @@
 
 ## 3. Runner 门面
 
-- [ ] 3.1 创建 `internal/hooks/runner.go`，实现 Runner struct（持有 []ResolvedHook + cwd + Spawner）
-- [ ] 3.2 Runner 实现 `agent.ToolHooks` interface 的 4 个方法，每个方法构建 Payload 并调用 Run()
-- [ ] 3.3 编写 Runner 集成测试：验证 Runner 作为 ToolHooks 的完整调用链
+- [x] 3.1 创建 `internal/hooks/runner.go`，实现 Runner struct（持有 []ResolvedHook + cwd + Spawner）
+- [x] 3.2 Runner 实现 `agent.ToolHooks` interface 的 4 个方法，每个方法构建 Payload 并调用 Run()
+- [x] 3.3 编写 Runner 集成测试：验证 Runner 作为 ToolHooks 的完整调用链
 
 ## 4. Agent 集成改造
 
