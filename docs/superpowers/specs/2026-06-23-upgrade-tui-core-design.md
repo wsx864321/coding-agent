@@ -256,7 +256,18 @@ Viewport 的 content 是所有 transcript entries 的 rendered strings 拼接。
 | CJK | wrapText 中日文 + emoji → 验证行宽 | 混合宽度 |
 | v2 migration | 现有测试编译通过 + 行为不变 | 基础回归 |
 
+## Implementation Divergence
+
+### D3: Markdown 方案从 goldmark 改为 glamour
+
+**原始设计**: `openspec/changes/upgrade-tui-core/design.md` D3 指定 "goldmark 解析 + 自定义 ANSI terminal renderer"。
+
+**实际实现**: 使用 `charm.land/glamour/v2`（基于 glamour 的 `MarkdownRenderer` 接口适配器）。
+
+**原因**: brainstorming 阶段经用户确认，选择 glamour 替代 goldmark+chroma 方案。glamour 内部使用 goldmark + chroma，开箱即用，减少约 500+ 行自定义 renderer 代码。通过 `MarkdownRenderer` 接口抽象，后续可无缝替换为自定义实现。
+
+**影响**: 无功能差异。所有 spec 场景（代码块高亮、表格、列表、引用等）均通过 glamour 内置支持满足。
+
 ## Open Questions
 
-- glamour v2 是否已发布（`charm.land/glamour/v2`）？如果只有 v1（`github.com/charmbracelet/glamour`），可能与 lipgloss/v2 有类型不兼容。需要在依赖引入时验证。
 - viewport 的 tail-follow 在审批横幅出现/消失时需要重新计算高度，可能导致一帧闪烁。
