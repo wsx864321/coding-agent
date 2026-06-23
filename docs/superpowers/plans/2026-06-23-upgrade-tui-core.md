@@ -603,7 +603,7 @@ go test ./internal/agent/... ./internal/tui/... -count=1
   const toolOutputCollapseLines = 8
   ```
 
-- [ ] **Step 1: 编写 toolcard test（参考 Reasonix toolcard.go）**
+- [x] **Step 1: 编写 toolcard test（参考 Reasonix toolcard.go）**
 
 ```go
 func TestRenderToolCardTruncatesLongArgs(t *testing.T) {
@@ -618,12 +618,12 @@ func TestRenderToolCardTruncatesLongArgs(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 实现 renderToolCard（D8 工具卡片样式）**
+- [x] **Step 2: 实现 renderToolCard（D8 工具卡片样式）**
 
 格式：`● ToolName("args summary")`，使用 lipgloss 颜色区分 read/write/error。
 参数摘要：从 JSON args 提取主要字段（path/command 等），超长截断。
 
-- [ ] **Step 3: 实现 renderToolOutput 折叠（>8 行）**
+- [x] **Step 3: 实现 renderToolOutput 折叠（>8 行）**
 
 ```go
 func renderToolOutput(result string, maxLines int) string {
@@ -637,7 +637,7 @@ func renderToolOutput(result string, maxLines int) string {
 }
 ```
 
-- [ ] **Step 4: Update 处理 ToolStartMsg / ToolEndMsg**
+- [x] **Step 4: Update 处理 ToolStartMsg / ToolEndMsg**
 
 ```go
 case ToolStartMsg:
@@ -649,13 +649,13 @@ case ToolEndMsg:
     m.statusLabel = "thinking"
 ```
 
-- [ ] **Step 5: 运行测试**
+- [x] **Step 5: 运行测试**
 
 ```bash
 go test ./internal/tui/... -run Tool -count=1 -v
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 勾选 `tasks.md` 4.1–4.4。
 
