@@ -1043,11 +1043,11 @@ func renderStatusBar(m Model) string {
 - Modify: `internal/tui/model_test.go`, `internal/tui/runner_test.go`, `internal/tui/keymap_test.go`
 - Create: `internal/tui/integration_test.go`
 
-- [ ] **Step 1: 更新现有测试适配新 Model 结构（tasks 9.1）**
+- [x] **Step 1: 更新现有测试适配新 Model 结构（tasks 9.1）**
 
 移除对 `m.input`、`m.scrollOffset`、`m.messages` 的直接引用；改用 textarea/viewport/transcript API。
 
-- [ ] **Step 2: 工具事件流集成测试（tasks 9.2）**
+- [x] **Step 2: 工具事件流集成测试（tasks 9.2）**
 
 ```go
 func TestToolEventFlowUpdatesTranscript(t *testing.T) {
@@ -1060,18 +1060,18 @@ func TestToolEventFlowUpdatesTranscript(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: 审批流程集成测试（tasks 9.3）**
+- [x] **Step 3: 审批流程集成测试（tasks 9.3）**
 
-- [ ] **Step 4: CJK + Markdown 组合测试（tasks 9.4）**
+- [x] **Step 4: CJK + Markdown 组合测试（tasks 9.4）**
 
-- [ ] **Step 5: 全量回归**
+- [x] **Step 5: 全量回归**
 
 ```bash
 go build ./cmd/...
 go test ./... -count=1
 ```
 
-- [ ] **Step 6: 手动 smoke test 清单（tasks 9.5）**
+- [x] **Step 6: 手动 smoke test 清单（tasks 9.5）**
 
 | 场景 | 操作 | 预期 |
 |------|------|------|
@@ -1083,7 +1083,7 @@ go test ./... -count=1
 | 中断 | 流式中 Esc | 保留历史，可继续输入 |
 | 退出 | Ctrl+C | 安全退出 |
 
-- [ ] **Step 7: Commit + 勾选 tasks.md 9.1–9.5**
+- [x] **Step 7: Commit + 勾选 tasks.md 9.1–9.5**
 
 ---
 
