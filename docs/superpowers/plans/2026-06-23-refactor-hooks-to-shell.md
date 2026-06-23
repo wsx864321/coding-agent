@@ -162,7 +162,7 @@ git commit -m "feat(agent): add ToolHooks interface and SubsetHooks wrapper"
 
 **变更描述:** 新建类型文件，暂不删除旧 `hooks.go`（Registry 在 Task 6.2 移除，保证中间态可编译）。
 
-- [ ] **Step 1: 创建 `internal/hooks/context.go`**
+- [x] **Step 1: 创建 `internal/hooks/context.go`**
 
 ```go
 package hooks
@@ -181,7 +181,7 @@ func IsSubagent(ctx context.Context) bool {
 }
 ```
 
-- [ ] **Step 2: 创建 `internal/hooks/hook.go`**
+- [x] **Step 2: 创建 `internal/hooks/hook.go`**
 
 ```go
 package hooks
@@ -277,12 +277,12 @@ type Report struct {
 }
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `go build ./internal/hooks/...`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/hooks/hook.go internal/hooks/context.go
@@ -304,7 +304,7 @@ git commit -m "feat(hooks): add shell hook core types and subagent context helpe
 
 **变更描述:** 按项目 → 全局顺序加载 JSON；解析失败 log warning 跳过；合并为 `[]ResolvedHook`（项目级在前）。
 
-- [ ] **Step 1: 实现 `internal/hooks/load.go`**
+- [x] **Step 1: 实现 `internal/hooks/load.go`**
 
 ```go
 package hooks
@@ -379,12 +379,12 @@ func loadFile(path string, scope Scope) []ResolvedHook {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `go build ./internal/hooks/...`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/hooks/load.go
@@ -403,7 +403,7 @@ git commit -m "feat(hooks): implement JSON config Load for project and global sc
 **Interfaces:**
 - Consumes: `Load()`, `LoadOptions`（Task 1.3）
 
-- [ ] **Step 1: 编写失败测试**
+- [x] **Step 1: 编写失败测试**
 
 ```go
 package hooks
@@ -491,12 +491,12 @@ func TestLoad_DefaultTimeout(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试**
+- [x] **Step 2: 运行测试**
 
 Run: `go test ./internal/hooks/ -run TestLoad -count=1 -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/hooks/load_test.go
@@ -519,7 +519,7 @@ git commit -m "test(hooks): add Load config merge and error handling tests"
 - Consumes: `SpawnInput`, `SpawnResult`, `Spawner`（Task 1.2）
 - Produces: `DefaultSpawner(ctx, in) SpawnResult`；`shellCommand(command string) (name string, args []string)`
 
-- [ ] **Step 1: 编写 spawner 测试**
+- [x] **Step 1: 编写 spawner 测试**
 
 ```go
 func TestDefaultSpawner_ExitCodeAndStdout(t *testing.T) {
@@ -564,12 +564,12 @@ func TestDefaultSpawner_Timeout(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `go test ./internal/hooks/ -run TestDefaultSpawner -count=1 -v`
 Expected: FAIL（`DefaultSpawner` 未定义）
 
-- [ ] **Step 3: 实现 `internal/hooks/spawner.go`**
+- [x] **Step 3: 实现 `internal/hooks/spawner.go`**
 
 ```go
 package hooks
@@ -633,12 +633,12 @@ func shellCommand(command string) (string, []string) {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `go test ./internal/hooks/ -run TestDefaultSpawner -count=1 -v`
 Expected: PASS（Unix）；Windows 上 skip 项不影响
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/hooks/spawner.go internal/hooks/spawner_test.go
@@ -660,7 +660,7 @@ git commit -m "feat(hooks): add DefaultSpawner with timeout and platform shell d
 
 **变更描述:** 按 event 过滤 hook；Pre/PostToolUse 额外按 `match` 正则过滤（空 match = 全匹配）；阻塞型事件首个 block 短路；Stop exit 2 + stdout → Force。
 
-- [ ] **Step 1: 实现 `internal/hooks/run.go`**
+- [x] **Step 1: 实现 `internal/hooks/run.go`**
 
 ```go
 package hooks
@@ -760,12 +760,12 @@ func decideOutcome(event Event, res SpawnResult) Decision {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `go build ./internal/hooks/...`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/hooks/run.go
@@ -781,7 +781,7 @@ git commit -m "feat(hooks): implement Run engine with exit-code decisions and sh
 **Files:**
 - Create: `internal/hooks/run_test.go`
 
-- [ ] **Step 1: 编写 mock spawner 与测试用例**
+- [x] **Step 1: 编写 mock spawner 与测试用例**
 
 ```go
 package hooks
@@ -875,12 +875,12 @@ func TestRun_Timeout_BlockOnPreToolUse(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试**
+- [x] **Step 2: 运行测试**
 
 Run: `go test ./internal/hooks/ -run TestRun -count=1 -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/hooks/run_test.go
@@ -902,7 +902,7 @@ git commit -m "test(hooks): add Run engine decision and short-circuit tests"
 - Consumes: `Run()`, `Payload`, `ResolvedHook`, `Spawner`（Task 2.2）
 - Produces: `Runner` struct；`NewRunner(hooks, cwd, spawner) *Runner`；`func (r *Runner) Count() map[Event]int`
 
-- [ ] **Step 1: 实现 `internal/hooks/runner.go`**
+- [x] **Step 1: 实现 `internal/hooks/runner.go`**
 
 ```go
 package hooks
@@ -982,12 +982,12 @@ func (r *Runner) Stop(ctx context.Context, messages []provider.Message) (string,
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `go build ./internal/hooks/...`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/hooks/runner.go
@@ -1003,7 +1003,7 @@ git commit -m "feat(hooks): add Runner facade implementing agent.ToolHooks"
 **Files:**
 - Create: `internal/hooks/runner_test.go`
 
-- [ ] **Step 1: 编写 Runner 集成测试**
+- [x] **Step 1: 编写 Runner 集成测试**
 
 ```go
 func TestRunner_PreToolUse_BlockChain(t *testing.T) {
@@ -1041,12 +1041,12 @@ func TestRunner_EmptyHooks_NoOp(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行测试**
+- [x] **Step 2: 运行测试**
 
 Run: `go test ./internal/hooks/ -run TestRunner -count=1 -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/hooks/runner_test.go
@@ -1067,7 +1067,7 @@ git commit -m "test(hooks): add Runner ToolHooks integration tests"
 
 **变更描述:** `hooks` 字段从 `*hooks.Registry` 改为 `ToolHooks`；移除 agent 对 hooks 包的 import（subagent flag 仍由 subagent.go import hooks）。
 
-- [ ] **Step 1: 修改 `internal/agent/option.go`**
+- [x] **Step 1: 修改 `internal/agent/option.go`**
 
 ```go
 // hooksOpt 注入 ToolHooks
@@ -1085,7 +1085,7 @@ func WithHooks(h ToolHooks) Option {
 
 删除 `import "github.com/wsx864321/coding-agent/internal/hooks"`。
 
-- [ ] **Step 2: 修改 `internal/agent/agent.go` struct**
+- [x] **Step 2: 修改 `internal/agent/agent.go` struct**
 
 ```go
 type Agent struct {
@@ -1100,12 +1100,12 @@ func (a *Agent) Hooks() ToolHooks {
 }
 ```
 
-- [ ] **Step 3: 验证编译（预期失败于 loop/agent 旧调用）**
+- [x] **Step 3: 验证编译（预期失败于 loop/agent 旧调用）**
 
 Run: `go build ./internal/agent/...`
 Expected: FAIL on `Trigger*` methods — 后续 Task 4.2–4.5 修复
 
-- [ ] **Step 4: Commit（可与 4.2 合并提交，若中间态不可编译则 Task 4.1–4.5 同一 commit）**
+- [x] **Step 4: Commit（可与 4.2 合并提交，若中间态不可编译则 Task 4.1–4.5 同一 commit）**
 
 ---
 
@@ -1118,7 +1118,7 @@ Expected: FAIL on `Trigger*` methods — 后续 Task 4.2–4.5 修复
 
 **变更描述:** `TriggerUserPromptSubmit` → `UserPromptSubmit`；error 仍忽略（与旧行为一致：旧 Registry 也忽略 error）。
 
-- [ ] **Step 1: 替换触发调用**
+- [x] **Step 1: 替换触发调用**
 
 ```go
 // Before
@@ -1134,7 +1134,7 @@ if a.hooks != nil {
 
 两处：`Run()` 与 `RunStreaming()` 中各一处。
 
-- [ ] **Step 2: 验证**
+- [x] **Step 2: 验证**
 
 Run: `go build ./internal/agent/...`
 Expected: 仍有 loop.go 编译错误（Pre/Post/Stop 未改）
@@ -1150,7 +1150,7 @@ Expected: 仍有 loop.go 编译错误（Pre/Post/Stop 未改）
 
 **变更描述:** 旧 Registry 返回 `(blocked bool, reason)` 其中 blocked 来自非空 block 字符串；新 interface 返回 `(block bool, message string)`。
 
-- [ ] **Step 1: 替换 PreToolUse**
+- [x] **Step 1: 替换 PreToolUse**
 
 ```go
 if a.hooks != nil {
@@ -1161,7 +1161,7 @@ if a.hooks != nil {
 }
 ```
 
-- [ ] **Step 2: 替换 PostToolUse（两处：error 路径与 success 路径）**
+- [x] **Step 2: 替换 PostToolUse（两处：error 路径与 success 路径）**
 
 ```go
 a.hooks.PostToolUse(ctx, name, args, fmt.Sprintf("Error: %v", err))
@@ -1169,7 +1169,7 @@ a.hooks.PostToolUse(ctx, name, args, fmt.Sprintf("Error: %v", err))
 a.hooks.PostToolUse(ctx, name, args, out)
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `go build ./internal/agent/...`
 Expected: 仍有 Stop 相关编译错误
@@ -1188,7 +1188,7 @@ Expected: 仍有 Stop 相关编译错误
 - Consumes: `evidence.FromContext(ctx)`、`ledger.CurrentTodos()`、`ledger.IncrementGuardBlock()`（现有 `internal/hooks/builtin/todo_guard.go` 逻辑）
 - Produces: `func (a *Agent) checkTodoGuard(ctx context.Context) string`
 
-- [ ] **Step 1: 创建 `internal/agent/todo_guard.go`**
+- [x] **Step 1: 创建 `internal/agent/todo_guard.go`**
 
 从 `internal/hooks/builtin/todo_guard.go` 迁移逻辑（去掉 Sink，改用标准 log 或静默）：
 
@@ -1243,7 +1243,7 @@ func (a *Agent) checkTodoGuard(ctx context.Context) string {
 }
 ```
 
-- [ ] **Step 2: 修改 `loop.go` Stop 判断顺序（D5）**
+- [x] **Step 2: 修改 `loop.go` Stop 判断顺序（D5）**
 
 ```go
 if len(msg.ToolCalls) == 0 {
@@ -1273,16 +1273,16 @@ if len(msg.ToolCalls) == 0 {
 }
 ```
 
-- [ ] **Step 3: 编写 TodoGuard 单元测试**
+- [x] **Step 3: 编写 TodoGuard 单元测试**
 
 Create: `internal/agent/todo_guard_test.go`（使用 mock ledger context）
 
-- [ ] **Step 4: 运行测试**
+- [x] **Step 4: 运行测试**
 
 Run: `go test ./internal/agent/ -run TestCheckTodoGuard -count=1 -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/agent/todo_guard.go internal/agent/todo_guard_test.go internal/agent/loop.go
@@ -1314,7 +1314,7 @@ Run: `grep -r TriggerStop internal/agent/` → 无匹配
 
 **变更描述:** `SubagentOptions.Hooks` 从 `*hooks.Registry` 改为 `ToolHooks`；`WithoutStopAndPrompt()` 改为 `NewSubsetHooks()`。
 
-- [ ] **Step 1: 修改 `subagent.go`**
+- [x] **Step 1: 修改 `subagent.go`**
 
 ```go
 type SubagentOptions struct {
@@ -1328,7 +1328,7 @@ type SubagentOptions struct {
 
 保留 `hooks.WithSubagentFlag(ctx)` import。
 
-- [ ] **Step 2: 修改 `agent.go` WireTaskTool / WireSkillTools**
+- [x] **Step 2: 修改 `agent.go` WireTaskTool / WireSkillTools**
 
 ```go
 var subHooks ToolHooks
@@ -1341,12 +1341,12 @@ return RunSubAgent(ctx, a, prompt, SubagentOptions{
 })
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `go build ./internal/agent/...`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/agent/subagent.go internal/agent/agent.go internal/agent/option.go internal/agent/loop.go
@@ -1366,7 +1366,7 @@ git commit -m "refactor(agent): migrate hook triggers to ToolHooks interface"
 
 **变更描述:** 移除 `builtin.NewDefault`；改用 `hooks.Load` + `hooks.NewRunner`。
 
-- [ ] **Step 1: 替换 import 与装配**
+- [x] **Step 1: 替换 import 与装配**
 
 ```go
 import (
@@ -1388,12 +1388,12 @@ a, err := agent.NewAgent(buildConfig(cmd),
 )
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `go build ./cmd/cli/...`
 Expected: PASS（chat_setup 仍引用 builtin 则可能部分失败，Task 5.2 补齐）
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add cmd/cli/once.go
@@ -1409,7 +1409,7 @@ git commit -m "refactor(cli): wire shell hook Runner in once command"
 **Files:**
 - Modify: `cmd/cli/chat_setup.go`
 
-- [ ] **Step 1: 同 Task 5.1 替换 hook 装配**
+- [x] **Step 1: 同 Task 5.1 替换 hook 装配**
 
 ```go
 hookRunner := hooks.NewRunner(
@@ -1421,12 +1421,12 @@ hookRunner := hooks.NewRunner(
 agent.WithHooks(hookRunner),
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `go build ./cmd/...`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add cmd/cli/chat_setup.go
@@ -1444,7 +1444,7 @@ git commit -m "refactor(cli): wire shell hook Runner in chat/tui setup"
 
 **变更描述:** `a.Hooks()` 现返回 `ToolHooks`；通过 type assert 到 `*hooks.Runner` 获取 `Count()`。
 
-- [ ] **Step 1: 更新 hook 计数展示**
+- [x] **Step 1: 更新 hook 计数展示**
 
 ```go
 func formatAgentHooks(h agent.ToolHooks) string {
@@ -1463,12 +1463,12 @@ if h := a.Hooks(); h != nil {
 }
 ```
 
-- [ ] **Step 2: 验证**
+- [x] **Step 2: 验证**
 
 Run: `go build ./cmd/...`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add cmd/cli/chat.go
@@ -1494,7 +1494,7 @@ Expected: 无匹配
 Run: `go build ./...`
 Expected: PASS
 
-- [ ] **Step 1: 删除目录并 commit**
+- [x] **Step 1: 删除目录并 commit**
 
 ```bash
 git rm -r internal/hooks/builtin/
@@ -1513,20 +1513,20 @@ git commit -m "refactor(hooks): remove builtin in-process hook implementations"
 
 **变更描述:** `context.go` 已在 Task 1.2 迁出；`hooks.go` 可删除或保留为包文档注释文件。确保 subagent 辅助函数仅在 `context.go`。
 
-- [ ] **Step 1: 删除 `internal/hooks/hooks.go`**
+- [x] **Step 1: 删除 `internal/hooks/hooks.go`**
 
 若包内无其它顶层声明问题，直接删除；subagent 函数已在 `context.go`。
 
-- [ ] **Step 2: 删除旧 Registry 测试**
+- [x] **Step 2: 删除旧 Registry 测试**
 
 删除 `hooks_test.go` 中全部 `TestRegistry_*` 测试（Load/Run/Runner 测试已在其它文件）。
 
-- [ ] **Step 3: 全量编译**
+- [x] **Step 3: 全量编译**
 
 Run: `go build ./...`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/hooks/
@@ -1544,7 +1544,7 @@ git commit -m "refactor(hooks): remove Registry-based in-process hook system"
 
 **变更描述:** 测试用 mock `ToolHooks` 替代 `*hooks.Registry`。
 
-- [ ] **Step 1: 添加 testToolHooks**
+- [x] **Step 1: 添加 testToolHooks**
 
 ```go
 type testToolHooks struct {
@@ -1579,7 +1579,7 @@ func (h *testToolHooks) Stop(ctx context.Context, msgs []provider.Message) (stri
 }
 ```
 
-- [ ] **Step 2: 替换 hook 测试**
+- [x] **Step 2: 替换 hook 测试**
 
 ```go
 // Before
@@ -1600,12 +1600,12 @@ hr := &testToolHooks{
 
 删除 `newTestHookRegistry()` 和 `hooks` 包 import（若不再需要）。
 
-- [ ] **Step 3: 运行 agent 测试**
+- [x] **Step 3: 运行 agent 测试**
 
 Run: `go test ./internal/agent/ -run "Hook|Stop|PreTool|PostTool|UserPrompt" -count=1 -v`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/agent/agent_test.go
@@ -1623,7 +1623,7 @@ git commit -m "test(agent): adapt hook integration tests to ToolHooks interface"
 **Files:**
 - Create: `internal/hooks/e2e_test.go`（或 `runner_e2e_test.go`）
 
-- [ ] **Step 1: 编写 E2E 测试**
+- [x] **Step 1: 编写 E2E 测试**
 
 在 temp dir 创建 `.coding-agent/hooks.json` 和 hook 脚本：
 
@@ -1665,12 +1665,12 @@ exit 0
 
 简化版可用 `command: "exit 2"` + `match: "echo"` 无需 jq。
 
-- [ ] **Step 2: 运行**
+- [x] **Step 2: 运行**
 
 Run: `go test ./internal/hooks/ -run TestE2E -count=1 -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/hooks/e2e_test.go
@@ -1686,7 +1686,7 @@ git commit -m "test(hooks): add e2e PreToolUse block and pass verification"
 **Files:**
 - 无新文件；运行现有测试
 
-- [ ] **Step 1: 验证空 Runner 不阻断 agent**
+- [x] **Step 1: 验证空 Runner 不阻断 agent**
 
 Run: `go test ./internal/hooks/ -run TestRunner_EmptyHooks -count=1 -v`
 Expected: PASS
@@ -1694,7 +1694,7 @@ Expected: PASS
 Run: `go test ./internal/agent/ -run TestRun_Stop_NoForce -count=1 -v`
 Expected: PASS（使用 nil/empty hooks mock）
 
-- [ ] **Step 2: 手动 smoke test（可选）**
+- [x] **Step 2: 手动 smoke test（可选）**
 
 ```bash
 go run ./cmd/cli once -m "say hi" -q
@@ -1710,16 +1710,16 @@ Expected: 正常输出，无 hook 相关 panic
 **Files:**
 - Modify/Create: `internal/agent/todo_guard_test.go` 或扩展 `agent_test.go`
 
-- [ ] **Step 1: 编写 TodoGuard 强制续跑测试**
+- [x] **Step 1: 编写 TodoGuard 强制续跑测试**
 
 模拟 ledger 含未完成 todo → `checkTodoGuard` 返回非空 force → loop 注入 user 消息并继续。
 
-- [ ] **Step 2: 运行**
+- [x] **Step 2: 运行**
 
 Run: `go test ./internal/agent/ -run "TodoGuard|Stop_Force" -count=1 -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit（若有新测试）**
+- [x] **Step 3: Commit（若有新测试）**
 
 ---
 
@@ -1727,21 +1727,21 @@ Expected: PASS
 
 **依赖:** Task 6.1–6.3, Task 7.1–7.3
 
-- [ ] **Step 1: 全量构建**
+- [x] **Step 1: 全量构建**
 
 Run: `go build ./...`
 Expected: PASS，无 `hooks/builtin` 或 `Registry` 残留引用
 
-- [ ] **Step 2: 全量测试**
+- [x] **Step 2: 全量测试**
 
 Run: `go test ./... -count=1`
 Expected: 全部 PASS
 
-- [ ] **Step 3: 更新 tasks.md 全部打勾**
+- [x] **Step 3: 更新 tasks.md 全部打勾**
 
 修改: `openspec/changes/refactor-hooks-to-shell/tasks.md`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add openspec/changes/refactor-hooks-to-shell/tasks.md
