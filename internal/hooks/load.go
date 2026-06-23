@@ -1,0 +1,70 @@
+package hooks
+
+import (
+	"encoding/json"
+	"log"
+	"os"
+	"path/filepath"
+)
+
+const defaultHookTimeoutMs = 10000
+
+type LoadOptions struct {
+	ProjectRoot string
+	HomeDir     string // defaults to os.UserHomeDir()
+}
+
+func Load(opts LoadOptions) []ResolvedHook {
+	home := opts.HomeDir
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			log.Printf("[hooks] 无法获取用户目录: %v", err)
+			return nil
+		}
+	}
+
+	var out []ResolvedHook
+	if opts.ProjectRoot != "" {
+		p := filepath.Join(opts.ProjectRoot, ".coding-agent", "hooks.json")
+		out = append(out, loadFile(p, ScopeProject)...)
+	}
+	globalPath := filepath.Join(home, ".coding-agent", "hooks.json")
+	out = append(out, loadFile(globalPath, ScopeGlobal)...)
+	return out
+}
+
+func loadFile(path string, scope Scope) []ResolvedHook {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("[hooks] 读取 %s 失败: %v", path, err)
+		}
+		return nil
+	}
+	var settings Settings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		log.Printf("[hooks] 解析 %s 失败: %v", path, err)
+		return nil
+	}
+	abs, _ := filepath.Abs(path)
+	var resolved []ResolvedHook
+	for event, configs := range settings.Hooks {
+		for _, cfg := range configs {
+			if cfg.Command == "" {
+				continue
+			}
+			if cfg.Timeout <= 0 {
+				cfg.Timeout = defaultHookTimeoutMs
+			}
+			resolved = append(resolved, ResolvedHook{
+				HookConfig: cfg,
+				Event:      event,
+				Scope:      scope,
+				Source:     abs,
+			})
+		}
+	}
+	return resolved
+}
