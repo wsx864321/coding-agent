@@ -18,8 +18,18 @@ func applyKey(m Model, msg tea.KeyPressMsg) Model {
 
 func typeText(m Model, text string) Model {
 	for _, r := range text {
-		m = applyKey(m, tea.KeyPressMsg{Code: r})
+		m = applyKey(m, tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
+	return m
+}
+
+func prepareScrollModel() Model {
+	m := New()
+	m.width = 40
+	m.height = 12
+	m.messages = longMessageHistory()
+	m = m.syncLayout()
+	m = m.syncViewportContent()
 	return m
 }
 
@@ -34,11 +44,11 @@ func TestNewModelDefaults(t *testing.T) {
 	if len(m.messages) != 0 {
 		t.Fatalf("messages = %d, want 0", len(m.messages))
 	}
-	if m.input != "" {
-		t.Fatalf("input = %q, want empty", m.input)
+	if m.textarea.Value() != "" {
+		t.Fatalf("textarea = %q, want empty", m.textarea.Value())
 	}
-	if m.scrollOffset != 0 {
-		t.Fatalf("scrollOffset = %d, want 0", m.scrollOffset)
+	if m.viewport.YOffset() != 0 {
+		t.Fatalf("viewport YOffset = %d, want 0", m.viewport.YOffset())
 	}
 }
 
@@ -87,30 +97,27 @@ func TestInitReturnsNil(t *testing.T) {
 func TestInsertInputAppendsRunes(t *testing.T) {
 	m := New()
 	updated := typeText(m, "hi")
-	if got := updated.input; got != "hi" {
-		t.Fatalf("input = %q, want %q", got, "hi")
+	if got := updated.textarea.Value(); got != "hi" {
+		t.Fatalf("textarea = %q, want %q", got, "hi")
 	}
 }
 
 func TestInsertInputAccumulates(t *testing.T) {
 	m := New()
-	m.input = "hel"
+	m.textarea.SetValue("hel")
 	updated := typeText(m, "lo")
-	if got := updated.input; got != "hello" {
-		t.Fatalf("input = %q, want %q", got, "hello")
+	if got := updated.textarea.Value(); got != "hello" {
+		t.Fatalf("textarea = %q, want %q", got, "hello")
 	}
 }
 
 func TestBackspaceRemovesLastRune(t *testing.T) {
 	m := New()
-	m.input = "hello"
-	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
-	if cmd != nil {
-		t.Fatal("backspace should not return a command")
-	}
+	m.textarea.SetValue("hello")
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	updated := next.(Model)
-	if got := updated.input; got != "hell" {
-		t.Fatalf("input = %q, want %q", got, "hell")
+	if got := updated.textarea.Value(); got != "hell" {
+		t.Fatalf("textarea = %q, want %q", got, "hell")
 	}
 }
 
@@ -118,8 +125,8 @@ func TestBackspaceOnEmptyInputIsNoop(t *testing.T) {
 	m := New()
 	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	updated := next.(Model)
-	if updated.input != "" {
-		t.Fatalf("input = %q, want empty", updated.input)
+	if updated.textarea.Value() != "" {
+		t.Fatalf("textarea = %q, want empty", updated.textarea.Value())
 	}
 }
 
@@ -144,74 +151,62 @@ func TestAppendMessageStoresRoleAndContent(t *testing.T) {
 }
 
 func TestScrollUpMovesAwayFromBottom(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m = m.clampScrollToBottom()
+	m := prepareScrollModel()
+	m.viewport.GotoBottom()
+	before := m.viewport.YOffset()
 
-	before := m.scrollOffset
 	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	if cmd != nil {
 		t.Fatal("scroll up should not return a command")
 	}
 	updated := next.(Model)
-	if updated.scrollOffset >= before {
-		t.Fatalf("scrollOffset = %d, want < %d after KeyUp", updated.scrollOffset, before)
+	if updated.viewport.YOffset() >= before {
+		t.Fatalf("YOffset = %d, want < %d after KeyUp", updated.viewport.YOffset(), before)
 	}
 }
 
 func TestScrollDownIncreasesOffsetTowardBottom(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m = m.clampScrollToBottom()
-	bottom := m.scrollOffset
+	m := prepareScrollModel()
+	m.viewport.GotoBottom()
+	bottom := m.viewport.YOffset()
 
 	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	scrolledUp := next.(Model)
-	if scrolledUp.scrollOffset >= bottom {
-		t.Fatalf("expected scroll up to move away from bottom, got offset %d (bottom=%d)", scrolledUp.scrollOffset, bottom)
+	if scrolledUp.viewport.YOffset() >= bottom {
+		t.Fatalf("expected scroll up to move away from bottom, got offset %d (bottom=%d)", scrolledUp.viewport.YOffset(), bottom)
 	}
 
 	next, _ = scrolledUp.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	scrolledDown := next.(Model)
-	if scrolledDown.scrollOffset <= scrolledUp.scrollOffset {
-		t.Fatalf("scrollOffset = %d, want > %d after KeyDown", scrolledDown.scrollOffset, scrolledUp.scrollOffset)
+	if scrolledDown.viewport.YOffset() <= scrolledUp.viewport.YOffset() {
+		t.Fatalf("YOffset = %d, want > %d after KeyDown", scrolledDown.viewport.YOffset(), scrolledUp.viewport.YOffset())
 	}
 }
 
 func TestScrollUpStopsAtTop(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m.scrollOffset = 0
+	m := prepareScrollModel()
+	m.viewport.GotoTop()
 
 	for i := 0; i < 20; i++ {
 		next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 		m = next.(Model)
 	}
-	if m.scrollOffset != 0 {
-		t.Fatalf("scrollOffset = %d, want 0 at top boundary", m.scrollOffset)
+	if m.viewport.YOffset() != 0 {
+		t.Fatalf("YOffset = %d, want 0 at top boundary", m.viewport.YOffset())
 	}
 }
 
 func TestScrollDownStopsAtBottom(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m = m.clampScrollToBottom()
-	bottom := m.scrollOffset
+	m := prepareScrollModel()
+	m.viewport.GotoBottom()
+	bottom := m.viewport.YOffset()
 
 	for i := 0; i < 20; i++ {
 		next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m = next.(Model)
 	}
-	if m.scrollOffset != bottom {
-		t.Fatalf("scrollOffset = %d, want %d at bottom boundary", m.scrollOffset, bottom)
+	if m.viewport.YOffset() != bottom {
+		t.Fatalf("YOffset = %d, want %d at bottom boundary", m.viewport.YOffset(), bottom)
 	}
 }
 
@@ -224,7 +219,9 @@ func TestViewRendersMessageInputAndHelpAreas(t *testing.T) {
 		{Role: RoleAssistant, Content: "你好，我是助手"},
 		{Role: RoleSystem, Content: "系统提示"},
 	}
-	m.input = "draft text"
+	m.textarea.SetValue("draft text")
+	m = m.syncLayout()
+	m = m.syncViewportContent()
 
 	view := viewContent(m)
 	for _, want := range []string{
@@ -235,7 +232,7 @@ func TestViewRendersMessageInputAndHelpAreas(t *testing.T) {
 		"你好，我是助手",
 		"system:",
 		"系统提示",
-		"> draft text",
+		"draft text",
 		"Enter",
 		"Ctrl+C",
 	} {
@@ -260,14 +257,15 @@ func TestViewScrollHidesOlderMessages(t *testing.T) {
 		{Role: RoleUser, Content: "line-8"},
 		{Role: RoleUser, Content: "last-visible-marker"},
 	}
-	m = m.clampScrollToBottom()
+	m = m.syncLayout()
+	m = m.syncViewportContent()
 
 	bottomView := viewContent(m)
 	if !strings.Contains(bottomView, "last-visible-marker") {
 		t.Fatalf("bottom view should show latest message:\n%s", bottomView)
 	}
 
-	m.scrollOffset = 0
+	m.viewport.GotoTop()
 	topView := viewContent(m)
 	if strings.Contains(topView, "last-visible-marker") {
 		t.Fatalf("top view should hide latest message when scrolled up:\n%s", topView)

@@ -5,6 +5,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -12,29 +16,36 @@ const interruptedStatusMsg = "已中断"
 
 // Model 是 Bubble Tea 聊天界面的状态机。
 type Model struct {
-	messages     []Message
-	input        string
-	scrollOffset int
-	width        int
-	height       int
-	quitting     bool
-	busy         bool
-	lastError    string
-	statusMsg    string
-	interrupted  bool
-	runner       Runner
-	streamCh     <-chan any
-	turnCancel   context.CancelFunc
+	messages    []Message
+	textarea    textarea.Model
+	viewport    viewport.Model
+	spinner     spinner.Model
+	width       int
+	height      int
+	quitting    bool
+	busy        bool
+	lastError   string
+	statusMsg   string
+	interrupted bool
+	runner      Runner
+	streamCh    <-chan any
+	turnCancel  context.CancelFunc
 }
 
 // New 构造初始 TUI model。
 func New() Model {
-	return Model{}
+	return Model{
+		textarea: newTextarea(),
+		viewport: newViewport(),
+		spinner:  newSpinner(),
+	}
 }
 
 // NewWithRunner 构造带会话执行器的 TUI model。
 func NewWithRunner(runner Runner) Model {
-	return Model{runner: runner}
+	m := New()
+	m.runner = runner
+	return m
 }
 
 // Init 启动时不发送额外命令。
@@ -48,24 +59,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.scrollOffset = m.clampScroll(m.scrollOffset)
+		m = m.syncLayout()
+		m = m.syncViewportContent()
+		return m, nil
+
 	case StreamChunkMsg:
 		if !m.busy {
 			return m, nil
 		}
 		m = m.appendAssistantChunk(msg.Text)
-		m = m.clampScrollToBottom()
+		m = m.syncViewportContent()
 		if m.streamCh != nil {
 			return m, waitStreamMsg(m.streamCh)
 		}
 		return m, nil
+
 	case StreamDoneMsg:
 		m.busy = false
 		m.streamCh = nil
 		m.turnCancel = nil
 		m.interrupted = false
-		m = m.clampScrollToBottom()
+		m = m.syncViewportContent()
 		return m, nil
+
 	case StreamErrorMsg:
 		m.busy = false
 		m.streamCh = nil
@@ -77,66 +93,104 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			m.lastError = msg.Err.Error()
 		}
+		m = m.syncLayout()
 		return m, nil
+
 	case streamClosedMsg:
 		m.busy = false
 		m.streamCh = nil
 		return m, nil
+
+	case spinner.TickMsg:
+		if !m.busy {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
+	case tea.MouseWheelMsg, tea.MouseMsg:
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
+
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "ctrl+c":
+		switch {
+		case msg.String() == "ctrl+c":
 			m = m.interruptTurn()
 			m.quitting = true
 			return m, tea.Quit
-		case "esc":
+
+		case msg.String() == "esc":
 			return m.interruptTurn(), nil
-		case "enter":
+
+		case isSubmitKey(msg):
 			return m.submit()
-		case "k":
-			if m.input == "" {
-				m.scrollOffset = m.clampScroll(m.scrollOffset - 1)
-			} else if !m.busy {
-				m.input += "k"
-			}
-		case "j":
-			if m.input == "" {
-				m.scrollOffset = m.clampScroll(m.scrollOffset + 1)
-			} else if !m.busy {
-				m.input += "j"
-			}
-		case "backspace":
-			if !m.busy && m.input != "" {
-				_, size := utf8.DecodeLastRuneInString(m.input)
-				m.input = m.input[:len(m.input)-size]
-			}
-		case "up":
-			m.scrollOffset = m.clampScroll(m.scrollOffset - 1)
-		case "down":
-			m.scrollOffset = m.clampScroll(m.scrollOffset + 1)
+
+		case m.shouldRouteScrollToViewport(msg):
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+
 		default:
-			if !m.busy {
-				if s := msg.String(); len(s) == 1 {
-					m.input += s
-				}
+			if m.busy {
+				return m, nil
 			}
+			var cmd tea.Cmd
+			m.textarea, cmd = m.textarea.Update(msg)
+			m = m.syncLayout()
+			return m, cmd
 		}
 	}
+
 	return m, nil
 }
 
+func isSubmitKey(msg tea.KeyPressMsg) bool {
+	if msg.Mod.Contains(tea.ModShift) || msg.Mod.Contains(tea.ModAlt) {
+		return false
+	}
+	switch msg.Key().Code {
+	case tea.KeyEnter:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m Model) shouldRouteScrollToViewport(msg tea.KeyPressMsg) bool {
+	if strings.TrimSpace(m.textarea.Value()) != "" {
+		switch msg.String() {
+		case "j", "k", "up", "down":
+			return false
+		}
+	}
+	switch msg.String() {
+	case "up", "down", "j", "k", "pgup", "pgdown", "b", "f", "u", "d":
+		return true
+	default:
+		return key.Matches(msg, m.viewport.KeyMap.Up) ||
+			key.Matches(msg, m.viewport.KeyMap.Down) ||
+			key.Matches(msg, m.viewport.KeyMap.PageUp) ||
+			key.Matches(msg, m.viewport.KeyMap.PageDown)
+	}
+}
+
 func (m Model) submit() (Model, tea.Cmd) {
-	text := strings.TrimSpace(m.input)
+	text := strings.TrimSpace(m.textarea.Value())
 	if m.busy || text == "" || m.runner == nil {
 		return m, nil
 	}
 
-	m.input = ""
+	m.textarea.Reset()
+	m = m.syncLayout()
 	m.busy = true
 	m.lastError = ""
 	m.statusMsg = ""
 	m.interrupted = false
 	m = m.withMessage(RoleUser, text)
 	m = m.withMessage(RoleAssistant, "")
+	m = m.syncViewportContent()
 
 	ch := make(chan any, 16)
 	runner := m.runner
@@ -149,7 +203,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	}()
 
 	m.streamCh = ch
-	return m, waitStreamMsg(ch)
+	return m, tea.Batch(waitStreamMsg(ch), m.spinner.Tick)
 }
 
 func waitStreamMsg(ch <-chan any) tea.Cmd {
@@ -177,36 +231,55 @@ func (m Model) appendAssistantChunk(text string) Model {
 	return m
 }
 
-// withMessage 追加一条消息（供测试与后续桥接层使用）。
 func (m Model) withMessage(role Role, content string) Model {
 	m.messages = append(m.messages, Message{Role: role, Content: content})
 	return m
 }
 
-// clampScrollToBottom 将滚动位置对齐到消息区底部。
-func (m Model) clampScrollToBottom() Model {
-	m.scrollOffset = m.maxScrollOffset()
+func (m Model) syncViewportContent() Model {
+	wasAtBottom := m.viewport.AtBottom() || len(m.messages) == 0
+	content := m.renderMessageContent()
+	m.viewport.SetContent(content)
+	if wasAtBottom {
+		m.viewport.GotoBottom()
+	}
 	return m
 }
 
-func (m Model) maxScrollOffset() int {
-	total := len(m.renderMessageLines())
-	viewport := m.messageViewportHeight()
-	if total <= viewport {
-		return 0
+func (m Model) renderMessageContent() string {
+	lines := m.renderMessageLines()
+	if len(lines) == 0 {
+		return "(暂无消息)"
 	}
-	return total - viewport
+	return joinLines(lines)
 }
 
-func (m Model) clampScroll(offset int) int {
-	max := m.maxScrollOffset()
-	if offset < 0 {
-		return 0
+func (m Model) syncLayout() Model {
+	contentWidth := m.width
+	if contentWidth <= 0 {
+		contentWidth = 80
 	}
-	if offset > max {
-		return max
+	m.textarea.SetWidth(contentWidth)
+	m.viewport.SetWidth(contentWidth)
+
+	overhead := 4 // title + gaps + help
+	if m.lastError != "" {
+		overhead++
 	}
-	return offset
+	if m.statusMsg != "" {
+		overhead++
+	}
+	if m.busy {
+		overhead++
+	}
+	overhead += m.textarea.Height()
+
+	viewportHeight := m.height - overhead
+	if viewportHeight < 1 {
+		viewportHeight = 1
+	}
+	m.viewport.SetHeight(viewportHeight)
+	return m
 }
 
 func (m Model) interruptTurn() Model {
@@ -221,21 +294,8 @@ func (m Model) interruptTurn() Model {
 	m.streamCh = nil
 	m.statusMsg = interruptedStatusMsg
 	m.interrupted = true
+	m = m.syncLayout()
 	return m
-}
-
-func (m Model) messageViewportHeight() int {
-	overhead := 5 // title block + input + help
-	if m.lastError != "" {
-		overhead++
-	}
-	if m.statusMsg != "" {
-		overhead++
-	}
-	if m.height <= overhead {
-		return 1
-	}
-	return m.height - overhead
 }
 
 func (m Model) renderMessageLines() []string {

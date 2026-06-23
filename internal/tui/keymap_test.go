@@ -9,23 +9,20 @@ import (
 )
 
 func TestScrollWithKAndJ(t *testing.T) {
-	m := New()
-	m.width = 40
-	m.height = 12
-	m.messages = longMessageHistory()
-	m = m.clampScrollToBottom()
-	bottom := m.scrollOffset
+	m := prepareScrollModel()
+	m.viewport.GotoBottom()
+	bottom := m.viewport.YOffset()
 
 	next, _ := m.Update(tea.KeyPressMsg{Code: 'k'})
 	scrolledUp := next.(Model)
-	if scrolledUp.scrollOffset >= bottom {
-		t.Fatalf("scrollOffset = %d, want < %d after k", scrolledUp.scrollOffset, bottom)
+	if scrolledUp.viewport.YOffset() >= bottom {
+		t.Fatalf("YOffset = %d, want < %d after k", scrolledUp.viewport.YOffset(), bottom)
 	}
 
 	next, _ = scrolledUp.Update(tea.KeyPressMsg{Code: 'j'})
 	scrolledDown := next.(Model)
-	if scrolledDown.scrollOffset <= scrolledUp.scrollOffset {
-		t.Fatalf("scrollOffset = %d, want > %d after j", scrolledDown.scrollOffset, scrolledUp.scrollOffset)
+	if scrolledDown.viewport.YOffset() <= scrolledUp.viewport.YOffset() {
+		t.Fatalf("YOffset = %d, want > %d after j", scrolledDown.viewport.YOffset(), scrolledUp.viewport.YOffset())
 	}
 }
 
@@ -35,6 +32,7 @@ func TestEscInterruptsBusyTurn(t *testing.T) {
 	m.streamCh = make(chan any, 1)
 	m.width = 80
 	m.height = 24
+	m = m.syncLayout()
 
 	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if cmd != nil {
@@ -57,8 +55,8 @@ func TestEscInterruptAllowsInputAfter(t *testing.T) {
 	updated := next.(Model)
 
 	typed := typeText(updated, "next")
-	if typed.input != "next" {
-		t.Fatalf("input = %q, want next after interrupt", typed.input)
+	if typed.textarea.Value() != "next" {
+		t.Fatalf("textarea = %q, want next after interrupt", typed.textarea.Value())
 	}
 }
 
@@ -67,6 +65,7 @@ func TestViewShowsErrorBanner(t *testing.T) {
 	m.width = 80
 	m.height = 24
 	m.lastError = "network down"
+	m = m.syncLayout()
 
 	view := viewContent(m)
 	if !strings.Contains(view, "network down") {
@@ -88,6 +87,7 @@ func TestStreamErrorVisibleInView(t *testing.T) {
 		t.Fatal("StreamErrorMsg should not return follow-up command")
 	}
 	updated := next.(Model)
+	updated = updated.syncLayout()
 
 	view := viewContent(updated)
 	if !strings.Contains(view, "model timeout") {
@@ -97,16 +97,16 @@ func TestStreamErrorVisibleInView(t *testing.T) {
 
 func TestJKTypeWhenInputNotEmpty(t *testing.T) {
 	m := New()
-	m.input = "a"
+	m.textarea.SetValue("a")
 
-	updated := applyKey(m, tea.KeyPressMsg{Code: 'j'})
-	if updated.input != "aj" {
-		t.Fatalf("input = %q, want aj", updated.input)
+	updated := applyKey(m, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if updated.textarea.Value() != "aj" {
+		t.Fatalf("textarea = %q, want aj", updated.textarea.Value())
 	}
 
-	updated = applyKey(updated, tea.KeyPressMsg{Code: 'k'})
-	if updated.input != "ajk" {
-		t.Fatalf("input = %q, want ajk", updated.input)
+	updated = applyKey(updated, tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if updated.textarea.Value() != "ajk" {
+		t.Fatalf("textarea = %q, want ajk", updated.textarea.Value())
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -30,15 +31,15 @@ func (s *stubRunner) RunTurn(_ context.Context, prompt string, emit StreamEmitte
 func TestSubmitWritesUserMessageAndInvokesRunner(t *testing.T) {
 	runner := &stubRunner{chunks: []string{"ok"}}
 	m := NewWithRunner(runner)
-	m.input = "hello agent"
+	m.textarea.SetValue("hello agent")
 
 	updated, cmd := m.submit()
 	if cmd == nil {
 		t.Fatal("submit should start async stream command")
 	}
 
-	if updated.input != "" {
-		t.Fatalf("input = %q, want cleared after submit", updated.input)
+	if updated.textarea.Value() != "" {
+		t.Fatalf("textarea = %q, want cleared after submit", updated.textarea.Value())
 	}
 	if !updated.busy {
 		t.Fatal("busy should be true after submit")
@@ -122,23 +123,42 @@ func TestStreamErrorClearsBusyAndStoresError(t *testing.T) {
 func TestEnterSubmitEndToEndWithStubRunner(t *testing.T) {
 	runner := &stubRunner{chunks: []string{"A", "B"}}
 	m := NewWithRunner(runner)
-	m.input = "ping"
+	m.textarea.SetValue("ping")
 
 	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("Enter should return stream command")
 	}
 	updated := next.(Model)
+	if len(updated.messages) != 2 || updated.messages[0].Content != "ping" {
+		t.Fatalf("messages = %+v, want user ping committed", updated.messages)
+	}
 
 	msg := cmd()
 	if msg == nil {
 		t.Fatal("stream command returned nil")
 	}
-	if runner.prompt != "ping" {
-		t.Fatalf("runner prompt = %q, want ping", runner.prompt)
-	}
 
 	for {
+		if tick, ok := msg.(spinner.TickMsg); ok {
+			next, cmd = updated.Update(tick)
+			updated = next.(Model)
+			if cmd == nil {
+				t.Fatal("spinner tick should schedule next frame while busy")
+			}
+			msg = cmd()
+			continue
+		}
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			for _, c := range batch {
+				if sub := c(); sub != nil {
+					msg = sub
+					goto dispatch
+				}
+			}
+			t.Fatal("batch command returned no messages")
+		}
+	dispatch:
 		next, cmd = updated.Update(msg)
 		updated = next.(Model)
 		if _, ok := msg.(StreamDoneMsg); ok {
