@@ -30,7 +30,7 @@ func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
 	case EntryUserMessage:
 		e.Content = renderUserBubble(e.Raw, w)
 	case EntryAssistantChunk:
-		e.Content = renderAssistantText(e.Raw, w)
+		e.Content = m.renderAssistantText(e.Raw, w)
 	case EntryToolCard:
 		name, args, isError := decodeToolCardRaw(e.Raw)
 		if isError {
@@ -71,23 +71,30 @@ func renderUserBubble(raw string, width int) string {
 	return userBubbleStyle.Width(width).Render(strings.Join(lines, "\n"))
 }
 
-func renderAssistantText(raw string, width int) string {
+func (m Model) renderAssistantText(raw string, width int) string {
 	prefix := "assistant: "
 	prefixWidth := runewidth.StringWidth(prefix)
 	innerWidth := width - prefixWidth
 	if innerWidth < 4 {
 		innerWidth = 4
 	}
-	wrapped := WrapText(raw, innerWidth)
-	if len(wrapped) == 0 {
+
+	var body string
+	if m.mdRenderer != nil {
+		body = strings.TrimRight(m.mdRenderer.Render(raw, innerWidth), "\n")
+	} else {
+		body = strings.Join(WrapText(raw, innerWidth), "\n")
+	}
+	if body == "" {
 		return prefix
 	}
-	var lines []string
-	for i, line := range wrapped {
+
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
 		if i == 0 {
-			lines = append(lines, prefix+line)
+			lines[i] = prefix + line
 		} else {
-			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
+			lines[i] = strings.Repeat(" ", prefixWidth) + line
 		}
 	}
 	return strings.Join(lines, "\n")

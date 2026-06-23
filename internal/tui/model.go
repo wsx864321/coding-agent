@@ -19,6 +19,7 @@ type Model struct {
 	textarea    textarea.Model
 	viewport    viewport.Model
 	spinner     spinner.Model
+	mdRenderer  MarkdownRenderer
 	width       int
 	height      int
 	quitting    bool
@@ -38,9 +39,10 @@ type Model struct {
 // New 构造初始 TUI model。
 func New() Model {
 	return Model{
-		textarea: newTextarea(),
-		viewport: newViewport(),
-		spinner:  newSpinner(),
+		textarea:   newTextarea(),
+		viewport:   newViewport(),
+		spinner:    newSpinner(),
+		mdRenderer: NewGlamourRenderer(),
 	}
 }
 
