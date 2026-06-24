@@ -2,6 +2,8 @@ package tui
 
 import (
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestSelectionEmpty(t *testing.T) {
@@ -329,6 +331,75 @@ func TestExtractSelectedText(t *testing.T) {
 				t.Errorf("extractSelectedText() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSelectionResetOnCtrlC(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// 手动设置一个激活的非空选择。
+	m.sel = selection{
+		startLine: 2,
+		startCol:  1,
+		endLine:   5,
+		endCol:    10,
+		active:    true,
+	}
+
+	// 确保选择非空。
+	if m.sel.empty() {
+		t.Fatal("selection should not be empty before Ctrl+C")
+	}
+
+	// 发送 Ctrl+C 按键。
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	_ = cmd
+	updated := next.(Model)
+
+	// 验证选择已被重置为零值。
+	if updated.sel != (selection{}) {
+		t.Errorf("selection should be reset to zero value after Ctrl+C, got %+v", updated.sel)
+	}
+	if updated.sel.active {
+		t.Error("selection.active should be false after Ctrl+C")
+	}
+	if updated.sel.dragging {
+		t.Error("selection.dragging should be false after Ctrl+C")
+	}
+
+	// 重置后的选择应为空。
+	if !updated.sel.empty() {
+		t.Error("selection should be empty after reset")
+	}
+}
+
+func TestSelectionResetOnCtrlCWhenInactive(t *testing.T) {
+	// 无激活选择时 Ctrl+C 触发退出，不应 reset selection（已是零值）。
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// 确认初始 selection 为零值。
+	if m.sel != (selection{}) {
+		t.Fatalf("initial selection should be zero value, got %+v", m.sel)
+	}
+
+	// 发送 Ctrl+C — 应触发退出行为。
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	_ = cmd
+	updated := next.(Model)
+
+	// selection 保持零值。
+	if updated.sel != (selection{}) {
+		t.Errorf("selection should remain zero value, got %+v", updated.sel)
+	}
+	// 应触发退出标记。
+	if !updated.quitting {
+		t.Error("quitting should be true after Ctrl+C with no active selection")
 	}
 }
 
