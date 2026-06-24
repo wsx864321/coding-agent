@@ -47,6 +47,12 @@ type statuslineMsg struct {
 	out string
 }
 
+// CacheHitRateProvider 提供缓存命中率查询（0-100）。
+// Runner 可选择实现此接口；TUI 通过类型断言使用。
+type CacheHitRateProvider interface {
+	CacheHitRate() int
+}
+
 const interruptedStatusMsg = "已中断"
 
 const maxEventDrain = 512
@@ -312,6 +318,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// 刷新上下文快照
 			if csp, ok := m.runner.(ContextSnapshotProvider); ok {
 				m.contextUsed, m.contextWindow = csp.ContextSnapshot()
+			}
+			// 刷新缓存命中率
+			if chp, ok := m.runner.(CacheHitRateProvider); ok {
+				m.cacheHitRate = chp.CacheHitRate()
 			}
 			m = m.syncViewportContent()
 			if msg.Err != nil {
@@ -580,6 +590,14 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m = m.appendUserMessage(text)
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
+
+	// 启动时刷新同步数据源
+	if csp, ok := m.runner.(ContextSnapshotProvider); ok {
+		m.contextUsed, m.contextWindow = csp.ContextSnapshot()
+	}
+	if chp, ok := m.runner.(CacheHitRateProvider); ok {
+		m.cacheHitRate = chp.CacheHitRate()
+	}
 
 	ch := make(chan event.Event, 16)
 	if m.tuiSink != nil {
@@ -1029,6 +1047,10 @@ func (m Model) ingestDrainEvent(e event.Event) Model {
 		// 刷新上下文快照
 		if csp, ok := m.runner.(ContextSnapshotProvider); ok {
 			m.contextUsed, m.contextWindow = csp.ContextSnapshot()
+		}
+		// 刷新缓存命中率
+		if chp, ok := m.runner.(CacheHitRateProvider); ok {
+			m.cacheHitRate = chp.CacheHitRate()
 		}
 	}
 	return m
