@@ -1,8 +1,20 @@
 package tui
 
 import (
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/styles"
+
 	"charm.land/glamour/v2"
 )
+
+// chromaStyle is the chroma syntax highlighting style used for code blocks.
+// Uses monokai if available, otherwise falls back to the default fallback style.
+var chromaStyle = func() *chroma.Style {
+	if s := styles.Get("monokai"); s != nil && s != styles.Fallback {
+		return s
+	}
+	return styles.Fallback
+}()
 
 // MarkdownRenderer renders markdown to ANSI-styled terminal text.
 type MarkdownRenderer interface {
@@ -23,6 +35,7 @@ func (g glamourRenderer) Render(md string, width int) string {
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStylePath("dark"),
 		glamour.WithWordWrap(width),
+		glamour.WithChromaFormatter("terminal256"),
 	)
 	if err != nil {
 		return md

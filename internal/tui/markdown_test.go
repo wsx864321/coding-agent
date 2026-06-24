@@ -71,6 +71,36 @@ func TestGlamourRendererBlockquote(t *testing.T) {
 	}
 }
 
+func TestGlamourRendererChromaHighlighting(t *testing.T) {
+	r := NewGlamourRenderer()
+	md := "```go\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n```"
+	out := r.Render(md, 80)
+	// Chroma syntax highlighting should produce ANSI escape sequences
+	// for different token types (keywords, strings, etc.)
+	if !hasANSI(out) {
+		t.Fatal("expected ANSI styling from chroma highlighting")
+	}
+	// Verify keyword "func" is present
+	if !strings.Contains(out, "func") {
+		t.Fatalf("missing keyword 'func': %s", out)
+	}
+	// Verify string literal "hello" is present
+	if !strings.Contains(out, "hello") {
+		t.Fatalf("missing string 'hello': %s", out)
+	}
+}
+
+func TestChromaStyleVariable(t *testing.T) {
+	// chromaStyle should be a non-nil chroma Style
+	if chromaStyle == nil {
+		t.Fatal("chromaStyle should not be nil")
+	}
+	// chromaStyle should have a name
+	if chromaStyle.Name == "" {
+		t.Fatal("chromaStyle should have a non-empty name")
+	}
+}
+
 func TestModelRendersAssistantWithMarkdown(t *testing.T) {
 	m := New()
 	m.width = 80
