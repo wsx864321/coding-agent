@@ -241,6 +241,97 @@ func TestSelectionHighlightRangeNil(t *testing.T) {
 	}
 }
 
+func TestExtractSelectedText(t *testing.T) {
+	tests := []struct {
+		name  string
+		sel   selection
+		lines []string
+		want  string
+	}{
+		{
+			name:  "empty selection returns empty",
+			sel:   selection{},
+			lines: []string{"hello", "world"},
+			want:  "",
+		},
+		{
+			name:  "inactive selection returns empty",
+			sel:   selection{startLine: 0, startCol: 0, endLine: 0, endCol: 5, active: false},
+			lines: []string{"hello", "world"},
+			want:  "",
+		},
+		{
+			name:  "same position returns empty",
+			sel:   selection{startLine: 0, startCol: 2, endLine: 0, endCol: 2, active: true},
+			lines: []string{"hello", "world"},
+			want:  "",
+		},
+		{
+			name:  "single line partial selection",
+			sel:   selection{startLine: 0, startCol: 1, endLine: 0, endCol: 4, active: true},
+			lines: []string{"hello", "world"},
+			want:  "ell",
+		},
+		{
+			name:  "single line full selection",
+			sel:   selection{startLine: 0, startCol: 0, endLine: 0, endCol: 5, active: true},
+			lines: []string{"hello", "world"},
+			want:  "hello",
+		},
+		{
+			name:  "multi-line selection",
+			sel:   selection{startLine: 0, startCol: 1, endLine: 2, endCol: 4, active: true},
+			lines: []string{"hello", "beautiful", "world", "extra"},
+			want:  "ello\nbeautiful\nworl",
+		},
+		{
+			name:  "reverse multi-line selection",
+			sel:   selection{startLine: 2, startCol: 4, endLine: 0, endCol: 1, active: true},
+			lines: []string{"hello", "beautiful", "world", "extra"},
+			want:  "ello\nbeautiful\nworl",
+		},
+		{
+			name:  "selection to end of line",
+			sel:   selection{startLine: 0, startCol: 3, endLine: 1, endCol: 9, active: true},
+			lines: []string{"hello", "beautiful", "world"},
+			want:  "lo\nbeautiful",
+		},
+		{
+			name:  "selection from start of line",
+			sel:   selection{startLine: 1, startCol: 0, endLine: 2, endCol: 3, active: true},
+			lines: []string{"hello", "beautiful", "world"},
+			want:  "beautiful\nwor",
+		},
+		{
+			name:  "col out of bounds clamped to line length",
+			sel:   selection{startLine: 0, startCol: 3, endLine: 0, endCol: 99, active: true},
+			lines: []string{"hello", "world"},
+			want:  "lo",
+		},
+		{
+			name:  "startCol exceeds line length",
+			sel:   selection{startLine: 0, startCol: 10, endLine: 0, endCol: 15, active: true},
+			lines: []string{"hello", "world"},
+			want:  "",
+		},
+		{
+			name:  "selection with ANSI codes stripped",
+			sel:   selection{startLine: 0, startCol: 0, endLine: 0, endCol: 5, active: true},
+			lines: []string{"\x1b[31mhello\x1b[0m", "world"},
+			want:  "hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.sel.extractSelectedText(tt.lines)
+			if got != tt.want {
+				t.Errorf("extractSelectedText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // containsANSISequence checks if a string contains ANSI escape codes (CSI sequences).
 func containsANSISequence(s string) bool {
 	for i := 0; i < len(s); i++ {

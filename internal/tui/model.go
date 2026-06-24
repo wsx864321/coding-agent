@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/atotto/clipboard"
 	"github.com/wsx864321/coding-agent/internal/event"
 )
 
@@ -367,7 +368,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case msg.String() == "ctrl+c":
 			if m.sel.active && !m.sel.empty() {
-				// 选中时 Ctrl+C 复制到剪贴板（暂不实现，保留选择清除）
+				// 选中时 Ctrl+C 复制到剪贴板
+				lines := strings.Split(m.viewport.View(), "\n")
+				text := m.sel.extractSelectedText(lines)
+				if text != "" {
+					_ = clipboard.WriteAll(text)
+				}
 				m.sel = selection{}
 				return m, nil
 			}
