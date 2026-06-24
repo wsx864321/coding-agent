@@ -59,6 +59,18 @@ func (m Model) View() tea.View {
 	parts = append(parts, m.textarea.View())
 	parts = append(parts, helpStyle.Render(helpText))
 
+	// 斜杠命令补全菜单（渲染在输入区上方）
+	if m.completion.active {
+		menu := renderCompletion(m.completion, m.contentWidth())
+		if menu != "" {
+			// 插入到输入区之前
+			idx := len(parts) - 2 // textarea is second-to-last
+			if idx >= 0 {
+				parts = append(parts[:idx], append([]string{menu}, parts[idx:]...)...)
+			}
+		}
+	}
+
 	v := tea.NewView(joinLines(parts))
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion

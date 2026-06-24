@@ -108,6 +108,10 @@ type Model struct {
 	sel              selection
 	diffMaxLines     int // 0 = no limit, >0 = max visible lines before collapsing diff output
 
+	// --- 斜杠命令补全 ---
+	completion    completion
+	slashCommands []string
+
 	// --- 状态面板字段 ---
 	gitStatus     gitStatus
 	contextUsed   int
@@ -134,6 +138,11 @@ func New() Model {
 		toolStreamIdx:    -1,
 		shellOutputs:     make(map[string]string),
 		shellExpanded:    make(map[string]bool),
+		slashCommands: []string{
+			"/help", "/skills", "/model", "/clear", "/reset",
+			"/exit", "/quit", "/history", "/tools", "/hooks",
+			"/compact", "/jobs", "/diff-fold",
+		},
 	}
 }
 
@@ -466,6 +475,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 
+		case m.completion.active:
+			// 补全菜单激活时的按键处理
+			switch msg.String() {
+			case "up":
+				if m.completion.selected > 0 {
+					m.completion.selected--
+				}
+				return m, nil
+			case "down":
+				if m.completion.selected < len(m.completion.items)-1 {
+					m.completion.selected++
+				}
+				return m, nil
+			case "tab", "enter":
+				if len(m.completion.items) > 0 {
+					sel := m.completion.items[m.completion.selected]
+					m.textarea.SetValue(sel + " ")
+					m.textarea.MoveToEnd()
+				}
+				m.completion = completion{}
+				return m, nil
+			case "esc":
+				m.completion = completion{}
+				return m, nil
+			default:
+				m.completion = completion{}
+				// fall through to default
+			}
+
 		case msg.String() == "esc":
 			return m.interruptTurn(), nil
 
@@ -496,6 +534,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			m.textarea, cmd = m.textarea.Update(msg)
+			m = m.checkSlashCompletion()
 			m = m.syncLayout()
 			return m, cmd
 		}
@@ -514,6 +553,32 @@ func isSubmitKey(msg tea.KeyPressMsg) bool {
 	default:
 		return false
 	}
+}
+
+// SetSlashCommands 设置可补全的斜杠命令列表。
+func (m *Model) SetSlashCommands(cmds []string) {
+	m.slashCommands = cmds
+}
+
+// checkSlashCompletion 检测当前输入是否触发斜杠命令补全。
+func (m Model) checkSlashCompletion() Model {
+	val := m.textarea.Value()
+	// 仅在输入以单独 "/" 开头且未包含空格时激活补全
+	if strings.HasPrefix(val, "/") && !strings.Contains(val, " ") {
+		items := filterCommands(m.slashCommands, val)
+		if len(items) > 0 {
+			m.completion = completion{
+				items:    items,
+				selected: 0,
+				active:   true,
+			}
+		} else {
+			m.completion = completion{}
+		}
+	} else {
+		m.completion = completion{}
+	}
+	return m
 }
 
 func (m Model) shouldRouteScrollToViewport(msg tea.KeyPressMsg) bool {

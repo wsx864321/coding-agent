@@ -33,9 +33,20 @@ func runTui(cmd *cobra.Command, args []string) error {
 	sessionBucket := agent.SessionBucket(agent.ResolveSessionDir(cfg.SessionDir), workdir)
 	setup.Agent.SetSessionPath(agent.NewSessionPath(sessionBucket, cfg.Model))
 
-	p := tea.NewProgram(tui.NewWithRunner(newAgentRunner(setup.Agent), setup.TuiSink))
+	m := tui.NewWithRunner(newAgentRunner(setup.Agent), setup.TuiSink)
+	m.SetSlashCommands(defaultSlashCommands())
+	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		return err
 	}
 	return nil
+}
+
+// defaultSlashCommands 返回 TUI 中可用的斜杠命令列表。
+func defaultSlashCommands() []string {
+	return []string{
+		"/help", "/skills", "/model", "/clear", "/reset",
+		"/exit", "/quit", "/history", "/tools", "/hooks",
+		"/compact", "/jobs", "/diff-fold",
+	}
 }
