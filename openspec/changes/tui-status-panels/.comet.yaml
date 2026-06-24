@@ -1,5 +1,5 @@
 workflow: full
-phase: build
+phase: verify
 context_compression: off
 build_mode: subagent-driven-development
 build_pause: null
@@ -8,14 +8,14 @@ tdd_mode: tdd
 review_mode: standard
 isolation: branch
 build_command: echo "build verified by subagent tasks"
-verify_mode: null
+verify_mode: full
 auto_transition: true
 base_ref: de02d8ca9c06666723942ab42aa66e1c8f7b2798
 design_doc: docs/superpowers/specs/2026-06-24-tui-status-panels-design.md
 plan: docs/superpowers/plans/2026-06-24-tui-status-panels.md
 verify_result: pending
-verification_report: null
-branch_status: pending
+verification_report: docs/superpowers/reports/2026-06-24-tui-status-panels-verify.md
+branch_status: handled
 created_at: 2026-06-24
 verified_at: null
 archived: false
