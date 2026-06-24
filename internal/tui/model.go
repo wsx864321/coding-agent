@@ -18,6 +18,17 @@ const interruptedStatusMsg = "已中断"
 
 const maxEventDrain = 512
 
+const maxShellOutputSize = 1024 * 1024 // 1MB
+
+// truncateShellOutput 对超过 1MB 的输出保留最后 1MB，并标注截断。
+func truncateShellOutput(output string) string {
+	if len(output) <= maxShellOutputSize {
+		return output
+	}
+	truncated := output[len(output)-maxShellOutputSize:]
+	return "[output truncated] " + truncated
+}
+
 // Model 是 Bubble Tea 聊天界面的状态机。
 type Model struct {
 	transcript       []TranscriptEntry
@@ -132,6 +143,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Collapse active stream block into a summary before adding ToolResult.
 			if m.toolStreamIdx >= 0 {
 				m = m.collapseToolStream()
+			}
+			// Store bash output in shellOutputs with 1MB truncation.
+			if msg.ToolName == "bash" && msg.ToolCallID != "" {
+				m.shellOutputs[msg.ToolCallID] = truncateShellOutput(msg.ToolOutput)
 			}
 			name := msg.ToolName
 			if name == "" {
@@ -696,6 +711,10 @@ func (m Model) ingestDrainEvent(e event.Event) Model {
 		}
 		if m.toolStreamIdx >= 0 {
 			m = m.collapseToolStream()
+		}
+		// Store bash output in shellOutputs with 1MB truncation.
+		if e.ToolName == "bash" && e.ToolCallID != "" {
+			m.shellOutputs[e.ToolCallID] = truncateShellOutput(e.ToolOutput)
 		}
 		name := e.ToolName
 		if name == "" {

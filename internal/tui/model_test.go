@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -660,6 +661,163 @@ func TestNewModelInitializesShellOutputFields(t *testing.T) {
 	}
 	if len(m.shellExpanded) != 0 {
 		t.Fatalf("shellExpanded len = %d, want 0", len(m.shellExpanded))
+	}
+}
+
+// --- Task 12: Shell output storage & 1MB truncation ---
+
+func TestToolResultBashStoresInShellOutputs(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: "file list:\nfoo.go\nbar.go\n",
+		ToolCallID: "call_bash_1",
+	})
+	updated := next.(Model)
+
+	if got, ok := updated.shellOutputs["call_bash_1"]; !ok {
+		t.Fatal("shellOutputs should contain key 'call_bash_1' for bash tool")
+	} else if got != "file list:\nfoo.go\nbar.go\n" {
+		t.Fatalf("shellOutputs['call_bash_1'] = %q, want %q", got, "file list:\nfoo.go\nbar.go\n")
+	}
+}
+
+func TestToolResultNonBashNotStored(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "read_file",
+		ToolOutput: "some content",
+		ToolCallID: "call_read_1",
+	})
+	updated := next.(Model)
+
+	if _, ok := updated.shellOutputs["call_read_1"]; ok {
+		t.Fatal("shellOutputs should NOT contain key for non-bash tool")
+	}
+}
+
+func TestToolResultBashTruncatesAt1MB(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	// Create output larger than 1MB
+	bigLine := strings.Repeat("x", 100) + "\n"
+	repeats := (1024*1024)/len(bigLine) + 10 // exceed 1MB
+	bigOutput := strings.Repeat(bigLine, repeats)
+
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: bigOutput,
+		ToolCallID: "call_big",
+	})
+	updated := next.(Model)
+
+	stored := updated.shellOutputs["call_big"]
+	if len(stored) > 1024*1024+len(bigLine) {
+		t.Fatalf("stored output len = %d, should be <= ~1MB", len(stored))
+	}
+	if !strings.Contains(stored, "[output truncated]") {
+		t.Fatal("truncated output should contain '[output truncated]' marker")
+	}
+	// The stored output should end with the tail of the original
+	if !strings.HasSuffix(strings.TrimRight(stored, "\n"), strings.TrimRight(bigLine, "\n")) {
+		t.Fatal("truncated output should preserve the tail of the original")
+	}
+}
+
+func TestToolResultBashSmallOutputNotTruncated(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	small := "echo hello"
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: small,
+		ToolCallID: "call_small",
+	})
+	updated := next.(Model)
+
+	stored := updated.shellOutputs["call_small"]
+	if stored != small {
+		t.Fatalf("small output should not be modified, got %q", stored)
+	}
+	if strings.Contains(stored, "[output truncated]") {
+		t.Fatal("small output should not have truncation marker")
+	}
+}
+
+func TestToolResultBashOutputCollapsedRendering(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	// Create output with more than 8 lines
+	var lines []string
+	for i := 1; i <= 15; i++ {
+		lines = append(lines, fmt.Sprintf("line-%02d", i))
+	}
+	output := strings.Join(lines, "\n")
+
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: output,
+		ToolCallID: "call_collapse",
+	})
+	updated := next.(Model)
+
+	// Find the EntryToolOutput entry
+	var toolOutputEntry *TranscriptEntry
+	for i := range updated.transcript {
+		if updated.transcript[i].Kind == EntryToolOutput {
+			toolOutputEntry = &updated.transcript[i]
+			break
+		}
+	}
+	if toolOutputEntry == nil {
+		t.Fatal("should have EntryToolOutput in transcript")
+	}
+
+	content := toolOutputEntry.Content
+	if !strings.Contains(content, "line-01") {
+		t.Fatal("collapsed output should show first line")
+	}
+	if !strings.Contains(content, "collapsed") {
+		t.Fatal("collapsed output should show 'collapsed' summary")
+	}
+	if strings.Contains(content, "line-15") {
+		t.Fatal("collapsed output should hide line 15")
+	}
+}
+
+func TestIngestDrainEventBashStoresOutput(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	m = m.ingestDrainEvent(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: "drain output",
+		ToolCallID: "call_drain",
+	})
+
+	if got, ok := m.shellOutputs["call_drain"]; !ok {
+		t.Fatal("shellOutputs should contain key 'call_drain' after ingestDrainEvent")
+	} else if got != "drain output" {
+		t.Fatalf("shellOutputs['call_drain'] = %q, want 'drain output'", got)
 	}
 }
 
