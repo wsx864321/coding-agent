@@ -2,6 +2,7 @@
 change: unified-event-sink
 design-doc: docs/superpowers/specs/2026-06-23-unified-event-sink-design.md
 base-ref: a7166d55a2ae4a17327be81c697587711b89617c
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 # Unified Event Sink 实施计划
@@ -79,6 +80,7 @@ cmd/cli/
 └── tui_runner.go         # Run() 替代 RunStreaming
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Task 1: event 包核心定义（D1 + D2 + D3）
@@ -338,6 +340,7 @@ git add internal/event/
 git commit -m "feat(event): add unified Event/Sink/TextSink package"
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Task 2: Agent 层迁移（D4）
@@ -631,6 +634,7 @@ git add internal/agent/
 git commit -m "refactor(agent): replace StreamEmitter with event.Sink"
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Task 3: Hook 层迁移（D5）
@@ -779,6 +783,7 @@ git add internal/hooks/
 git commit -m "refactor(hooks): replace log.Printf with notify callback"
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Task 4: TUI 层迁移（D6）
@@ -1037,6 +1042,7 @@ git add internal/tui/
 git commit -m "refactor(tui): migrate from StreamEmitter to event.Event channel"
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Task 5: CLI 层装配（D7）
@@ -1218,6 +1224,7 @@ git add cmd/cli/
 git commit -m "feat(cli): wire TextSink/TuiSink and notify bridge for all modes"
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Task 6: 测试补全与 subagent 确认
@@ -1309,6 +1316,7 @@ git add internal/agent/
 git commit -m "test(agent): add Sink event sequence integration tests"
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Task 7: 全仓引用清理
@@ -1344,6 +1352,7 @@ git add -A
 git commit -m "chore: remove remaining StreamEmitter and log.Printf references"
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Task 8: 全量验证与合规检查
@@ -1398,6 +1407,7 @@ git add openspec/changes/unified-event-sink/tasks.md
 git commit -m "chore: mark unified-event-sink tasks complete"
 ```
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## Self-Review 清单
@@ -1420,6 +1430,7 @@ git commit -m "chore: mark unified-event-sink tasks complete"
 
 **无占位符:** 所有 Step 均含具体文件路径、代码片段或 shell 命令。
 
+archived-with: 2026-06-24-unified-event-sink
 ---
 
 ## 依赖关系

@@ -2,6 +2,8 @@
 comet_change: unified-event-sink
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-24-unified-event-sink
+status: final
 ---
 
 # Unified Event Sink — 统一事件流体系
