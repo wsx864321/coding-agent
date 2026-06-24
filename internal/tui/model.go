@@ -313,7 +313,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Err != nil {
 				m = m.syncLayout()
 			}
-			return m, tea.Batch(fetchGitStatus(), fetchBalance(m.runner))
+			return m, tea.Batch(fetchGitStatus(), fetchBalance(m.runner), runStatuslineIfSet(m))
 		}
 		if m.streamCh != nil {
 			return m, waitStreamEvent(m.streamCh)
@@ -326,6 +326,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case balanceMsg:
 		m.balance = msg.text
+		return m, nil
+
+	case statuslineMsg:
+		m.statuslineOut = msg.out
 		return m, nil
 
 	case streamClosedMsg:
@@ -587,7 +591,11 @@ func (m Model) submit() (Model, tea.Cmd) {
 	}()
 
 	m.streamCh = ch
-	return m, tea.Batch(waitStreamEvent(ch), m.spinner.Tick, fetchGitStatus(), fetchBalance(m.runner))
+	cmds := []tea.Cmd{waitStreamEvent(ch), m.spinner.Tick, fetchGitStatus(), fetchBalance(m.runner)}
+	if m.statuslineCmd != "" {
+		cmds = append(cmds, runStatusline(m.statuslineCmd, ""))
+	}
+	return m, tea.Batch(cmds...)
 }
 
 func waitStreamEvent(ch <-chan event.Event) tea.Cmd {
@@ -1044,6 +1052,15 @@ func drainEvents(ch <-chan event.Event) tea.Cmd {
 		}
 		return drainBatchMsg{events: events}
 	}
+}
+
+// runStatuslineIfSet 在 statuslineCmd 非空时返回 runStatusline 命令，
+// 否则返回 nil（由 tea.Batch 忽略）。
+func runStatuslineIfSet(m Model) tea.Cmd {
+	if m.statuslineCmd == "" {
+		return nil
+	}
+	return runStatusline(m.statuslineCmd, "")
 }
 
 // fetchGitStatus 异步执行 git 命令获取分支和状态。

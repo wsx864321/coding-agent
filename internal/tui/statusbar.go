@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -39,6 +41,11 @@ func renderModeLine(m Model) string {
 
 // renderDataLine 始终渲染数据信息行。
 func renderDataLine(m Model) string {
+	// 自定义状态行覆盖
+	if m.statuslineOut != "" {
+		return m.statuslineOut
+	}
+
 	var parts []string
 
 	// 上下文仪表
@@ -142,6 +149,24 @@ func joinWithSep(parts []string, sep string) string {
 		result += sep + filtered[i]
 	}
 	return result
+}
+
+// runStatusline 执行自定义状态行命令，stdin 传入 ctxJSON，捕获 stdout 首行。
+func runStatusline(cmd, ctxJSON string) tea.Cmd {
+	return func() tea.Msg {
+		if cmd == "" {
+			return statuslineMsg{}
+		}
+		c := exec.Command("sh", "-c", cmd)
+		c.Stdin = strings.NewReader(ctxJSON)
+		c.Stderr = nil
+		out, err := c.Output()
+		if err != nil {
+			return statuslineMsg{}
+		}
+		firstLine := strings.SplitN(string(out), "\n", 2)[0]
+		return statuslineMsg{out: strings.TrimSpace(firstLine)}
+	}
 }
 
 // ---- renderStatusBar (backward-compatible with view.go) ----
