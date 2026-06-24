@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -307,11 +308,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Err != nil {
 				m = m.syncLayout()
 			}
-			return m, nil
+			return m, tea.Batch(fetchGitStatus())
 		}
 		if m.streamCh != nil {
 			return m, waitStreamEvent(m.streamCh)
 		}
+		return m, nil
+
+	case gitStatusMsg:
+		m.gitStatus = msg.status
 		return m, nil
 
 	case streamClosedMsg:
@@ -573,7 +578,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	}()
 
 	m.streamCh = ch
-	return m, tea.Batch(waitStreamEvent(ch), m.spinner.Tick)
+	return m, tea.Batch(waitStreamEvent(ch), m.spinner.Tick, fetchGitStatus())
 }
 
 func waitStreamEvent(ch <-chan event.Event) tea.Cmd {
@@ -1025,4 +1030,38 @@ func drainEvents(ch <-chan event.Event) tea.Cmd {
 		}
 		return drainBatchMsg{events: events}
 	}
+}
+
+// fetchGitStatus 异步执行 git 命令获取分支和状态。
+func fetchGitStatus() tea.Cmd {
+	return func() tea.Msg {
+		branch := runGitCmd("rev-parse", "--abbrev-ref", "HEAD")
+		porcelain := runGitCmd("status", "--porcelain")
+		ahead := runGitCmd("rev-list", "--count", "HEAD..@{upstream}")
+		behind := runGitCmd("rev-list", "--count", "@{upstream}..HEAD")
+
+		gs := gitStatus{
+			branch: strings.TrimSpace(branch),
+			dirty:  strings.TrimSpace(porcelain) != "",
+		}
+		// 解析 ahead/behind 计数（忽略解析错误）
+		if n, err := strconv.Atoi(strings.TrimSpace(ahead)); err == nil {
+			gs.ahead = n
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(behind)); err == nil {
+			gs.behind = n
+		}
+		return gitStatusMsg{status: gs}
+	}
+}
+
+// runGitCmd 执行 git 命令，忽略错误并返回 stdout 字符串。
+func runGitCmd(args ...string) string {
+	cmd := exec.Command("git", args...)
+	cmd.Stderr = nil
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }
