@@ -242,14 +242,14 @@ func handleSlashCommand(ctx context.Context, a *agent.Agent, store *skill.Store,
 }
 
 func runOneTurn(ctx context.Context, a *agent.Agent, prompt string) error {
-	out, err := a.Run(ctx, prompt)
+	_, err := a.Run(ctx, prompt)
 	if err != nil {
 		if errors.Is(err, agent.ErrMaxTurnsExceeded) {
 			return fmt.Errorf("超过最大轮数: %w", err)
 		}
 		return err
 	}
-	fmt.Println(out)
+	fmt.Println()
 	return nil
 }
 

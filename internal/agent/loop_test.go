@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/provider"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
@@ -239,7 +240,7 @@ func TestRunParallel_ConcurrentExecution(t *testing.T) {
 
 func TestExecuteBatch_ParallelBatchRunsAllTools(t *testing.T) {
 	r := newRegistry("read_file", "glob_file")
-	a := &Agent{registry: r}
+	a := &Agent{registry: r, sink: event.Discard}
 	calls := makeToolCalls("read_file", "glob_file")
 	a.executeBatch(context.Background(), calls)
 
@@ -258,7 +259,7 @@ func TestExecuteBatch_ParallelBatchRunsAllTools(t *testing.T) {
 
 func TestExecuteBatch_SerialBatchRunsInOrder(t *testing.T) {
 	r := newRegistry()
-	a := &Agent{registry: r}
+	a := &Agent{registry: r, sink: event.Discard}
 	calls := makeToolCalls("write_file", "edit_file", "bash")
 	a.executeBatch(context.Background(), calls)
 
@@ -275,7 +276,7 @@ func TestExecuteBatch_SerialBatchRunsInOrder(t *testing.T) {
 
 func TestExecuteBatch_MixedBatchOrderPreserved(t *testing.T) {
 	r := newRegistry("read_file")
-	a := &Agent{registry: r}
+	a := &Agent{registry: r, sink: event.Discard}
 	calls := makeToolCalls("read_file", "bash", "read_file")
 	a.executeBatch(context.Background(), calls)
 
@@ -292,7 +293,7 @@ func TestExecuteBatch_MixedBatchOrderPreserved(t *testing.T) {
 
 func TestExecuteBatch_EmptyCalls(t *testing.T) {
 	r := newRegistry("read_file")
-	a := &Agent{registry: r}
+	a := &Agent{registry: r, sink: event.Discard}
 	a.executeBatch(context.Background(), nil)
 	if len(a.messages) != 0 {
 		t.Errorf("expected 0 messages for empty calls, got %d", len(a.messages))
@@ -303,7 +304,7 @@ func TestExecuteBatch_ToolErrorDoesNotStopOthers(t *testing.T) {
 	errTool := &fakeTool{name: "fail_tool", readOnly: true}
 	r := newRegistry("read_file")
 	r.Register(errTool)
-	a := &Agent{registry: r}
+	a := &Agent{registry: r, sink: event.Discard}
 	calls := makeToolCalls("read_file", "fail_tool", "glob_file")
 	a.executeBatch(context.Background(), calls)
 

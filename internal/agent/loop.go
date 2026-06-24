@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/provider"
 	"github.com/wsx864321/coding-agent/internal/tools"
@@ -23,15 +24,8 @@ const (
 // loopStep 跑一次"调用 LLM → 处理 tool_calls → 收集 tool 结果"循环。
 // 返回 final assistant content 表示结束；返回 (空, nil) 表示还有下一步。
 func (a *Agent) loopStep(ctx context.Context) (final string, err error) {
-	return a.loopStepWithText(ctx, EmitterFromContext(ctx))
-}
-
-// loopStepWithText 与 loopStep 相同，但在流式收集时可推送文本增量与工具事件。
-func (a *Agent) loopStepWithText(ctx context.Context, emitter StreamEmitter) (final string, err error) {
 	onText := func(s string) {
-		if emitter != nil {
-			emitter.OnChunk(s)
-		}
+		a.sink.Emit(event.Event{Kind: event.Text, Text: s})
 	}
 	// 修复历史里的孤儿 tool 消息，避免 provider 400
 	a.messages = provider.SanitizeToolPairing(a.messages)
@@ -136,19 +130,14 @@ func compactFocusFromArgs(raw string) string {
 }
 
 // invokeTool 真正执行工具调用，返回结果字符串（成功或失败都返回字符串）
-func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall, emitter StreamEmitter) string {
+func (a *Agent) invokeTool(ctx context.Context, tc provider.ToolCall) string {
 	name := tc.Name
-
-	if emitter != nil {
-		emitter.OnToolStart(name, tc.Arguments)
-	}
+	a.sink.Emit(event.Event{Kind: event.ToolDispatch, ToolName: name, ToolArgs: tc.Arguments})
 
 	var result string
 	defer func() {
-		if emitter != nil {
-			isErr := strings.HasPrefix(result, "Error:") || strings.HasPrefix(result, "Permission denied")
-			emitter.OnToolEnd(name, result, isErr)
-		}
+		isErr := strings.HasPrefix(result, "Error:") || strings.HasPrefix(result, "Permission denied")
+		a.sink.Emit(event.Event{Kind: event.ToolResult, ToolName: name, ToolOutput: result, ToolIsErr: isErr})
 	}()
 
 	var args map[string]any
@@ -244,17 +233,16 @@ type toolCallBatch struct {
 // executeBatch 分区执行一批 tool_calls
 func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) {
 	results := make([]string, len(calls))
-	emitter := EmitterFromContext(ctx)
 
 	for _, batch := range partitionToolCalls(a.registry, calls) {
 		if batch.parallel && batch.end-batch.start > 1 {
 			runParallel(batch.start, batch.end, func(i int) {
-				results[i] = a.invokeTool(ctx, calls[i], emitter)
+				results[i] = a.invokeTool(ctx, calls[i])
 			})
 			continue
 		}
 		for i := batch.start; i < batch.end; i++ {
-			results[i] = a.invokeTool(ctx, calls[i], emitter)
+			results[i] = a.invokeTool(ctx, calls[i])
 		}
 	}
 

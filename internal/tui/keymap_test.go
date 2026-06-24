@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/wsx864321/coding-agent/internal/event"
 )
 
 func TestScrollWithKAndJ(t *testing.T) {
@@ -27,9 +28,9 @@ func TestScrollWithKAndJ(t *testing.T) {
 }
 
 func TestEscInterruptsBusyTurn(t *testing.T) {
-	m := NewWithRunner(&stubRunner{chunks: []string{"partial"}})
+	m := NewWithRunner(&stubRunner{chunks: []string{"partial"}}, nil)
 	m.busy = true
-	m.streamCh = make(chan any, 1)
+	m.streamCh = make(chan event.Event, 1)
 	m.width = 80
 	m.height = 24
 	m = m.syncLayout()
@@ -48,7 +49,7 @@ func TestEscInterruptsBusyTurn(t *testing.T) {
 }
 
 func TestEscInterruptAllowsInputAfter(t *testing.T) {
-	m := NewWithRunner(&stubRunner{})
+	m := NewWithRunner(&stubRunner{}, nil)
 	m.busy = true
 
 	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -82,9 +83,9 @@ func TestStreamErrorVisibleInView(t *testing.T) {
 	m.width = 80
 	m.height = 24
 
-	next, cmd := m.Update(StreamErrorMsg{Err: errors.New("model timeout")})
+	next, cmd := m.Update(event.Event{Kind: event.TurnDone, Err: errors.New("model timeout")})
 	if cmd != nil {
-		t.Fatal("StreamErrorMsg should not return follow-up command")
+		t.Fatal("TurnDone with error should not return follow-up command")
 	}
 	updated := next.(Model)
 	updated = updated.syncLayout()
@@ -111,9 +112,9 @@ func TestJKTypeWhenInputNotEmpty(t *testing.T) {
 }
 
 func TestCtrlCInterruptsBusyBeforeQuit(t *testing.T) {
-	m := NewWithRunner(&stubRunner{})
+	m := NewWithRunner(&stubRunner{}, nil)
 	m.busy = true
-	m.streamCh = make(chan any, 1)
+	m.streamCh = make(chan event.Event, 1)
 
 	next, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {

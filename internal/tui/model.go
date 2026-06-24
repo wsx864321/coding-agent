@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/wsx864321/coding-agent/internal/event"
 )
 
 const interruptedStatusMsg = "已中断"
@@ -37,7 +37,8 @@ type Model struct {
 	pendingToolArgs string
 	approval    *pendingApproval
 	runner      Runner
-	streamCh    <-chan any
+	tuiSink     *TuiSink
+	streamCh    <-chan event.Event
 	turnCancel  context.CancelFunc
 }
 
@@ -54,9 +55,10 @@ func New() Model {
 }
 
 // NewWithRunner 构造带会话执行器的 TUI model。
-func NewWithRunner(runner Runner) Model {
+func NewWithRunner(runner Runner, tuiSink *TuiSink) Model {
 	m := New()
 	m.runner = runner
+	m.tuiSink = tuiSink
 	return m
 }
 
@@ -76,100 +78,105 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.syncViewportContent()
 		return m, nil
 
-	case StreamChunkMsg:
-		if !m.busy {
-			return m, nil
-		}
-		m.pending.WriteString(msg.Text)
-		if renderable, rest := flushableMarkdownPrefix(m.pending.String()); renderable != "" {
-			rendered := m.mdRenderer.Render(renderable, m.assistantInnerWidth())
-			m = m.appendAssistantRendered(rendered, renderable)
-			m.pending.Reset()
-			m.pending.WriteString(rest)
-		}
-		m = m.syncViewportContent()
-		if m.streamCh != nil {
-			return m, waitStreamMsg(m.streamCh)
-		}
-		return m, nil
-
-	case ToolStartMsg:
-		if !m.busy {
-			return m, nil
-		}
-		m.statusLabel = "running " + msg.Name + "..."
-		m.pendingToolName = msg.Name
-		m.pendingToolArgs = msg.Args
-		if m.streamCh != nil {
-			return m, waitStreamMsg(m.streamCh)
-		}
-		return m, nil
-
-	case ToolEndMsg:
-		if !m.busy {
-			return m, nil
-		}
-		name := msg.Name
-		if name == "" {
-			name = m.pendingToolName
-		}
-		args := m.pendingToolArgs
-		w := m.contentWidth()
-		if msg.IsError {
-			m = m.appendEntry(TranscriptEntry{
-				Kind:    EntryToolCard,
-				Content: renderToolCardError(name, msg.Result, w),
-				Raw:     encodeToolCardRaw(name, msg.Result, true),
-			})
-		} else {
-			m = m.appendEntry(TranscriptEntry{
-				Kind:    EntryToolCard,
-				Content: renderToolCard(name, args, w),
-				Raw:     encodeToolCardRaw(name, args, false),
-			})
-			if msg.Result != "" {
-				m = m.appendEntry(TranscriptEntry{
-					Kind:    EntryToolOutput,
-					Content: renderToolOutput(msg.Result, toolOutputCollapseLines),
-					Raw:     msg.Result,
-				})
+	case event.Event:
+		switch msg.Kind {
+		case event.Text:
+			if !m.busy {
+				return m, nil
 			}
-		}
-		m.pendingToolName = ""
-		m.pendingToolArgs = ""
-		m.statusLabel = "thinking"
-		m = m.syncViewportContent()
-		if m.streamCh != nil {
-			return m, waitStreamMsg(m.streamCh)
-		}
-		return m, nil
+			m.pending.WriteString(msg.Text)
+			if renderable, rest := flushableMarkdownPrefix(m.pending.String()); renderable != "" {
+				rendered := m.mdRenderer.Render(renderable, m.assistantInnerWidth())
+				m = m.appendAssistantRendered(rendered, renderable)
+				m.pending.Reset()
+				m.pending.WriteString(rest)
+			}
+			m = m.syncViewportContent()
 
-	case StreamDoneMsg:
-		m = m.flushPending()
-		m.busy = false
-		m.streamCh = nil
-		m.turnCancel = nil
-		m.interrupted = false
-		m.statusLabel = ""
-		m.pendingToolName = ""
-		m.pendingToolArgs = ""
-		m = m.syncViewportContent()
-		return m, nil
+		case event.ToolDispatch:
+			if !m.busy {
+				return m, nil
+			}
+			m.statusLabel = "running " + msg.ToolName + "..."
+			m.pendingToolName = msg.ToolName
+			m.pendingToolArgs = msg.ToolArgs
 
-	case StreamErrorMsg:
-		m.busy = false
-		m.streamCh = nil
-		m.turnCancel = nil
-		if m.interrupted {
-			m.interrupted = false
+		case event.ToolResult:
+			if !m.busy {
+				return m, nil
+			}
+			name := msg.ToolName
+			if name == "" {
+				name = m.pendingToolName
+			}
+			args := m.pendingToolArgs
+			w := m.contentWidth()
+			if msg.ToolIsErr {
+				m = m.appendEntry(TranscriptEntry{
+					Kind:    EntryToolCard,
+					Content: renderToolCardError(name, msg.ToolOutput, w),
+					Raw:     encodeToolCardRaw(name, msg.ToolOutput, true),
+				})
+			} else {
+				m = m.appendEntry(TranscriptEntry{
+					Kind:    EntryToolCard,
+					Content: renderToolCard(name, args, w),
+					Raw:     encodeToolCardRaw(name, args, false),
+				})
+				if msg.ToolOutput != "" {
+					m = m.appendEntry(TranscriptEntry{
+						Kind:    EntryToolOutput,
+						Content: renderToolOutput(msg.ToolOutput, toolOutputCollapseLines),
+						Raw:     msg.ToolOutput,
+					})
+				}
+			}
+			m.pendingToolName = ""
+			m.pendingToolArgs = ""
+			m.statusLabel = "thinking"
+			m = m.syncViewportContent()
+
+		case event.ApprovalRequest:
+			if !m.busy {
+				return m, nil
+			}
+			m.approval = &pendingApproval{
+				toolName: msg.ApprovalName,
+				args:     msg.ApprovalArgs,
+				respond:  msg.ApprovalRespond,
+			}
+			m = m.syncLayout()
+
+		case event.Notice:
+			m.statusMsg = msg.Text
+
+		case event.TurnDone:
+			if m.interrupted {
+				m.interrupted = false
+				m.busy = false
+				m.streamCh = nil
+				m.turnCancel = nil
+				return m, nil
+			}
+			m = m.flushPending()
+			if msg.Err != nil {
+				m.lastError = msg.Err.Error()
+			}
+			m.busy = false
+			m.streamCh = nil
+			m.turnCancel = nil
+			m.statusLabel = ""
+			m.pendingToolName = ""
+			m.pendingToolArgs = ""
+			m = m.syncViewportContent()
+			if msg.Err != nil {
+				m = m.syncLayout()
+			}
 			return m, nil
 		}
-		m = m.flushPending()
-		if msg.Err != nil {
-			m.lastError = msg.Err.Error()
+		if m.streamCh != nil {
+			return m, waitStreamEvent(m.streamCh)
 		}
-		m = m.syncViewportContent()
-		m = m.syncLayout()
 		return m, nil
 
 	case streamClosedMsg:
@@ -177,17 +184,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = false
 		m.streamCh = nil
 		m = m.syncViewportContent()
-		return m, nil
-
-	case ApprovalRequestMsg:
-		if !m.busy {
-			return m, nil
-		}
-		m.approval = &pendingApproval{toolName: msg.Name, args: msg.Args, respond: msg.Respond}
-		m = m.syncLayout()
-		if m.streamCh != nil {
-			return m, waitStreamMsg(m.streamCh)
-		}
 		return m, nil
 
 	case spinner.TickMsg:
@@ -306,35 +302,30 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
 
-	ch := make(chan any, 16)
+	ch := make(chan event.Event, 16)
+	if m.tuiSink != nil {
+		m.tuiSink.SetChan(ch)
+	}
 	runner := m.runner
 	ctx, cancel := context.WithCancel(context.Background())
 	m.turnCancel = cancel
 	go func() {
 		defer close(ch)
-		defer func() {
-			if r := recover(); r != nil {
-				ch <- StreamErrorMsg{Err: fmt.Errorf("panic: %v", r)}
-			}
-		}()
-		emit := chanEmitter{ch: ch}
-		_ = runner.RunTurn(ctx, text, emit)
+		defer func() { _ = recover() }()
+		_ = runner.RunTurn(ctx, text)
 	}()
 
 	m.streamCh = ch
-	return m, tea.Batch(waitStreamMsg(ch), m.spinner.Tick)
+	return m, tea.Batch(waitStreamEvent(ch), m.spinner.Tick)
 }
 
-func waitStreamMsg(ch <-chan any) tea.Cmd {
+func waitStreamEvent(ch <-chan event.Event) tea.Cmd {
 	return func() tea.Msg {
-		msg, ok := <-ch
+		e, ok := <-ch
 		if !ok {
 			return streamClosedMsg{}
 		}
-		if teaMsg, ok := msg.(tea.Msg); ok {
-			return teaMsg
-		}
-		return streamClosedMsg{}
+		return e
 	}
 }
 

@@ -1,0 +1,15 @@
+{
+  "change": "unified-event-sink",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "0a93cc47b8ad57ae2c4fecbc37d8d107355f58141bcaa49647a3d79051d4be96",
+  "files": [
+    { "path": "openspec/changes/unified-event-sink/proposal.md", "sha256": "c884c72225260cde57d9e40c8acd9fd5d3b9bdd6f86e6a589f91cb9ce346711e" },
+    { "path": "openspec/changes/unified-event-sink/design.md", "sha256": "23f6afe43e1c61c6dc81b1dff36f8a24222802a2dc8bec676b97a27cdf8f2b06" },
+    { "path": "openspec/changes/unified-event-sink/tasks.md", "sha256": "0a92a19de21598d589b8c1ae05f6a995d2c62a70fc43366267149225123c1ded" },
+    { "path": "openspec/changes/unified-event-sink/specs/event-sink/spec.md", "sha256": "16f7a63988c78b9deca5a1a473deb87d1eae52fb325eb80c3525d485c92256f6" },
+    { "path": "openspec/changes/unified-event-sink/specs/shell-hook-engine/spec.md", "sha256": "fbb3c517531fbd81e61946b939e1a514a0bf14805ca5fd1dea563e2e1c47d335" }
+  ]
+}

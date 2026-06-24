@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/wsx864321/coding-agent/internal/event"
 )
 
 func TestToolEventFlowUpdatesTranscript(t *testing.T) {
-	ch := make(chan any, 8)
+	ch := make(chan event.Event, 8)
 	m := New()
 	m.busy = true
 	m.width = 80
@@ -18,7 +19,11 @@ func TestToolEventFlowUpdatesTranscript(t *testing.T) {
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncLayout()
 
-	next, cmd := m.Update(ToolStartMsg{Name: "Read", Args: `{"path":"main.go"}`})
+	next, cmd := m.Update(event.Event{
+		Kind:     event.ToolDispatch,
+		ToolName: "Read",
+		ToolArgs: `{"path":"main.go"}`,
+	})
 	updated := next.(Model)
 	if updated.statusLabel != "running Read..." {
 		t.Fatalf("statusLabel = %q, want %q", updated.statusLabel, "running Read...")
@@ -28,10 +33,14 @@ func TestToolEventFlowUpdatesTranscript(t *testing.T) {
 		t.Fatalf("View should show running tool status:\n%s", view)
 	}
 	if cmd == nil {
-		t.Fatal("ToolStartMsg should schedule stream listener when streamCh is set")
+		t.Fatal("ToolDispatch should schedule stream listener when streamCh is set")
 	}
 
-	ch <- ToolEndMsg{Name: "Read", Result: "package main\n", IsError: false}
+	ch <- event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "Read",
+		ToolOutput: "package main\n",
+	}
 	got := cmd()
 	if got == nil {
 		t.Fatal("stream command returned nil message")
@@ -71,17 +80,14 @@ func TestApprovalFlowEndToEnd(t *testing.T) {
 		m.height = 24
 		m = m.syncLayout()
 
-		next, cmd := m.Update(ApprovalRequestMsg{
-			Name: "bash",
-			Args: map[string]any{"command": "rm -rf /tmp/test"},
-			Respond: func(ok bool) {
-				if ok {
-					calls.Add(1)
-				}
-			},
+		next, cmd := m.Update(event.Event{
+			Kind:            event.ApprovalRequest,
+			ApprovalName:    "bash",
+			ApprovalArgs:    map[string]any{"command": "rm -rf /tmp/test"},
+			ApprovalRespond: func(ok bool) { if ok { calls.Add(1) } },
 		})
 		if cmd != nil {
-			t.Fatal("ApprovalRequestMsg without streamCh should not return a command")
+			t.Fatal("ApprovalRequest without streamCh should not return a command")
 		}
 		updated := next.(Model)
 		if updated.approval == nil {
@@ -112,14 +118,11 @@ func TestApprovalFlowEndToEnd(t *testing.T) {
 		m.width = 80
 		m.height = 24
 
-		next, _ := m.Update(ApprovalRequestMsg{
-			Name: "bash",
-			Args: map[string]any{"command": "rm -rf /tmp/test"},
-			Respond: func(ok bool) {
-				if !ok {
-					rejected.Store(true)
-				}
-			},
+		next, _ := m.Update(event.Event{
+			Kind:            event.ApprovalRequest,
+			ApprovalName:    "bash",
+			ApprovalArgs:    map[string]any{"command": "rm -rf /tmp/test"},
+			ApprovalRespond: func(ok bool) { if !ok { rejected.Store(true) } },
 		})
 		updated := next.(Model)
 
@@ -155,7 +158,7 @@ func TestCJKMarkdownIntegrationInView(t *testing.T) {
 }
 
 func TestStreamFlushIntegration(t *testing.T) {
-	ch := make(chan any, 8)
+	ch := make(chan event.Event, 8)
 	m := New()
 	m.width = 80
 	m.height = 24
@@ -164,7 +167,7 @@ func TestStreamFlushIntegration(t *testing.T) {
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncLayout()
 
-	next, cmd := m.Update(StreamChunkMsg{Text: "第一段内容"})
+	next, cmd := m.Update(event.Event{Kind: event.Text, Text: "第一段内容"})
 	updated := next.(Model)
 	if updated.pending.String() != "第一段内容" {
 		t.Fatalf("pending = %q, want 第一段内容", updated.pending.String())
@@ -174,7 +177,7 @@ func TestStreamFlushIntegration(t *testing.T) {
 	}
 
 	var nextCmd tea.Cmd
-	ch <- StreamChunkMsg{Text: "。\n\n"}
+	ch <- event.Event{Kind: event.Text, Text: "。\n\n"}
 	got := cmd()
 	if got == nil {
 		t.Fatal("stream command returned nil message")
@@ -185,7 +188,7 @@ func TestStreamFlushIntegration(t *testing.T) {
 		t.Fatalf("assistant raw = %q, want first paragraph flushed", updated.transcript[0].Raw)
 	}
 
-	ch <- StreamChunkMsg{Text: "**第二段** bold\n\n"}
+	ch <- event.Event{Kind: event.Text, Text: "**第二段** bold\n\n"}
 	got = nextCmd()
 	if got == nil {
 		t.Fatal("stream command returned nil message")
@@ -196,7 +199,7 @@ func TestStreamFlushIntegration(t *testing.T) {
 		t.Fatalf("assistant raw = %q, want second paragraph", updated.transcript[0].Raw)
 	}
 
-	ch <- StreamDoneMsg{}
+	ch <- event.Event{Kind: event.TurnDone}
 	got = nextCmd()
 	if got == nil {
 		t.Fatal("stream command returned nil message")
@@ -204,10 +207,10 @@ func TestStreamFlushIntegration(t *testing.T) {
 	next, nextCmd = updated.Update(got)
 	updated = next.(Model)
 	if nextCmd != nil {
-		t.Fatal("StreamDoneMsg should not return follow-up command")
+		t.Fatal("TurnDone should not return follow-up command")
 	}
 	if updated.busy {
-		t.Fatal("busy should be false after StreamDoneMsg")
+		t.Fatal("busy should be false after TurnDone")
 	}
 	if updated.pending.Len() != 0 {
 		t.Fatalf("pending should be empty after done, got %q", updated.pending.String())

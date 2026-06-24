@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/jobs"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
@@ -100,4 +101,17 @@ func (o jobManagerOpt) apply(a *Agent) {
 // 可操作它们。nil 表示禁用后台执行。
 func WithJobManager(m *jobs.Manager) Option {
 	return jobManagerOpt{m: m}
+}
+
+type sinkOpt struct{ s event.Sink }
+
+func (o sinkOpt) apply(a *Agent) {
+	if o.s != nil {
+		a.sink = o.s
+	}
+}
+
+// WithSink 注入 event.Sink，用于接收 agent 运行时事件。
+func WithSink(s event.Sink) Option {
+	return sinkOpt{s: s}
 }

@@ -73,8 +73,7 @@ func TestWindowSizeRerendersUserEntry(t *testing.T) {
 }
 
 func TestSubmitAppendsUserTranscriptEntry(t *testing.T) {
-	runner := &stubRunner{chunks: []string{"ok"}}
-	m := NewWithRunner(runner)
+	m, _ := newStubModel([]string{"ok"})
 	m.width, m.height = 80, 24
 	m.textarea.SetValue("hello agent")
 

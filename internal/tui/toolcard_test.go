@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
+	"github.com/wsx864321/coding-agent/internal/event"
 )
 
 func stripANSI(s string) string {
@@ -69,7 +70,11 @@ func TestUpdateToolStartSetsStatusLabel(t *testing.T) {
 	m.busy = true
 	m.width = 80
 
-	next, _ := m.Update(ToolStartMsg{Name: "Read", Args: `{"path":"x"}`})
+	next, _ := m.Update(event.Event{
+		Kind:     event.ToolDispatch,
+		ToolName: "Read",
+		ToolArgs: `{"path":"x"}`,
+	})
 	updated := next.(Model)
 	if updated.statusLabel != "running Read..." {
 		t.Fatalf("statusLabel = %q, want %q", updated.statusLabel, "running Read...")
@@ -84,7 +89,11 @@ func TestUpdateToolEndAppendsToolEntries(t *testing.T) {
 	m.pendingToolArgs = `{"path":"main.go"}`
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk, Raw: "thinking..."})
 
-	next, _ := m.Update(ToolEndMsg{Name: "Read", Result: "file contents", IsError: false})
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "Read",
+		ToolOutput: "file contents",
+	})
 	updated := next.(Model)
 	if updated.statusLabel != "thinking" {
 		t.Fatalf("statusLabel = %q, want thinking", updated.statusLabel)

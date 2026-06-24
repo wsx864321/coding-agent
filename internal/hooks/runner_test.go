@@ -11,7 +11,7 @@ func TestRunner_PreToolUse_BlockChain(t *testing.T) {
 	sp := mockSpawner(map[string]SpawnResult{
 		"block-hook": {ExitCode: 2, Stderr: "denied"},
 	})
-	runner := NewRunner([]ResolvedHook{testHook(EventPreToolUse, HookConfig{Command: "block-hook", Match: "echo", Timeout: 5000})}, dir, sp)
+	runner := NewRunner([]ResolvedHook{testHook(EventPreToolUse, HookConfig{Command: "block-hook", Match: "echo", Timeout: 5000})}, dir, sp, nil)
 
 	blocked, msg := runner.PreToolUse(context.Background(), "echo", map[string]any{"input": "x"})
 	if !blocked {
@@ -30,7 +30,7 @@ func TestRunner_PreToolUse_Pass(t *testing.T) {
 	runner := NewRunner([]ResolvedHook{{
 		Event:      EventPreToolUse,
 		HookConfig: HookConfig{Command: "pass-hook"},
-	}}, dir, sp)
+	}}, dir, sp, nil)
 
 	blocked, msg := runner.PreToolUse(context.Background(), "bash", nil)
 	if blocked {
@@ -39,7 +39,7 @@ func TestRunner_PreToolUse_Pass(t *testing.T) {
 }
 
 func TestRunner_EmptyHooks_NoOp(t *testing.T) {
-	runner := NewRunner(nil, t.TempDir(), DefaultSpawner)
+	runner := NewRunner(nil, t.TempDir(), DefaultSpawner, nil)
 	if err := runner.UserPromptSubmit(context.Background(), "hi"); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestRunner_Stop_ForceSemantic(t *testing.T) {
 	runner := NewRunner([]ResolvedHook{{
 		Event:      EventStop,
 		HookConfig: HookConfig{Command: "stop-hook"},
-	}}, dir, sp)
+	}}, dir, sp, nil)
 
 	force, ok := runner.Stop(context.Background(), nil)
 	if !ok || force != "请继续完成待办" {
@@ -77,7 +77,7 @@ func TestRunner_Stop_NoForce(t *testing.T) {
 	runner := NewRunner([]ResolvedHook{{
 		Event:      EventStop,
 		HookConfig: HookConfig{Command: "stop-hook"},
-	}}, dir, sp)
+	}}, dir, sp, nil)
 
 	force, ok := runner.Stop(context.Background(), nil)
 	if ok || force != "" {
@@ -92,7 +92,7 @@ func TestRunner_PostToolUse_CallsRun(t *testing.T) {
 		_ = json.Unmarshal([]byte(in.Stdin), &gotPayload)
 		return SpawnResult{ExitCode: 0}
 	})
-	runner := NewRunner([]ResolvedHook{testHook(EventPostToolUse, HookConfig{Command: "post-hook", Match: "bash"})}, dir, sp)
+	runner := NewRunner([]ResolvedHook{testHook(EventPostToolUse, HookConfig{Command: "post-hook", Match: "bash"})}, dir, sp, nil)
 
 	runner.PostToolUse(context.Background(), "bash", map[string]any{"cmd": "ls"}, "ok")
 
@@ -118,7 +118,7 @@ func TestRunner_UserPromptSubmit_NonBlocking(t *testing.T) {
 	runner := NewRunner([]ResolvedHook{{
 		Event:      EventUserPromptSubmit,
 		HookConfig: HookConfig{Command: "prompt-hook"},
-	}}, dir, sp)
+	}}, dir, sp, nil)
 
 	err := runner.UserPromptSubmit(context.Background(), "hello")
 	if err != nil {
@@ -131,7 +131,7 @@ func TestRunner_Count(t *testing.T) {
 		{Event: EventPreToolUse, HookConfig: HookConfig{Command: "a"}},
 		{Event: EventPreToolUse, HookConfig: HookConfig{Command: "b"}},
 		{Event: EventStop, HookConfig: HookConfig{Command: "c"}},
-	}, t.TempDir(), DefaultSpawner)
+	}, t.TempDir(), DefaultSpawner, nil)
 
 	m := runner.Count()
 	if m[EventPreToolUse] != 2 || m[EventStop] != 1 {
@@ -140,7 +140,7 @@ func TestRunner_Count(t *testing.T) {
 }
 
 func TestRunner_NewRunner_NilSpawner(t *testing.T) {
-	runner := NewRunner(nil, t.TempDir(), nil)
+	runner := NewRunner(nil, t.TempDir(), nil, nil)
 	if runner == nil {
 		t.Fatal("expected non-nil runner")
 	}

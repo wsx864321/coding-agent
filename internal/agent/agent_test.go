@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/provider"
 	_ "github.com/wsx864321/coding-agent/internal/provider/openai"
@@ -347,6 +348,64 @@ func TestRun_EmptyUserInput(t *testing.T) {
 // =====================================================================
 // Run: 单轮 tool call
 // =====================================================================
+
+func TestRun_EmitsTextAndToolEvents(t *testing.T) {
+	f := newFakeLLM(t,
+		scriptedResponse{
+			toolCalls: []provider.ToolCall{
+				makeToolCall("call_1", "echo", `{"input":"hi"}`),
+			},
+		},
+		scriptedResponse{content: "done"},
+	)
+
+	var kinds []event.Kind
+	registry := tools.NewRegistry()
+	registry.Register(echoTool{})
+	prov, err := provider.New("openai", provider.Config{
+		Name: "openai", APIKey: "test-key", BaseURL: f.server.URL + "/v1",
+	})
+	if err != nil {
+		t.Fatalf("provider.New: %v", err)
+	}
+
+	a, err := NewAgent(Config{
+		APIKey:   "test-key",
+		BaseURL:  f.server.URL + "/v1",
+		MaxTurns: 5,
+	},
+		WithRegistry(registry),
+		WithProvider(prov),
+		WithSink(event.FuncSink(func(e event.Event) {
+			kinds = append(kinds, e.Kind)
+		})),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	_, err = a.Run(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	hasText := false
+	hasTool := false
+	for _, k := range kinds {
+		if k == event.Text {
+			hasText = true
+		}
+		if k == event.ToolDispatch || k == event.ToolResult {
+			hasTool = true
+		}
+	}
+	if !hasText {
+		t.Errorf("expected Text events, got kinds=%v", kinds)
+	}
+	if !hasTool {
+		t.Errorf("expected ToolDispatch/ToolResult events, got kinds=%v", kinds)
+	}
+}
 
 func TestRun_OneToolCall(t *testing.T) {
 	f := newFakeLLM(t,

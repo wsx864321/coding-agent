@@ -7,24 +7,26 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/wsx864321/coding-agent/internal/event"
 )
 
 func TestApprovalRequestMsgEntersModal(t *testing.T) {
 	m := New()
 	m.busy = true
-	msg := ApprovalRequestMsg{
-		Name:    "write_file",
-		Args:    map[string]any{"path": "config.yaml"},
-		Respond: func(bool) {},
+	msg := event.Event{
+		Kind:            event.ApprovalRequest,
+		ApprovalName:    "write_file",
+		ApprovalArgs:    map[string]any{"path": "config.yaml"},
+		ApprovalRespond: func(bool) {},
 	}
 
 	next, cmd := m.Update(msg)
 	if cmd != nil {
-		t.Fatal("ApprovalRequestMsg should not return a command")
+		t.Fatal("ApprovalRequest should not return a command")
 	}
 	updated := next.(Model)
 	if updated.approval == nil {
-		t.Fatal("approval should be set after ApprovalRequestMsg")
+		t.Fatal("approval should be set after ApprovalRequest")
 	}
 	if updated.approval.toolName != "write_file" {
 		t.Fatalf("toolName = %q, want write_file", updated.approval.toolName)
@@ -155,7 +157,7 @@ func TestApprovalArgSummaryTruncatesLongArgs(t *testing.T) {
 
 func TestEscDuringApprovalCancelsTurn(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	m := NewWithRunner(&stubRunner{})
+	m := NewWithRunner(&stubRunner{}, nil)
 	m.busy = true
 	m.turnCancel = cancel
 	m.approval = &pendingApproval{
