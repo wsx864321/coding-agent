@@ -66,6 +66,7 @@ type Model struct {
 	toolStreamStart  time.Time
 	shellOutputs     map[string]string
 	shellExpanded    map[string]bool
+	sel              selection
 }
 
 // New 构造初始 TUI model。
