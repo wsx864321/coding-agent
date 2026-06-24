@@ -286,7 +286,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
-	case tea.MouseWheelMsg, tea.MouseMsg:
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			if m.sel.active {
+				// 单击取消选择
+				m.sel = selection{}
+			} else {
+				// 左键按下开始选择
+				m.sel = selection{
+					startLine: msg.Y,
+					startCol:  msg.X,
+					endLine:   msg.Y,
+					endCol:    msg.X,
+					active:    true,
+					dragging:  false,
+				}
+			}
+		}
+		return m, nil
+
+	case tea.MouseMotionMsg:
+		if m.sel.active && msg.Button == tea.MouseLeft {
+			m.sel.dragging = true
+			m.sel.endLine = msg.Y
+			m.sel.endCol = msg.X
+		}
+		return m, nil
+
+	case tea.MouseReleaseMsg:
+		if m.sel.active && msg.Button == tea.MouseLeft {
+			m.sel.dragging = false
+			m.sel.endLine = msg.Y
+			m.sel.endCol = msg.X
+		}
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		if m.sel.active {
+			// 选择时滚轮扩展选择范围
+			if msg.Button == tea.MouseWheelDown {
+				m.sel.endLine++
+			} else if msg.Button == tea.MouseWheelUp {
+				if m.sel.endLine > 0 {
+					m.sel.endLine--
+				}
+			}
+		}
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
@@ -321,6 +366,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case msg.String() == "ctrl+c":
+			if m.sel.active && !m.sel.empty() {
+				// 选中时 Ctrl+C 复制到剪贴板（暂不实现，保留选择清除）
+				m.sel = selection{}
+				return m, nil
+			}
 			m = m.interruptTurn()
 			m.approval = nil
 			m.quitting = true
@@ -331,6 +381,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case isSubmitKey(msg):
 			return m.submit()
+
+		case m.sel.active && (msg.String() == "pgup" || msg.String() == "pgdown"):
+			// 选择时 PgUp/PgDn 扩展选择范围
+			if msg.String() == "pgdown" {
+				m.sel.endLine++
+			} else {
+				if m.sel.endLine > 0 {
+					m.sel.endLine--
+				}
+			}
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 
 		case m.shouldRouteScrollToViewport(msg):
 			var cmd tea.Cmd

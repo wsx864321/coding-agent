@@ -8,6 +8,7 @@ type selection struct {
 	endLine   int
 	endCol    int
 	active    bool
+	dragging  bool
 }
 
 // empty 返回选择是否为空（未激活或起止位置相同）。

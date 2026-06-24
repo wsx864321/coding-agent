@@ -1059,6 +1059,243 @@ func TestCtrlBNoopWhenBusy(t *testing.T) {
 	}
 }
 
+// --- Task 19: 文本选择与复制 — 鼠标交互处理 ---
+
+func TestNewModelInitializesSelectionFields(t *testing.T) {
+	m := New()
+	if m.sel.active {
+		t.Fatal("sel.active should default to false")
+	}
+	if m.sel.dragging {
+		t.Fatal("sel.dragging should default to false")
+	}
+}
+
+func TestMouseLeftClickStartsSelection(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// Left click at position (5, 3) — X=col, Y=line in viewport content
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseLeft})
+	updated := next.(Model)
+
+	if !updated.sel.active {
+		t.Fatal("sel.active should be true after left click")
+	}
+	if updated.sel.dragging {
+		t.Fatal("sel.dragging should be false after click (not drag yet)")
+	}
+	if updated.sel.startLine != 3 || updated.sel.startCol != 5 {
+		t.Fatalf("start position = (%d, %d), want (3, 5)", updated.sel.startLine, updated.sel.startCol)
+	}
+	if updated.sel.endLine != 3 || updated.sel.endCol != 5 {
+		t.Fatalf("end position = (%d, %d), want (3, 5)", updated.sel.endLine, updated.sel.endCol)
+	}
+}
+
+func TestMouseMotionExtendsSelection(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// Start selection with left click
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseLeft})
+	updated := next.(Model)
+
+	// Drag to extend
+	next, _ = updated.Update(tea.MouseMotionMsg{X: 15, Y: 7, Button: tea.MouseLeft})
+	updated = next.(Model)
+
+	if !updated.sel.active {
+		t.Fatal("sel.active should remain true during drag")
+	}
+	if !updated.sel.dragging {
+		t.Fatal("sel.dragging should be true during drag")
+	}
+	if updated.sel.startLine != 3 || updated.sel.startCol != 5 {
+		t.Fatalf("start position should stay = (%d, %d), got (%d, %d)", 3, 5, updated.sel.startLine, updated.sel.startCol)
+	}
+	if updated.sel.endLine != 7 || updated.sel.endCol != 15 {
+		t.Fatalf("end position = (%d, %d), want (7, 15)", updated.sel.endLine, updated.sel.endCol)
+	}
+}
+
+func TestMouseReleaseKeepsSelection(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// Click and drag
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseLeft})
+	updated := next.(Model)
+	next, _ = updated.Update(tea.MouseMotionMsg{X: 15, Y: 7, Button: tea.MouseLeft})
+	updated = next.(Model)
+
+	// Release
+	next, _ = updated.Update(tea.MouseReleaseMsg{X: 15, Y: 7, Button: tea.MouseLeft})
+	updated = next.(Model)
+
+	if !updated.sel.active {
+		t.Fatal("sel.active should remain true after release")
+	}
+	if updated.sel.dragging {
+		t.Fatal("sel.dragging should be false after release")
+	}
+	if updated.sel.endLine != 7 || updated.sel.endCol != 15 {
+		t.Fatalf("end position should be preserved, got (%d, %d)", updated.sel.endLine, updated.sel.endCol)
+	}
+}
+
+func TestMouseClickWithoutDragCancelsSelection(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// First click starts selection
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseLeft})
+	updated := next.(Model)
+
+	if !updated.sel.active {
+		t.Fatal("sel.active should be true after first click")
+	}
+
+	// Second click at same position without drag should cancel
+	next, _ = updated.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseLeft})
+	updated = next.(Model)
+
+	if updated.sel.active {
+		t.Fatal("sel.active should be false after click cancels selection")
+	}
+}
+
+func TestMouseClickAtDifferentPositionCancelsSelection(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// Start selection
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseLeft})
+	updated := next.(Model)
+
+	// Click elsewhere without drag
+	next, _ = updated.Update(tea.MouseClickMsg{X: 20, Y: 10, Button: tea.MouseLeft})
+	updated = next.(Model)
+
+	if updated.sel.active {
+		t.Fatal("sel.active should be false after click at different position")
+	}
+}
+
+func TestMouseWheelExtendsSelectionWhenActive(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// Start selection
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseLeft})
+	updated := next.(Model)
+
+	// Scroll down while selecting
+	next, _ = updated.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	updated = next.(Model)
+
+	// endLine should have increased (scrolled down extends selection)
+	if updated.sel.endLine <= 3 {
+		t.Fatalf("endLine = %d, want > 3 after wheel down", updated.sel.endLine)
+	}
+}
+
+func TestMouseWheelDoesNotExtendWhenNotSelecting(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// No active selection
+	next, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	updated := next.(Model)
+
+	if updated.sel.active {
+		t.Fatal("sel.active should remain false when not selecting")
+	}
+}
+
+func TestPageUpExtendsSelectionWhenActive(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// Start selection at line 10
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 10, Button: tea.MouseLeft})
+	updated := next.(Model)
+
+	// PageUp while selecting
+	next, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	updated = next.(Model)
+
+	// endLine should have decreased (scrolled up extends selection upward)
+	if updated.sel.endLine >= 10 {
+		t.Fatalf("endLine = %d, want < 10 after PgUp", updated.sel.endLine)
+	}
+}
+
+func TestPageDownExtendsSelectionWhenActive(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// Start selection at line 5
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft})
+	updated := next.(Model)
+
+	// PageDown while selecting
+	next, _ = updated.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	updated = next.(Model)
+
+	// endLine should have increased
+	if updated.sel.endLine <= 5 {
+		t.Fatalf("endLine = %d, want > 5 after PgDown", updated.sel.endLine)
+	}
+}
+
+func TestScrollKeysDoNotExtendWhenNotSelecting(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	// No active selection, press PgUp
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	updated := next.(Model)
+
+	if updated.sel.active {
+		t.Fatal("sel.active should remain false when not selecting")
+	}
+}
+
+func TestRightClickDoesNotStartSelection(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m = m.layout()
+
+	next, _ := m.Update(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseRight})
+	updated := next.(Model)
+
+	if updated.sel.active {
+		t.Fatal("sel.active should be false after right click")
+	}
+}
+
 func TestToggleShellExpandRerendersEntry(t *testing.T) {
 	m := New()
 	m.width = 80
