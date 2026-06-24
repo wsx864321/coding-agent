@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -21,7 +23,13 @@ func (m Model) View() tea.View {
 	}
 
 	var parts []string
-	parts = append(parts, messageStyle.Render(m.viewport.View()))
+	vpContent := m.viewport.View()
+	if !m.sel.empty() {
+		lines := strings.Split(vpContent, "\n")
+		lines = m.sel.highlightRange(lines)
+		vpContent = strings.Join(lines, "\n")
+	}
+	parts = append(parts, messageStyle.Render(vpContent))
 
 	if m.approval != nil {
 		banner := renderApprovalBanner(*m.approval, m.contentWidth())

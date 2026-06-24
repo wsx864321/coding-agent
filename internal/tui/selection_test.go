@@ -77,3 +77,176 @@ func TestSelectionFieldsExist(t *testing.T) {
 		t.Error("active should be true")
 	}
 }
+
+func TestSelectionContainsLine(t *testing.T) {
+	tests := []struct {
+		name string
+		sel  selection
+		line int
+		want bool
+	}{
+		{
+			name: "empty selection contains nothing",
+			sel:  selection{},
+			line: 0,
+			want: false,
+		},
+		{
+			name: "inactive selection contains nothing",
+			sel:  selection{startLine: 1, endLine: 3, active: false},
+			line: 2,
+			want: false,
+		},
+		{
+			name: "line before range not contained",
+			sel:  selection{startLine: 2, endLine: 5, active: true},
+			line: 1,
+			want: false,
+		},
+		{
+			name: "line after range not contained",
+			sel:  selection{startLine: 2, endLine: 5, active: true},
+			line: 6,
+			want: false,
+		},
+		{
+			name: "line at start of range contained",
+			sel:  selection{startLine: 2, endLine: 5, active: true},
+			line: 2,
+			want: true,
+		},
+		{
+			name: "line at end of range contained",
+			sel:  selection{startLine: 2, endLine: 5, active: true},
+			line: 5,
+			want: true,
+		},
+		{
+			name: "line in middle of range contained",
+			sel:  selection{startLine: 2, endLine: 5, active: true},
+			line: 3,
+			want: true,
+		},
+		{
+			name: "single line selection contains itself",
+			sel:  selection{startLine: 3, endLine: 3, startCol: 0, endCol: 5, active: true},
+			line: 3,
+			want: true,
+		},
+		{
+			name: "reversed range still contains middle line",
+			sel:  selection{startLine: 5, endLine: 2, active: true},
+			line: 3,
+			want: true,
+		},
+		{
+			name: "reversed range contains start line",
+			sel:  selection{startLine: 5, endLine: 2, active: true},
+			line: 5,
+			want: true,
+		},
+		{
+			name: "reversed range contains end line",
+			sel:  selection{startLine: 5, endLine: 2, active: true},
+			line: 2,
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.sel.containsLine(tt.line)
+			if got != tt.want {
+				t.Errorf("containsLine(%d) = %v, want %v", tt.line, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSelectionHighlightLine(t *testing.T) {
+	sel := selection{startLine: 1, endLine: 3, active: true}
+
+	// Line outside selection should be unchanged (no ANSI reverse codes).
+	outside := sel.highlightLine("hello", 0)
+	if outside != "hello" {
+		t.Errorf("highlightLine outside range: got %q, want %q", outside, "hello")
+	}
+
+	// Line inside selection should contain ANSI reverse escape codes.
+	inside := sel.highlightLine("world", 2)
+	if inside == "world" {
+		t.Error("highlightLine inside range: line was not styled")
+	}
+	// lipgloss Reverse is ANSI code 7 (reverse video).
+	if !containsANSISequence(inside) {
+		t.Errorf("highlightLine inside range: expected ANSI escape codes, got %q", inside)
+	}
+
+	// Inactive selection should not highlight.
+	inactive := selection{startLine: 1, endLine: 3, active: false}
+	unchanged := inactive.highlightLine("test", 2)
+	if unchanged != "test" {
+		t.Errorf("highlightLine with inactive selection: got %q, want %q", unchanged, "test")
+	}
+}
+
+func TestSelectionHighlightRange(t *testing.T) {
+	sel := selection{startLine: 1, endLine: 2, active: true}
+	lines := []string{"line0", "line1", "line2", "line3"}
+
+	result := sel.highlightRange(lines)
+
+	if len(result) != len(lines) {
+		t.Fatalf("highlightRange returned %d lines, want %d", len(result), len(lines))
+	}
+
+	// line0 should be unchanged.
+	if result[0] != "line0" {
+		t.Errorf("line0: got %q, want %q", result[0], "line0")
+	}
+
+	// line1 and line2 should be styled (contain ANSI codes).
+	if !containsANSISequence(result[1]) {
+		t.Errorf("line1 should be styled but got %q", result[1])
+	}
+	if !containsANSISequence(result[2]) {
+		t.Errorf("line2 should be styled but got %q", result[2])
+	}
+
+	// line3 should be unchanged.
+	if result[3] != "line3" {
+		t.Errorf("line3: got %q, want %q", result[3], "line3")
+	}
+}
+
+func TestSelectionHighlightRangeEmpty(t *testing.T) {
+	sel := selection{}
+	lines := []string{"a", "b", "c"}
+	result := sel.highlightRange(lines)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 lines, got %d", len(result))
+	}
+	for i, line := range result {
+		if line != lines[i] {
+			t.Errorf("line %d: got %q, want %q", i, line, lines[i])
+		}
+	}
+}
+
+func TestSelectionHighlightRangeNil(t *testing.T) {
+	sel := selection{startLine: 0, endLine: 0, active: true}
+	result := sel.highlightRange(nil)
+	if result != nil {
+		t.Errorf("highlightRange(nil) should return nil, got %v", result)
+	}
+}
+
+// containsANSISequence checks if a string contains ANSI escape codes (CSI sequences).
+func containsANSISequence(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' {
+			return true
+		}
+	}
+	return false
+}
