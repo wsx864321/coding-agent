@@ -68,6 +68,7 @@ type Model struct {
 	shellOutputs     map[string]string
 	shellExpanded    map[string]bool
 	sel              selection
+	diffMaxLines     int // 0 = no limit, >0 = max visible lines before collapsing diff output
 }
 
 // New 构造初始 TUI model。
@@ -173,11 +174,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if msg.ToolCallID != "" {
 						raw = encodeToolOutputRaw(msg.ToolCallID, msg.ToolOutput)
 					}
-					m = m.appendEntry(TranscriptEntry{
-						Kind:    EntryToolOutput,
-						Content: renderToolOutput(msg.ToolOutput, toolOutputCollapseLines),
-						Raw:     raw,
-					})
+					renderOutput := msg.ToolOutput
+					if isDiffOutput(msg.ToolOutput) {
+						m = m.appendEntry(TranscriptEntry{
+							Kind:    EntryToolOutput,
+							Content: renderDiffOutput(renderOutput, m.diffMaxLines),
+							Raw:     raw,
+						})
+					} else {
+						m = m.appendEntry(TranscriptEntry{
+							Kind:    EntryToolOutput,
+							Content: renderToolOutput(renderOutput, toolOutputCollapseLines),
+							Raw:     raw,
+						})
+					}
 				}
 			}
 			m.pendingToolName = ""
@@ -845,11 +855,20 @@ func (m Model) ingestDrainEvent(e event.Event) Model {
 				if e.ToolCallID != "" {
 					raw = encodeToolOutputRaw(e.ToolCallID, e.ToolOutput)
 				}
-				m = m.appendEntry(TranscriptEntry{
-					Kind:    EntryToolOutput,
-					Content: renderToolOutput(e.ToolOutput, toolOutputCollapseLines),
-					Raw:     raw,
-				})
+				renderOutput := e.ToolOutput
+				if isDiffOutput(e.ToolOutput) {
+					m = m.appendEntry(TranscriptEntry{
+						Kind:    EntryToolOutput,
+						Content: renderDiffOutput(renderOutput, m.diffMaxLines),
+						Raw:     raw,
+					})
+				} else {
+					m = m.appendEntry(TranscriptEntry{
+						Kind:    EntryToolOutput,
+						Content: renderToolOutput(renderOutput, toolOutputCollapseLines),
+						Raw:     raw,
+					})
+				}
 			}
 		}
 		m.pendingToolName = ""
