@@ -1,0 +1,22 @@
+{
+  "change": "tui-input-system",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "0eda650553c385b492abc176c15b099dee81d9474e16e16775eada363ba0f5e3",
+  "files": [
+    { "path": "openspec/changes/tui-input-system/proposal.md", "sha256": "9fae66e7752b556e27e94ffbcd6b4bcde8d7279726bc36a5101dd3fa0b87743a" },
+    { "path": "openspec/changes/tui-input-system/design.md", "sha256": "e8ade5481dcb1f974e86f433fc65488ad2c83f40bc99e8cc643e33a4fd5a3225" },
+    { "path": "openspec/changes/tui-input-system/tasks.md", "sha256": "99813a07c70c6c0a70fe40b71c0d2ef77499ffa77f03a7405e768d3532954bea" },
+    { "path": "openspec/changes/tui-input-system/specs/clipboard-paste/spec.md", "sha256": "0a24d9d6648f95bb1b60bb8611fd6e5414529a727ae0ee6b17cbf66920580742" },
+    { "path": "openspec/changes/tui-input-system/specs/file-refs/spec.md", "sha256": "b61dc7d06778085cc355774ed212b57e61a19f8f4887a68bca90a8a2b7e1bfa3" },
+    { "path": "openspec/changes/tui-input-system/specs/input-history/spec.md", "sha256": "7ff7e1b0395dccdad6ec95ee36258fc4a7cb20bf5f3cd7e81fb5be4ff30171e3" },
+    { "path": "openspec/changes/tui-input-system/specs/mode-toggle/spec.md", "sha256": "dac909b8dee0a276debd6c2323d44709b4b5278bb281e35ed21cf97bcde45dfa" },
+    { "path": "openspec/changes/tui-input-system/specs/queue-interject/spec.md", "sha256": "f1c7cebae2f741e88752291401e5ea4afc16e67dd154e20ff2f27d13d6c3ae42" },
+    { "path": "openspec/changes/tui-input-system/specs/quick-memory/spec.md", "sha256": "ff8ee16260eec63a5ff7c53492c213ca7a5f6968f9173f00a63e1a8cd6d1190c" },
+    { "path": "openspec/changes/tui-input-system/specs/shell-direct/spec.md", "sha256": "645e734a40a95025527735568f034eeb6b8bd78893028047e39d837a689e34e4" },
+    { "path": "openspec/changes/tui-input-system/specs/slash-completion/spec.md", "sha256": "b48be5af11d9a92a06456c25cf67a5071ca5deafdf370e3fece098868c07356d" },
+    { "path": "openspec/changes/tui-input-system/specs/tui-chat-interface/spec.md", "sha256": "46c78368310412a0bafa0e69b5409163ada8dc876d20f1e818441afbf9bc6c99" }
+  ]
+}

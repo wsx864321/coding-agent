@@ -1,0 +1,19 @@
+{
+  "change": "tui-render-engine",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "cf49c423e05e920f5163a2e57b5ae060186584548506b7e03e46ea41ffccf0d9",
+  "files": [
+    { "path": "openspec/changes/tui-render-engine/proposal.md", "sha256": "d0c78534487dba4b2987c34c64d421988f58397ecda893aa9e8a531e9d0e1f82" },
+    { "path": "openspec/changes/tui-render-engine/design.md", "sha256": "3f4fd8db26b080ac53f69d3a2e62c559d5ce1d8b849cb836f71eaa0300e79f82" },
+    { "path": "openspec/changes/tui-render-engine/tasks.md", "sha256": "f8e71fee055482aa2ef2a77310ef6cbf64bd93b9ed6005812d21daa8c93d8857" },
+    { "path": "openspec/changes/tui-render-engine/specs/diff-view/spec.md", "sha256": "ccb6d3f2a98f3e31350ecfaa4feb88ad8190e98568768cf10441ff8157fca392" },
+    { "path": "openspec/changes/tui-render-engine/specs/reasoning-display/spec.md", "sha256": "5ebb5a49fa1e05d73df0806330d16158aea251ff0faa4b04c57e2f4c2795a593" },
+    { "path": "openspec/changes/tui-render-engine/specs/shell-output-toggle/spec.md", "sha256": "8c5323e915d794711c2d09be927c3c60c3672e2c5e87516dc4aad1dba3bc66b8" },
+    { "path": "openspec/changes/tui-render-engine/specs/text-selection/spec.md", "sha256": "8431e34b6ad096a482a1c0372a21c0e2facc8cab66e04fb9850c7cbcd868d68a" },
+    { "path": "openspec/changes/tui-render-engine/specs/tool-streaming/spec.md", "sha256": "eac60c4973e6e465d7b37da0eb98b6fe29608e3620f09f9f1a498788ea068b27" },
+    { "path": "openspec/changes/tui-render-engine/specs/tui-chat-interface/spec.md", "sha256": "5dce409b8e2dcf7751aa18be479b734b94a8cee295fa49159c009619b51df4a6" }
+  ]
+}

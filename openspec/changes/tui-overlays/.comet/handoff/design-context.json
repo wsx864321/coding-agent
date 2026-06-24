@@ -1,0 +1,22 @@
+{
+  "change": "tui-overlays",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "83ebb165e968f010e848e7ce2b8b56ff17aefdfc9eae8a6e39366dbd36846c1a",
+  "files": [
+    { "path": "openspec/changes/tui-overlays/proposal.md", "sha256": "a344b820212b0440ad2155063b921493e4e3c70bbac1e8da4cb46e4aa0c31df8" },
+    { "path": "openspec/changes/tui-overlays/design.md", "sha256": "5eea8238dd36f111e45bf21ac250f7d85d9951f20b344e70d57940ad21b250d6" },
+    { "path": "openspec/changes/tui-overlays/tasks.md", "sha256": "fb07c339fb421b6763d700272112f6e29dca5702b8831dc11f1b15bdd630c555" },
+    { "path": "openspec/changes/tui-overlays/specs/approval-enhance/spec.md", "sha256": "da483ee9f84a50008c27bd04d9e8e0fbd1b732e51570e57e2eb536696dd2ca6e" },
+    { "path": "openspec/changes/tui-overlays/specs/ask-card/spec.md", "sha256": "c7fb6677c2bae9d47ef1b29342f5000069eebc2a82b63f3d91047a2ec8b42865" },
+    { "path": "openspec/changes/tui-overlays/specs/clear-confirm/spec.md", "sha256": "8eb0383ebccf69aa88c2ea029c0922801c268156f37e03c231987d0606b4dd38" },
+    { "path": "openspec/changes/tui-overlays/specs/mcp-manager/spec.md", "sha256": "d3ff20d2bb4ea3971c39a8915549ddc12c4d6b052519e6befbac1a784ebf20a9" },
+    { "path": "openspec/changes/tui-overlays/specs/model-switcher/spec.md", "sha256": "785f0216a2e814ed1ce41816173a32bd5e048fffe92afa3a10e4f95bf52a6a15" },
+    { "path": "openspec/changes/tui-overlays/specs/resume-picker/spec.md", "sha256": "072e1be2c16acdbebf05ece09dee2547ab8bd32a366b9e2b08adc449ad13af55" },
+    { "path": "openspec/changes/tui-overlays/specs/rewind-picker/spec.md", "sha256": "777b731838db239d4011d82d7de489a233cbee64e019973a98ed7bf22a93060c" },
+    { "path": "openspec/changes/tui-overlays/specs/skill-picker/spec.md", "sha256": "d8b36a7f9fb5b24f25cf886fd0057d19dda3fe72dcd3eeff9dbeb2d00fadc051" },
+    { "path": "openspec/changes/tui-overlays/specs/tui-chat-interface/spec.md", "sha256": "3b2ddcbd08ac6d9b5c605386b6e7e512f9c2cbc5dca0be12d44822c8c722008d" }
+  ]
+}
