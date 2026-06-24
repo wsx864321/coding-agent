@@ -326,6 +326,11 @@ func (a *Agent) ContextStats() string {
 		a.contextWindow, a.softCompactRatio*100, a.compactRatio*100, a.compactForceRatio*100, a.compactStuck)
 }
 
+// ContextSnapshot 返回当前上下文用量快照（已用 tokens，窗口上限）。
+func (a *Agent) ContextSnapshot() (used int, window int) {
+	return a.lastPromptTokens, a.contextWindow
+}
+
 // SetSessionPath 绑定当前 session 的文件路径。
 func (a *Agent) SetSessionPath(path string) {
 	a.sessionPath = path

@@ -309,6 +309,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolPartial = ""
 			m.toolLineCount = 0
 			m.toolStreamStart = time.Time{}
+			// 刷新上下文快照
+			if csp, ok := m.runner.(ContextSnapshotProvider); ok {
+				m.contextUsed, m.contextWindow = csp.ContextSnapshot()
+			}
 			m = m.syncViewportContent()
 			if msg.Err != nil {
 				m = m.syncLayout()
@@ -1022,6 +1026,10 @@ func (m Model) ingestDrainEvent(e event.Event) Model {
 		m.toolPartial = ""
 		m.toolLineCount = 0
 		m.toolStreamStart = time.Time{}
+		// 刷新上下文快照
+		if csp, ok := m.runner.(ContextSnapshotProvider); ok {
+			m.contextUsed, m.contextWindow = csp.ContextSnapshot()
+		}
 	}
 	return m
 }

@@ -12,3 +12,8 @@ type Runner interface {
 type BalanceProvider interface {
 	Balance(ctx context.Context) (string, error)
 }
+
+// ContextSnapshotProvider 提供上下文窗口用量查询。
+type ContextSnapshotProvider interface {
+	ContextSnapshot() (used int, window int)
+}
