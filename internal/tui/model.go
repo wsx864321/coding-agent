@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -148,6 +149,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					})
 				}
 			}
+			// Reset tool stream state on ToolResult.
+			m.toolStreamIdx = -1
+			m.toolStreamID = ""
+			m.toolTail = nil
+			m.toolPartial = ""
+			m.toolLineCount = 0
+			m.toolStreamStart = time.Time{}
 			m.pendingToolName = ""
 			m.pendingToolArgs = ""
 			m.statusLabel = "thinking"
@@ -178,12 +186,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case event.ToolProgress:
+			if !m.busy {
+				return m, nil
+			}
+			m = m.ingestToolProgress(msg.ToolCallID, msg.ToolChunk)
+			m = m.syncViewportContent()
+			if m.streamCh != nil {
+				return m, waitStreamEvent(m.streamCh)
+			}
+			return m, nil
+
 		case event.TurnDone:
 			if m.interrupted {
 				m.interrupted = false
 				m.busy = false
 				m.streamCh = nil
 				m.turnCancel = nil
+				m.toolStreamIdx = -1
+				m.toolStreamID = ""
+				m.toolTail = nil
+				m.toolPartial = ""
+				m.toolLineCount = 0
+				m.toolStreamStart = time.Time{}
 				return m, nil
 			}
 			m = m.flushPending()
@@ -196,6 +221,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLabel = ""
 			m.pendingToolName = ""
 			m.pendingToolArgs = ""
+			m.toolStreamIdx = -1
+			m.toolStreamID = ""
+			m.toolTail = nil
+			m.toolPartial = ""
+			m.toolLineCount = 0
+			m.toolStreamStart = time.Time{}
 			m = m.syncViewportContent()
 			if msg.Err != nil {
 				m = m.syncLayout()
@@ -334,6 +365,12 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.reasoning.Reset()
 	m.reasoningLineIdx = -1
 	m.showReasoning = false
+	m.toolStreamIdx = -1
+	m.toolStreamID = ""
+	m.toolTail = nil
+	m.toolPartial = ""
+	m.toolLineCount = 0
+	m.toolStreamStart = time.Time{}
 	m = m.appendUserMessage(text)
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
@@ -402,6 +439,85 @@ func (m Model) ingestReasoningChunk(chunk string) Model {
 	return m
 }
 
+func (m Model) ingestToolProgress(toolCallID, chunk string) Model {
+	if chunk == "" || !m.busy {
+		return m
+	}
+
+	// If toolCallID changed, reset stream state.
+	if m.toolStreamID != "" && m.toolStreamID != toolCallID {
+		m.toolStreamIdx = -1
+		m.toolStreamID = ""
+		m.toolTail = nil
+		m.toolPartial = ""
+		m.toolLineCount = 0
+		m.toolStreamStart = time.Time{}
+	}
+
+	// First ToolProgress: create a new stream block entry.
+	if m.toolStreamIdx < 0 {
+		m.toolStreamID = toolCallID
+		m.toolStreamStart = time.Now()
+		m.toolTail = nil
+		m.toolPartial = ""
+		m.toolLineCount = 0
+		e := TranscriptEntry{Kind: EntryToolStream}
+		e = m.renderEntry(e)
+		m.transcript = append(m.transcript, e)
+		m.toolStreamIdx = len(m.transcript) - 1
+	}
+
+	// Append chunk and split into lines.
+	m.toolPartial += chunk
+	for {
+		idx := strings.Index(m.toolPartial, "\n")
+		if idx < 0 {
+			break
+		}
+		line := m.toolPartial[:idx]
+		m.toolPartial = m.toolPartial[idx+1:]
+		m.toolTail = append(m.toolTail, line)
+		m.toolLineCount++
+		// Keep only last 20 lines.
+		if len(m.toolTail) > 20 {
+			m.toolTail = m.toolTail[len(m.toolTail)-20:]
+		}
+	}
+
+	// Update the stream block entry in-place.
+	if m.toolStreamIdx >= 0 && m.toolStreamIdx < len(m.transcript) &&
+		m.transcript[m.toolStreamIdx].Kind == EntryToolStream {
+		m.transcript[m.toolStreamIdx] = m.renderEntry(m.transcript[m.toolStreamIdx])
+	}
+
+	return m
+}
+
+func (m Model) renderToolStreamBlock() string {
+	dur := time.Since(m.toolStreamStart)
+	durSec := int(dur.Seconds())
+	header := fmt.Sprintf("  ⎿  working · %ds", durSec)
+
+	var b strings.Builder
+	b.WriteString(header)
+
+	for _, line := range m.toolTail {
+		b.WriteString("\n  ⎿  ")
+		b.WriteString(line)
+	}
+
+	// Show partial line if any.
+	if m.toolPartial != "" {
+		b.WriteString("\n  ⎿  ")
+		b.WriteString(m.toolPartial)
+	}
+
+	footer := fmt.Sprintf("\n  ⎿  %d lines", m.toolLineCount)
+	b.WriteString(footer)
+
+	return b.String()
+}
+
 func (m Model) syncViewportContent() Model {
 	wasAtBottom := m.viewport.AtBottom() || len(m.transcript) == 0
 	content := m.renderTranscriptContent()
@@ -461,6 +577,12 @@ func (m Model) interruptTurn() Model {
 	m.reasoning.Reset()
 	m.reasoningLineIdx = -1
 	m.showReasoning = false
+	m.toolStreamIdx = -1
+	m.toolStreamID = ""
+	m.toolTail = nil
+	m.toolPartial = ""
+	m.toolLineCount = 0
+	m.toolStreamStart = time.Time{}
 	m = m.syncViewportContent()
 	m = m.syncLayout()
 	return m

@@ -68,6 +68,8 @@ func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
 		e.Content = errorStyle.Render(e.Raw)
 	case EntryReasoning:
 		e = m.renderReasoningEntry(e)
+	case EntryToolStream:
+		e.Content = m.renderToolStreamBlock()
 	default:
 		if e.Content == "" {
 			e.Content = e.Raw
