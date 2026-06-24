@@ -90,6 +90,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.busy {
 				return m, nil
 			}
+			// Finalize reasoning summary when text arrives
+			if m.reasoningLineIdx >= 0 {
+				m = m.finalizeReasoningSummary()
+			}
 			m.pending.WriteString(msg.Text)
 			if renderable, rest := flushableMarkdownPrefix(m.pending.String()); renderable != "" {
 				rendered := m.mdRenderer.Render(renderable, m.assistantInnerWidth())
@@ -233,6 +237,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
+		case msg.String() == "ctrl+o":
+			m.showReasoning = !m.showReasoning
+			m = m.rerenderReasoningEntry()
+			return m, nil
+
 		case msg.String() == "ctrl+c":
 			m = m.interruptTurn()
 			m.approval = nil
@@ -442,7 +451,39 @@ func (m Model) interruptTurn() Model {
 	m.approval = nil
 	m.statusMsg = interruptedStatusMsg
 	m.interrupted = true
+	m.reasoning.Reset()
+	m.reasoningLineIdx = -1
+	m.showReasoning = false
 	m = m.syncViewportContent()
 	m = m.syncLayout()
+	return m
+}
+
+// finalizeReasoningSummary updates the reasoning summary line to show
+// completed state and resets reasoningLineIdx to -1.
+func (m Model) finalizeReasoningSummary() Model {
+	if m.reasoningLineIdx < 0 || m.reasoningLineIdx >= len(m.transcript) {
+		return m
+	}
+	if m.transcript[m.reasoningLineIdx].Kind != EntryReasoning {
+		return m
+	}
+	m.transcript[m.reasoningLineIdx].Raw = m.reasoning.String()
+	m.transcript[m.reasoningLineIdx] = m.renderEntry(m.transcript[m.reasoningLineIdx])
+	m.reasoningLineIdx = -1
+	return m
+}
+
+// rerenderReasoningEntry re-renders the reasoning entry in-place when
+// showReasoning is toggled, so the transcript reflects expanded/collapsed state.
+func (m Model) rerenderReasoningEntry() Model {
+	if m.reasoningLineIdx < 0 || m.reasoningLineIdx >= len(m.transcript) {
+		return m
+	}
+	if m.transcript[m.reasoningLineIdx].Kind != EntryReasoning {
+		return m
+	}
+	m.transcript[m.reasoningLineIdx] = m.renderEntry(m.transcript[m.reasoningLineIdx])
+	m = m.syncViewportContent()
 	return m
 }

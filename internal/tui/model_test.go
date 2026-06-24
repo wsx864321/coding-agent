@@ -534,4 +534,115 @@ func TestReasoningResetOnSubmit(t *testing.T) {
 	if updated.reasoningLineIdx != -1 {
 		t.Fatalf("reasoningLineIdx should be reset to -1, got %d", updated.reasoningLineIdx)
 	}
+	if updated.showReasoning {
+		t.Fatal("showReasoning should be reset to false on submit")
+	}
+}
+
+func TestTextEventFinalizesReasoningSummary(t *testing.T) {
+	// When a Text event arrives while reasoningLineIdx >= 0, the reasoning summary
+	// should be updated to show "completed" state and reasoningLineIdx should be set to -1.
+	m := New()
+	m.width = 80
+	m.busy = true
+	m = m.ingestReasoningChunk("thinking step by step")
+	m.showReasoning = false
+
+	if m.reasoningLineIdx < 0 {
+		t.Fatal("reasoningLineIdx should be >= 0 after ingestReasoningChunk")
+	}
+
+	// Send Text event to signal reasoning completion
+	next, _ := m.Update(event.Event{Kind: event.Text, Text: "answer"})
+	updated := next.(Model)
+
+	if updated.reasoningLineIdx != -1 {
+		t.Fatalf("reasoningLineIdx = %d, want -1 after Text event", updated.reasoningLineIdx)
+	}
+	// The transcript entry at the old reasoningLineIdx should still exist
+	if len(updated.transcript) < 1 {
+		t.Fatal("transcript should have at least one entry")
+	}
+}
+
+func TestCtrlOTogglesShowReasoning(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+	m = m.ingestReasoningChunk("my analysis")
+	if m.reasoningLineIdx < 0 {
+		t.Fatal("reasoningLineIdx should be >= 0 after ingestReasoningChunk")
+	}
+
+	// Initially showReasoning is false
+	if m.showReasoning {
+		t.Fatal("showReasoning should initially be false")
+	}
+
+	// Press Ctrl+O to toggle showReasoning to true
+	next, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	updated := next.(Model)
+
+	if !updated.showReasoning {
+		t.Fatal("showReasoning should be true after first Ctrl+O")
+	}
+
+	// Press Ctrl+O again to toggle back to false
+	next, _ = updated.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	updated = next.(Model)
+
+	if updated.showReasoning {
+		t.Fatal("showReasoning should be false after second Ctrl+O")
+	}
+}
+
+func TestCtrlORerendersReasoningEntry(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+	m = m.ingestReasoningChunk("detailed analysis")
+	if m.reasoningLineIdx < 0 {
+		t.Fatal("reasoningLineIdx should be >= 0 after ingestReasoningChunk")
+	}
+
+	// Get content before toggle (collapsed)
+	beforeContent := m.transcript[m.reasoningLineIdx].Content
+
+	// Toggle to expanded
+	next, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	updated := next.(Model)
+
+	if !updated.showReasoning {
+		t.Fatal("showReasoning should be true after Ctrl+O")
+	}
+
+	// Content should be re-rendered in expanded form
+	afterContent := updated.transcript[updated.reasoningLineIdx].Content
+
+	// Expanded content should be longer (includes separator and full text)
+	if len(afterContent) <= len(beforeContent) {
+		t.Fatalf("expanded content should be longer than collapsed, before=%d, after=%d", len(beforeContent), len(afterContent))
+	}
+}
+
+func TestInterruptTurnResetsReasoningState(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+	m.reasoning.WriteString("interrupted thinking")
+	m.reasoningLineIdx = 0
+	m.showReasoning = true
+	m.transcript = append(m.transcript, TranscriptEntry{Kind: EntryReasoning, Raw: "interrupted thinking"})
+
+	updated := m.interruptTurn()
+
+	if updated.reasoning.Len() != 0 {
+		t.Fatalf("reasoning should be reset on interrupt, got %q", updated.reasoning.String())
+	}
+	if updated.reasoningLineIdx != -1 {
+		t.Fatalf("reasoningLineIdx = %d, want -1 after interrupt", updated.reasoningLineIdx)
+	}
+	if updated.showReasoning {
+		t.Fatal("showReasoning should be reset to false on interrupt")
+	}
 }
