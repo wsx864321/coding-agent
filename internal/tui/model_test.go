@@ -625,6 +625,28 @@ func TestCtrlORerendersReasoningEntry(t *testing.T) {
 	}
 }
 
+func TestNewModelInitializesToolStreamFields(t *testing.T) {
+	m := New()
+	if m.toolStreamIdx != -1 {
+		t.Fatalf("toolStreamIdx = %d, want -1", m.toolStreamIdx)
+	}
+	if m.toolStreamID != "" {
+		t.Fatalf("toolStreamID = %q, want empty", m.toolStreamID)
+	}
+	if m.toolTail != nil {
+		t.Fatalf("toolTail = %v, want nil", m.toolTail)
+	}
+	if m.toolPartial != "" {
+		t.Fatalf("toolPartial = %q, want empty", m.toolPartial)
+	}
+	if m.toolLineCount != 0 {
+		t.Fatalf("toolLineCount = %d, want 0", m.toolLineCount)
+	}
+	if !m.toolStreamStart.IsZero() {
+		t.Fatal("toolStreamStart should be zero time initially")
+	}
+}
+
 func TestInterruptTurnResetsReasoningState(t *testing.T) {
 	m := New()
 	m.width = 80

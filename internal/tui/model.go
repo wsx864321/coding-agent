@@ -44,6 +44,12 @@ type Model struct {
 	reasoningLineIdx int
 	showReasoning    bool
 	thinkStart       time.Time
+	toolStreamIdx    int
+	toolStreamID     string
+	toolTail         []string
+	toolPartial      string
+	toolLineCount    int
+	toolStreamStart  time.Time
 }
 
 // New 构造初始 TUI model。
@@ -57,6 +63,7 @@ func New() Model {
 		pending:    &strings.Builder{},
 		reasoning:  &strings.Builder{},
 		reasoningLineIdx: -1,
+		toolStreamIdx:    -1,
 	}
 }
 
