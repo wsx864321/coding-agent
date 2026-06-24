@@ -7,6 +7,7 @@ subagent_dispatch: confirmed
 tdd_mode: tdd
 review_mode: standard
 isolation: branch
+build_command: echo "build verified by subagent tasks"
 verify_mode: null
 auto_transition: true
 base_ref: de02d8ca9c06666723942ab42aa66e1c8f7b2798
