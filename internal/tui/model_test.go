@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/wsx864321/coding-agent/internal/event"
 )
 
 func viewContent(m Model) string {
@@ -341,8 +342,8 @@ func TestNewModelInitializesReasoningFields(t *testing.T) {
 	if m.reasoning.Len() != 0 {
 		t.Fatalf("reasoning.Len() = %d, want 0", m.reasoning.Len())
 	}
-	if m.reasoningLineIdx != 0 {
-		t.Fatalf("reasoningLineIdx = %d, want 0", m.reasoningLineIdx)
+	if m.reasoningLineIdx != -1 {
+		t.Fatal("reasoningLineIdx should default to -1")
 	}
 	if m.showReasoning {
 		t.Fatal("showReasoning should default to false")
@@ -364,5 +365,173 @@ func TestAppendEntryReasoning(t *testing.T) {
 	}
 	if m.transcript[0].Raw != "thinking..." {
 		t.Fatalf("transcript[0].Raw = %q, want %q", m.transcript[0].Raw, "thinking...")
+	}
+}
+
+func TestIngestReasoningChunkFirstCreatesEntry(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	m = m.ingestReasoningChunk("let me think...")
+
+	if len(m.transcript) != 1 {
+		t.Fatalf("transcript = %d, want 1", len(m.transcript))
+	}
+	if m.transcript[0].Kind != EntryReasoning {
+		t.Fatalf("transcript[0].Kind = %v, want EntryReasoning", m.transcript[0].Kind)
+	}
+	if m.transcript[0].Raw != "let me think..." {
+		t.Fatalf("transcript[0].Raw = %q, want 'let me think...'", m.transcript[0].Raw)
+	}
+	if m.reasoning.String() != "let me think..." {
+		t.Fatalf("reasoning = %q, want 'let me think...'", m.reasoning.String())
+	}
+	if m.reasoningLineIdx != 0 {
+		t.Fatalf("reasoningLineIdx = %d, want 0", m.reasoningLineIdx)
+	}
+}
+
+func TestIngestReasoningChunkSubsequentUpdatesEntry(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	m = m.ingestReasoningChunk("hello")
+	m = m.ingestReasoningChunk(" world")
+
+	if len(m.transcript) != 1 {
+		t.Fatalf("transcript = %d, want 1", len(m.transcript))
+	}
+	if m.transcript[0].Raw != "hello world" {
+		t.Fatalf("transcript[0].Raw = %q, want 'hello world'", m.transcript[0].Raw)
+	}
+	if m.reasoning.String() != "hello world" {
+		t.Fatalf("reasoning = %q, want 'hello world'", m.reasoning.String())
+	}
+}
+
+func TestIngestReasoningChunkNoopWhenNotBusy(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = false
+
+	m = m.ingestReasoningChunk("silent")
+
+	if len(m.transcript) != 0 {
+		t.Fatalf("transcript = %d, want 0 when not busy", len(m.transcript))
+	}
+}
+
+func TestRenderReasoningSummary(t *testing.T) {
+	m := New()
+	m.width = 80
+
+	summary := m.renderReasoningSummary("thinking...")
+	if summary == "" {
+		t.Fatal("renderReasoningSummary should return non-empty string")
+	}
+	if !strings.Contains(summary, "thinking...") {
+		t.Fatalf("summary should contain the reasoning text, got: %q", summary)
+	}
+}
+
+func TestRenderReasoningEntryExpanded(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.showReasoning = true
+
+	e := TranscriptEntry{Kind: EntryReasoning, Raw: "step by step analysis"}
+	e = m.renderReasoningEntry(e)
+
+	if e.Content == "" {
+		t.Fatal("renderReasoningEntry should produce content")
+	}
+	// Expanded: should contain summary line, separator, and reasoning text
+	if !strings.Contains(e.Content, "step by step analysis") {
+		t.Fatalf("expanded content should contain reasoning text, got: %q", e.Content)
+	}
+}
+
+func TestRenderReasoningEntryCollapsed(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.showReasoning = false
+
+	e := TranscriptEntry{Kind: EntryReasoning, Raw: "step by step analysis"}
+	e = m.renderReasoningEntry(e)
+
+	if e.Content == "" {
+		t.Fatal("renderReasoningEntry should produce content even when collapsed")
+	}
+	// Collapsed: should contain summary line with the raw text
+	if !strings.Contains(e.Content, "step by step analysis") {
+		t.Fatalf("collapsed content should contain summary, got: %q", e.Content)
+	}
+	// Collapsed: should NOT contain a separator line (only expanded has separator)
+	if strings.Contains(e.Content, "──") {
+		t.Fatalf("collapsed content should not contain separator, got: %q", e.Content)
+	}
+}
+
+func TestReasoningTextEventHandling(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+	ch := make(chan event.Event, 1)
+	m.streamCh = ch
+
+	next, cmd := m.Update(event.Event{Kind: event.ReasoningText, ReasoningChunk: "analyzing..."})
+	updated := next.(Model)
+
+	if len(updated.transcript) != 1 {
+		t.Fatalf("transcript = %d, want 1 after ReasoningText", len(updated.transcript))
+	}
+	if updated.transcript[0].Kind != EntryReasoning {
+		t.Fatalf("transcript[0].Kind = %v, want EntryReasoning", updated.transcript[0].Kind)
+	}
+	if cmd == nil {
+		t.Fatal("ReasoningText should return follow-up command to continue stream")
+	}
+}
+
+func TestReasoningDimStyleExists(t *testing.T) {
+	// reasoningDimStyle must be a non-nil lipgloss style with Faint(true)
+	if reasoningDimStyle.GetFaint() != true {
+		t.Fatal("reasoningDimStyle should have Faint(true)")
+	}
+}
+
+func TestRenderEntryHandlesEntryReasoning(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.showReasoning = true
+
+	e := TranscriptEntry{Kind: EntryReasoning, Raw: "think step"}
+	e = m.renderEntry(e)
+
+	if e.Content == "" {
+		t.Fatal("renderEntry should produce content for EntryReasoning")
+	}
+	if !strings.Contains(e.Content, "think step") {
+		t.Fatalf("rendered content should contain reasoning text, got: %q", e.Content)
+	}
+}
+
+func TestReasoningResetOnSubmit(t *testing.T) {
+	m, _ := newStubModel([]string{"ok"})
+	m.width = 80
+	m.textarea.SetValue("hello")
+	m.reasoning.WriteString("old thinking")
+	m.reasoningLineIdx = 3
+	m.showReasoning = true
+
+	updated, _ := m.submit()
+
+	if updated.reasoning.Len() != 0 {
+		t.Fatalf("reasoning should be reset on submit, got %q", updated.reasoning.String())
+	}
+	if updated.reasoningLineIdx != -1 {
+		t.Fatalf("reasoningLineIdx should be reset to -1, got %d", updated.reasoningLineIdx)
 	}
 }

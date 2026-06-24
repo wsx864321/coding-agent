@@ -12,6 +12,8 @@ var userBubbleStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color("63"))
 
+var reasoningDimStyle = lipgloss.NewStyle().Faint(true)
+
 func (m Model) appendEntry(e TranscriptEntry) Model {
 	if e.Content == "" {
 		e = m.renderEntry(e)
@@ -64,6 +66,8 @@ func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
 		e.Content = renderToolOutput(e.Raw, toolOutputCollapseLines)
 	case EntryError:
 		e.Content = errorStyle.Render(e.Raw)
+	case EntryReasoning:
+		e = m.renderReasoningEntry(e)
 	default:
 		if e.Content == "" {
 			e.Content = e.Raw
@@ -179,4 +183,27 @@ func (m Model) rerenderTranscript() Model {
 
 func (m Model) rebuildTranscript() Model {
 	return m.rerenderTranscript()
+}
+
+func (m Model) renderReasoningSummary(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	summary := raw
+	if len(summary) > 60 {
+		summary = summary[:60] + "…"
+	}
+	return reasoningDimStyle.Render("💭 " + summary)
+}
+
+func (m Model) renderReasoningEntry(e TranscriptEntry) TranscriptEntry {
+	summary := m.renderReasoningSummary(e.Raw)
+	if !m.showReasoning {
+		e.Content = summary
+		return e
+	}
+	// Expanded: summary line + separator + full reasoning text
+	sep := reasoningDimStyle.Render(strings.Repeat("─", m.contentWidth()))
+	e.Content = summary + "\n" + sep + "\n" + reasoningDimStyle.Render(e.Raw)
+	return e
 }

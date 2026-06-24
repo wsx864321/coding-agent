@@ -56,6 +56,7 @@ func New() Model {
 		modelName:  "coding-agent",
 		pending:    &strings.Builder{},
 		reasoning:  &strings.Builder{},
+		reasoningLineIdx: -1,
 	}
 }
 
@@ -154,6 +155,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case event.Notice:
 			m.statusMsg = msg.Text
+
+		case event.ReasoningText:
+			if !m.busy {
+				return m, nil
+			}
+			m = m.ingestReasoningChunk(msg.ReasoningChunk)
+			m = m.syncViewportContent()
+			if m.streamCh != nil {
+				return m, waitStreamEvent(m.streamCh)
+			}
+			return m, nil
 
 		case event.TurnDone:
 			if m.interrupted {
@@ -303,6 +315,9 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.statusLabel = ""
 	m.interrupted = false
 	m.pending.Reset()
+	m.reasoning.Reset()
+	m.reasoningLineIdx = -1
+	m.showReasoning = false
 	m = m.appendUserMessage(text)
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
@@ -347,6 +362,27 @@ func (m Model) appendAssistantChunk(text string) Model {
 	last := len(m.transcript) - 1
 	m.transcript[last].Raw += text
 	m.transcript[last] = m.renderEntry(m.transcript[last])
+	return m
+}
+
+func (m Model) ingestReasoningChunk(chunk string) Model {
+	if chunk == "" || !m.busy {
+		return m
+	}
+	m.reasoning.WriteString(chunk)
+	if m.reasoningLineIdx < 0 {
+		// First reasoning chunk: create a new EntryReasoning summary line.
+		e := TranscriptEntry{Kind: EntryReasoning, Raw: m.reasoning.String()}
+		e = m.renderEntry(e)
+		m.transcript = append(m.transcript, e)
+		m.reasoningLineIdx = len(m.transcript) - 1
+		return m
+	}
+	// Subsequent chunks: update the existing EntryReasoning entry.
+	if m.reasoningLineIdx < len(m.transcript) && m.transcript[m.reasoningLineIdx].Kind == EntryReasoning {
+		m.transcript[m.reasoningLineIdx].Raw = m.reasoning.String()
+		m.transcript[m.reasoningLineIdx] = m.renderEntry(m.transcript[m.reasoningLineIdx])
+	}
 	return m
 }
 
