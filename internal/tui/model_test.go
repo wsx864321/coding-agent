@@ -1417,6 +1417,171 @@ func TestDiffFoldWithLeadingTrailingSpaces(t *testing.T) {
 	}
 }
 
+// --- Task 1 (Change B): Model 结构体扩展 — 新增字段与类型 ---
+
+func TestGitStatusTypeExists(t *testing.T) {
+	// gitStatus 必须存在且包含 branch, ahead, behind, dirty 字段
+	s := gitStatus{
+		branch: "main",
+		ahead:  2,
+		behind: 1,
+		dirty:  true,
+	}
+	if s.branch != "main" {
+		t.Fatalf("gitStatus.branch = %q, want %q", s.branch, "main")
+	}
+	if s.ahead != 2 {
+		t.Fatalf("gitStatus.ahead = %d, want 2", s.ahead)
+	}
+	if s.behind != 1 {
+		t.Fatalf("gitStatus.behind = %d, want 1", s.behind)
+	}
+	if !s.dirty {
+		t.Fatal("gitStatus.dirty should be true")
+	}
+}
+
+func TestTodoItemTypeExists(t *testing.T) {
+	// todoItem 必须存在且包含 Content, Status, ActiveForm 字段，支持 JSON 序列化
+	item := todoItem{
+		Content:    "add tests",
+		Status:     "in_progress",
+		ActiveForm: "adding tests",
+	}
+	if item.Content != "add tests" {
+		t.Fatalf("todoItem.Content = %q, want %q", item.Content, "add tests")
+	}
+	if item.Status != "in_progress" {
+		t.Fatalf("todoItem.Status = %q, want %q", item.Status, "in_progress")
+	}
+	if item.ActiveForm != "adding tests" {
+		t.Fatalf("todoItem.ActiveForm = %q, want %q", item.ActiveForm, "adding tests")
+	}
+}
+
+func TestGitStatusMsgTypeExists(t *testing.T) {
+	// gitStatusMsg 携带异步 git 查询结果
+	gs := gitStatus{branch: "feat/x", dirty: true}
+	msg := gitStatusMsg{status: gs}
+	if msg.status.branch != "feat/x" {
+		t.Fatalf("gitStatusMsg.status.branch = %q, want %q", msg.status.branch, "feat/x")
+	}
+}
+
+func TestBalanceMsgTypeExists(t *testing.T) {
+	// balanceMsg 携带异步余额查询结果
+	msg := balanceMsg{text: "¥110.00"}
+	if msg.text != "¥110.00" {
+		t.Fatalf("balanceMsg.text = %q, want %q", msg.text, "¥110.00")
+	}
+}
+
+func TestStatuslineMsgTypeExists(t *testing.T) {
+	// statuslineMsg 携带自定义状态行命令的输出
+	msg := statuslineMsg{out: "custom status output"}
+	if msg.out != "custom status output" {
+		t.Fatalf("statuslineMsg.out = %q, want %q", msg.out, "custom status output")
+	}
+}
+
+func TestNewModelInitializesStatusPanelFields(t *testing.T) {
+	m := New()
+
+	// gitStatus 字段应初始化为零值
+	if m.gitStatus.branch != "" {
+		t.Fatalf("gitStatus.branch = %q, want empty", m.gitStatus.branch)
+	}
+	if m.gitStatus.ahead != 0 {
+		t.Fatalf("gitStatus.ahead = %d, want 0", m.gitStatus.ahead)
+	}
+	if m.gitStatus.behind != 0 {
+		t.Fatalf("gitStatus.behind = %d, want 0", m.gitStatus.behind)
+	}
+	if m.gitStatus.dirty {
+		t.Fatal("gitStatus.dirty should default to false")
+	}
+
+	// 数值字段应初始化为零值
+	if m.contextUsed != 0 {
+		t.Fatalf("contextUsed = %d, want 0", m.contextUsed)
+	}
+	if m.contextWindow != 0 {
+		t.Fatalf("contextWindow = %d, want 0", m.contextWindow)
+	}
+	if m.cacheHitRate != 0 {
+		t.Fatalf("cacheHitRate = %d, want 0", m.cacheHitRate)
+	}
+
+	// 字符串字段应初始化为空
+	if m.balance != "" {
+		t.Fatalf("balance = %q, want empty", m.balance)
+	}
+	if m.todoArgs != "" {
+		t.Fatalf("todoArgs = %q, want empty", m.todoArgs)
+	}
+	if m.statuslineCmd != "" {
+		t.Fatalf("statuslineCmd = %q, want empty", m.statuslineCmd)
+	}
+	if m.statuslineOut != "" {
+		t.Fatalf("statuslineOut = %q, want empty", m.statuslineOut)
+	}
+
+	// todoItems 切片应为 nil（零值）
+	if m.todoItems != nil {
+		t.Fatalf("todoItems = %v, want nil", m.todoItems)
+	}
+}
+
+func TestModelStatusPanelFieldsAreAccessible(t *testing.T) {
+	m := New()
+
+	// 设置状态面板字段
+	m.gitStatus = gitStatus{branch: "develop", ahead: 3, behind: 0, dirty: true}
+	m.contextUsed = 45000
+	m.contextWindow = 128000
+	m.cacheHitRate = 85
+	m.balance = "¥50.00"
+	m.todoArgs = `[{"content":"task1","status":"completed"}]`
+	m.todoItems = []todoItem{
+		{Content: "task1", Status: "completed", ActiveForm: "doing task1"},
+		{Content: "task2", Status: "in_progress", ActiveForm: "doing task2"},
+	}
+	m.statuslineCmd = "git status --short"
+	m.statuslineOut = "M model.go"
+
+	// 验证所有字段可读写
+	if m.gitStatus.branch != "develop" || m.gitStatus.ahead != 3 || m.gitStatus.behind != 0 || !m.gitStatus.dirty {
+		t.Fatalf("gitStatus = %+v, want {develop 3 0 true}", m.gitStatus)
+	}
+	if m.contextUsed != 45000 {
+		t.Fatalf("contextUsed = %d, want 45000", m.contextUsed)
+	}
+	if m.contextWindow != 128000 {
+		t.Fatalf("contextWindow = %d, want 128000", m.contextWindow)
+	}
+	if m.cacheHitRate != 85 {
+		t.Fatalf("cacheHitRate = %d, want 85", m.cacheHitRate)
+	}
+	if m.balance != "¥50.00" {
+		t.Fatalf("balance = %q, want %q", m.balance, "¥50.00")
+	}
+	if m.todoArgs != `[{"content":"task1","status":"completed"}]` {
+		t.Fatalf("todoArgs = %q", m.todoArgs)
+	}
+	if len(m.todoItems) != 2 {
+		t.Fatalf("len(todoItems) = %d, want 2", len(m.todoItems))
+	}
+	if m.todoItems[0].Content != "task1" {
+		t.Fatalf("todoItems[0].Content = %q", m.todoItems[0].Content)
+	}
+	if m.statuslineCmd != "git status --short" {
+		t.Fatalf("statuslineCmd = %q", m.statuslineCmd)
+	}
+	if m.statuslineOut != "M model.go" {
+		t.Fatalf("statuslineOut = %q", m.statuslineOut)
+	}
+}
+
 func TestRegularTextStillSubmitsNormally(t *testing.T) {
 	m, _ := newStubModel([]string{"response"})
 	m.textarea.SetValue("hello world")

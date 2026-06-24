@@ -16,6 +16,36 @@ import (
 	"github.com/wsx864321/coding-agent/internal/event"
 )
 
+// gitStatus 保存最近一次 git 状态快照。
+type gitStatus struct {
+	branch string
+	ahead  int
+	behind int
+	dirty  bool
+}
+
+// todoItem 表示 todo_write 工具中的单个任务项。
+type todoItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ActiveForm string `json:"activeForm"`
+}
+
+// gitStatusMsg 携带异步 git 查询结果。
+type gitStatusMsg struct {
+	status gitStatus
+}
+
+// balanceMsg 携带异步余额查询结果。
+type balanceMsg struct {
+	text string
+}
+
+// statuslineMsg 携带自定义状态行命令的输出。
+type statuslineMsg struct {
+	out string
+}
+
 const interruptedStatusMsg = "已中断"
 
 const maxEventDrain = 512
@@ -70,6 +100,17 @@ type Model struct {
 	shellExpanded    map[string]bool
 	sel              selection
 	diffMaxLines     int // 0 = no limit, >0 = max visible lines before collapsing diff output
+
+	// --- 状态面板字段 ---
+	gitStatus     gitStatus
+	contextUsed   int
+	contextWindow int
+	cacheHitRate  int    // 0-100 百分比
+	balance       string // 格式化后的余额文本，如 "¥110.00"
+	todoArgs      string // 最近一次 todo_write 的原始 JSON 参数
+	todoItems     []todoItem
+	statuslineCmd string
+	statuslineOut string
 }
 
 // New 构造初始 TUI model。
