@@ -1,5 +1,5 @@
 workflow: full
-phase: verify
+phase: archive
 context_compression: off
 build_mode: subagent-driven-development
 build_pause: null
@@ -13,11 +13,11 @@ auto_transition: true
 base_ref: de02d8ca9c06666723942ab42aa66e1c8f7b2798
 design_doc: docs/superpowers/specs/2026-06-24-tui-status-panels-design.md
 plan: docs/superpowers/plans/2026-06-24-tui-status-panels.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-06-24-tui-status-panels-verify.md
 branch_status: handled
 created_at: 2026-06-24
-verified_at: null
+verified_at: 2026-06-24
 archived: false
 handoff_context: openspec/changes/tui-status-panels/.comet/handoff/design-context.json
 handoff_hash: 6127494da1dd6f76106aeabd978db4c61636615e22fe3a3f7f32792b79a2977f
