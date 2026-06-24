@@ -17,29 +17,33 @@ const interruptedStatusMsg = "已中断"
 
 // Model 是 Bubble Tea 聊天界面的状态机。
 type Model struct {
-	transcript  []TranscriptEntry
-	textarea    textarea.Model
-	viewport    viewport.Model
-	spinner     spinner.Model
-	mdRenderer  MarkdownRenderer
-	width       int
-	height      int
-	modelName   string
-	runStart    time.Time
-	quitting    bool
-	busy        bool
-	lastError   string
-	statusMsg   string
-	statusLabel string
-	interrupted     bool
-	pending         *strings.Builder
-	pendingToolName string
-	pendingToolArgs string
-	approval    *pendingApproval
-	runner      Runner
-	tuiSink     *TuiSink
-	streamCh    <-chan event.Event
-	turnCancel  context.CancelFunc
+	transcript       []TranscriptEntry
+	textarea         textarea.Model
+	viewport         viewport.Model
+	spinner          spinner.Model
+	mdRenderer       MarkdownRenderer
+	width            int
+	height           int
+	modelName        string
+	runStart         time.Time
+	quitting         bool
+	busy             bool
+	lastError        string
+	statusMsg        string
+	statusLabel      string
+	interrupted      bool
+	pending          *strings.Builder
+	pendingToolName  string
+	pendingToolArgs  string
+	approval         *pendingApproval
+	runner           Runner
+	tuiSink          *TuiSink
+	streamCh         <-chan event.Event
+	turnCancel       context.CancelFunc
+	reasoning        *strings.Builder
+	reasoningLineIdx int
+	showReasoning    bool
+	thinkStart       time.Time
 }
 
 // New 构造初始 TUI model。
@@ -51,6 +55,7 @@ func New() Model {
 		mdRenderer: NewGlamourRenderer(),
 		modelName:  "coding-agent",
 		pending:    &strings.Builder{},
+		reasoning:  &strings.Builder{},
 	}
 }
 
@@ -405,4 +410,3 @@ func (m Model) interruptTurn() Model {
 	m = m.syncLayout()
 	return m
 }
-

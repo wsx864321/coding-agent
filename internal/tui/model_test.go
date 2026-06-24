@@ -325,3 +325,44 @@ func longTranscriptHistory() []TranscriptEntry {
 	}
 	return entries
 }
+
+func TestEntryReasoningKindExists(t *testing.T) {
+	// EntryReasoning must be a distinct EntryKind with value 5.
+	if EntryReasoning != 5 {
+		t.Fatalf("EntryReasoning = %d, want 5", EntryReasoning)
+	}
+}
+
+func TestNewModelInitializesReasoningFields(t *testing.T) {
+	m := New()
+	if m.reasoning == nil {
+		t.Fatal("reasoning should be initialized in New()")
+	}
+	if m.reasoning.Len() != 0 {
+		t.Fatalf("reasoning.Len() = %d, want 0", m.reasoning.Len())
+	}
+	if m.reasoningLineIdx != 0 {
+		t.Fatalf("reasoningLineIdx = %d, want 0", m.reasoningLineIdx)
+	}
+	if m.showReasoning {
+		t.Fatal("showReasoning should default to false")
+	}
+	if !m.thinkStart.IsZero() {
+		t.Fatal("thinkStart should be zero time initially")
+	}
+}
+
+func TestAppendEntryReasoning(t *testing.T) {
+	m := New()
+	m.width = 80
+	m = m.appendEntry(TranscriptEntry{Kind: EntryReasoning, Raw: "thinking..."})
+	if len(m.transcript) != 1 {
+		t.Fatalf("transcript = %d, want 1", len(m.transcript))
+	}
+	if m.transcript[0].Kind != EntryReasoning {
+		t.Fatalf("transcript[0].Kind = %v, want EntryReasoning", m.transcript[0].Kind)
+	}
+	if m.transcript[0].Raw != "thinking..." {
+		t.Fatalf("transcript[0].Raw = %q, want %q", m.transcript[0].Raw, "thinking...")
+	}
+}
