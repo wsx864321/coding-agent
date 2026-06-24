@@ -647,6 +647,22 @@ func TestNewModelInitializesToolStreamFields(t *testing.T) {
 	}
 }
 
+func TestNewModelInitializesShellOutputFields(t *testing.T) {
+	m := New()
+	if m.shellOutputs == nil {
+		t.Fatal("shellOutputs should be initialized in New()")
+	}
+	if len(m.shellOutputs) != 0 {
+		t.Fatalf("shellOutputs len = %d, want 0", len(m.shellOutputs))
+	}
+	if m.shellExpanded == nil {
+		t.Fatal("shellExpanded should be initialized in New()")
+	}
+	if len(m.shellExpanded) != 0 {
+		t.Fatalf("shellExpanded len = %d, want 0", len(m.shellExpanded))
+	}
+}
+
 func TestInterruptTurnResetsReasoningState(t *testing.T) {
 	m := New()
 	m.width = 80

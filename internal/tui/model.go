@@ -53,6 +53,8 @@ type Model struct {
 	toolPartial      string
 	toolLineCount    int
 	toolStreamStart  time.Time
+	shellOutputs     map[string]string
+	shellExpanded    map[string]bool
 }
 
 // New 构造初始 TUI model。
@@ -67,6 +69,8 @@ func New() Model {
 		reasoning:  &strings.Builder{},
 		reasoningLineIdx: -1,
 		toolStreamIdx:    -1,
+		shellOutputs:     make(map[string]string),
+		shellExpanded:    make(map[string]bool),
 	}
 }
 
