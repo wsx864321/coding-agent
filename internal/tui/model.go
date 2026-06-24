@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -469,6 +470,29 @@ func (m Model) shouldRouteScrollToViewport(msg tea.KeyPressMsg) bool {
 func (m Model) submit() (Model, tea.Cmd) {
 	text := strings.TrimSpace(m.textarea.Value())
 	if m.busy || text == "" || m.runner == nil {
+		return m, nil
+	}
+
+	// 检测 /diff-fold 斜杠命令：解析 /diff-fold N 更新 diffMaxLines
+	if strings.HasPrefix(text, "/diff-fold") {
+		arg := strings.TrimSpace(strings.TrimPrefix(text, "/diff-fold"))
+		if arg == "" {
+			m.statusMsg = fmt.Sprintf("diff 折叠行数：%d (0=不限制)", m.diffMaxLines)
+		} else if n, err := strconv.Atoi(arg); err == nil {
+			if n < 0 {
+				n = 0
+			}
+			m.diffMaxLines = n
+			if n == 0 {
+				m.statusMsg = "diff 折叠行数：不限制"
+			} else {
+				m.statusMsg = fmt.Sprintf("diff 折叠行数设为 %d", n)
+			}
+		} else {
+			m.statusMsg = fmt.Sprintf("无效参数: /diff-fold %s (需要整数)", arg)
+		}
+		m.textarea.Reset()
+		m = m.syncLayout()
 		return m, nil
 	}
 

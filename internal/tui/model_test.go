@@ -1322,3 +1322,117 @@ func TestToggleShellExpandRerendersEntry(t *testing.T) {
 		t.Fatalf("expanded content should contain full output, got: %q", expandedContent)
 	}
 }
+
+// --- Task 24: /diff-fold 斜杠命令 ---
+
+func TestDiffFoldSetsMaxLines(t *testing.T) {
+	m, _ := newStubModel(nil)
+	m.textarea.SetValue("/diff-fold 10")
+
+	updated, _ := m.submit()
+
+	if updated.diffMaxLines != 10 {
+		t.Fatalf("diffMaxLines = %d, want 10", updated.diffMaxLines)
+	}
+	if updated.textarea.Value() != "" {
+		t.Fatalf("textarea = %q, want cleared", updated.textarea.Value())
+	}
+	if updated.busy {
+		t.Fatal("busy should be false — /diff-fold should not start a turn")
+	}
+	if updated.statusMsg == "" {
+		t.Fatal("statusMsg should be set after /diff-fold command")
+	}
+}
+
+func TestDiffFoldZeroDisablesLimit(t *testing.T) {
+	m, _ := newStubModel(nil)
+	m.diffMaxLines = 5 // start with a limit
+	m.textarea.SetValue("/diff-fold 0")
+
+	updated, _ := m.submit()
+
+	if updated.diffMaxLines != 0 {
+		t.Fatalf("diffMaxLines = %d, want 0 (no limit)", updated.diffMaxLines)
+	}
+}
+
+func TestDiffFoldNoArgsShowsCurrent(t *testing.T) {
+	m, _ := newStubModel(nil)
+	m.diffMaxLines = 7
+	m.textarea.SetValue("/diff-fold")
+
+	updated, _ := m.submit()
+
+	// diffMaxLines should stay unchanged
+	if updated.diffMaxLines != 7 {
+		t.Fatalf("diffMaxLines = %d, want 7 (unchanged)", updated.diffMaxLines)
+	}
+	if updated.statusMsg == "" {
+		t.Fatal("statusMsg should show current value")
+	}
+	if updated.busy {
+		t.Fatal("busy should remain false — /diff-fold should not start a turn")
+	}
+}
+
+func TestDiffFoldInvalidArgShowsError(t *testing.T) {
+	m, _ := newStubModel(nil)
+	m.diffMaxLines = 3
+	m.textarea.SetValue("/diff-fold abc")
+
+	updated, _ := m.submit()
+
+	// diffMaxLines should stay unchanged on invalid input
+	if updated.diffMaxLines != 3 {
+		t.Fatalf("diffMaxLines = %d, want 3 (unchanged on error)", updated.diffMaxLines)
+	}
+	if updated.statusMsg == "" {
+		t.Fatal("statusMsg should show error for invalid argument")
+	}
+	if updated.busy {
+		t.Fatal("busy should be false — /diff-fold should not start a turn")
+	}
+}
+
+func TestDiffFoldClearsTextarea(t *testing.T) {
+	m, _ := newStubModel(nil)
+	m.textarea.SetValue("/diff-fold 25")
+
+	updated, _ := m.submit()
+
+	if updated.textarea.Value() != "" {
+		t.Fatalf("textarea = %q, want empty after /diff-fold", updated.textarea.Value())
+	}
+}
+
+func TestDiffFoldWithLeadingTrailingSpaces(t *testing.T) {
+	m, _ := newStubModel(nil)
+	m.textarea.SetValue("  /diff-fold  15  ")
+
+	updated, _ := m.submit()
+
+	if updated.diffMaxLines != 15 {
+		t.Fatalf("diffMaxLines = %d, want 15", updated.diffMaxLines)
+	}
+}
+
+func TestRegularTextStillSubmitsNormally(t *testing.T) {
+	m, _ := newStubModel([]string{"response"})
+	m.textarea.SetValue("hello world")
+
+	updated, cmd := m.submit()
+
+	if cmd == nil {
+		t.Fatal("regular text should start a turn (return command)")
+	}
+	if !updated.busy {
+		t.Fatal("busy should be true after normal submit")
+	}
+	if updated.textarea.Value() != "" {
+		t.Fatalf("textarea = %q, want cleared", updated.textarea.Value())
+	}
+	if len(updated.transcript) != 2 {
+		t.Fatalf("transcript = %d, want 2 (user + assistant placeholder)", len(updated.transcript))
+	}
+}
