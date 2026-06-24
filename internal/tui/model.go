@@ -181,6 +181,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLabel = "running " + msg.ToolName + "..."
 			m.pendingToolName = msg.ToolName
 			m.pendingToolArgs = msg.ToolArgs
+			// 识别 todo_write 工具并解析任务列表
+			if msg.ToolName == "todo_write" {
+				m.todoArgs = msg.ToolArgs
+				m.todoItems = parseTodoItems(msg.ToolArgs)
+			}
 
 		case event.ToolResult:
 			if !m.busy {
@@ -894,6 +899,11 @@ func (m Model) ingestDrainEvent(e event.Event) Model {
 		m.statusLabel = "running " + e.ToolName + "..."
 		m.pendingToolName = e.ToolName
 		m.pendingToolArgs = e.ToolArgs
+		// 识别 todo_write 工具并解析任务列表
+		if e.ToolName == "todo_write" {
+			m.todoArgs = e.ToolArgs
+			m.todoItems = parseTodoItems(e.ToolArgs)
+		}
 
 	case event.ToolResult:
 		if !m.busy {

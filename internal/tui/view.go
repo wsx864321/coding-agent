@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -77,27 +76,4 @@ func joinLines(lines []string) string {
 	return out
 }
 
-// renderTodoPanel 渲染 Todo 任务面板（临时占位，Task 6 中移至 todopanel.go）。
-func renderTodoPanel(items []todoItem) string {
-	if len(items) == 0 {
-		return ""
-	}
-	var parts []string
-	for _, it := range items {
-		icon := todoStatusIcon(it.Status)
-		parts = append(parts, fmt.Sprintf("%s %s", icon, it.Content))
-	}
-	return statusStyle.Render(strings.Join(parts, " · "))
-}
 
-// todoStatusIcon 返回任务状态对应的图标。
-func todoStatusIcon(status string) string {
-	switch status {
-	case "completed":
-		return "✓"
-	case "in_progress":
-		return "⟳"
-	default:
-		return "⏳"
-	}
-}
