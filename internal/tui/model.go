@@ -16,6 +16,8 @@ import (
 
 const interruptedStatusMsg = "已中断"
 
+const maxEventDrain = 512
+
 // Model 是 Bubble Tea 聊天界面的状态机。
 type Model struct {
 	transcript       []TranscriptEntry
@@ -123,6 +125,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.busy {
 				return m, nil
 			}
+			// Collapse active stream block into a summary before adding ToolResult.
+			if m.toolStreamIdx >= 0 {
+				m = m.collapseToolStream()
+			}
 			name := msg.ToolName
 			if name == "" {
 				name = m.pendingToolName
@@ -149,13 +155,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					})
 				}
 			}
-			// Reset tool stream state on ToolResult.
-			m.toolStreamIdx = -1
-			m.toolStreamID = ""
-			m.toolTail = nil
-			m.toolPartial = ""
-			m.toolLineCount = 0
-			m.toolStreamStart = time.Time{}
 			m.pendingToolName = ""
 			m.pendingToolArgs = ""
 			m.statusLabel = "thinking"
@@ -243,6 +242,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = false
 		m.streamCh = nil
 		m = m.syncViewportContent()
+		return m, nil
+
+	case drainBatchMsg:
+		for _, e := range msg.events {
+			m = m.ingestDrainEvent(e)
+		}
+		m = m.syncViewportContent()
+		if m.streamCh != nil {
+			return m, drainEvents(m.streamCh)
+		}
 		return m, nil
 
 	case spinner.TickMsg:
@@ -615,4 +624,188 @@ func (m Model) rerenderReasoningEntry() Model {
 	m.transcript[m.reasoningLineIdx] = m.renderEntry(m.transcript[m.reasoningLineIdx])
 	m = m.syncViewportContent()
 	return m
+}
+
+// collapseToolStream converts the active EntryToolStream block into a collapsed
+// EntryToolOutput summary and resets all stream state fields.
+func (m Model) collapseToolStream() Model {
+	if m.toolStreamIdx < 0 || m.toolStreamIdx >= len(m.transcript) {
+		return m
+	}
+	if m.transcript[m.toolStreamIdx].Kind != EntryToolStream {
+		return m
+	}
+	// Build a collapsed summary from the stream tail lines.
+	var b strings.Builder
+	for _, line := range m.toolTail {
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	if m.toolPartial != "" {
+		b.WriteString(m.toolPartial)
+	}
+	raw := b.String()
+	m.transcript[m.toolStreamIdx].Kind = EntryToolOutput
+	m.transcript[m.toolStreamIdx].Raw = raw
+	m.transcript[m.toolStreamIdx] = m.renderEntry(m.transcript[m.toolStreamIdx])
+
+	// Reset stream state.
+	m.toolStreamIdx = -1
+	m.toolStreamID = ""
+	m.toolTail = nil
+	m.toolPartial = ""
+	m.toolLineCount = 0
+	m.toolStreamStart = time.Time{}
+	return m
+}
+
+// ingestDrainEvent applies a single event during a drain loop, without
+// syncing the viewport (the caller batches syncViewportContent at the end).
+func (m Model) ingestDrainEvent(e event.Event) Model {
+	switch e.Kind {
+	case event.Text:
+		if !m.busy {
+			return m
+		}
+		if m.reasoningLineIdx >= 0 {
+			m = m.finalizeReasoningSummary()
+		}
+		m.pending.WriteString(e.Text)
+		if renderable, rest := flushableMarkdownPrefix(m.pending.String()); renderable != "" {
+			rendered := m.mdRenderer.Render(renderable, m.assistantInnerWidth())
+			m = m.appendAssistantRendered(rendered, renderable)
+			m.pending.Reset()
+			m.pending.WriteString(rest)
+		}
+
+	case event.ToolDispatch:
+		if !m.busy {
+			return m
+		}
+		m.statusLabel = "running " + e.ToolName + "..."
+		m.pendingToolName = e.ToolName
+		m.pendingToolArgs = e.ToolArgs
+
+	case event.ToolResult:
+		if !m.busy {
+			return m
+		}
+		if m.toolStreamIdx >= 0 {
+			m = m.collapseToolStream()
+		}
+		name := e.ToolName
+		if name == "" {
+			name = m.pendingToolName
+		}
+		args := m.pendingToolArgs
+		w := m.contentWidth()
+		if e.ToolIsErr {
+			m = m.appendEntry(TranscriptEntry{
+				Kind:    EntryToolCard,
+				Content: renderToolCardError(name, e.ToolOutput, w),
+				Raw:     encodeToolCardRaw(name, e.ToolOutput, true),
+			})
+		} else {
+			m = m.appendEntry(TranscriptEntry{
+				Kind:    EntryToolCard,
+				Content: renderToolCard(name, args, w),
+				Raw:     encodeToolCardRaw(name, args, false),
+			})
+			if e.ToolOutput != "" {
+				m = m.appendEntry(TranscriptEntry{
+					Kind:    EntryToolOutput,
+					Content: renderToolOutput(e.ToolOutput, toolOutputCollapseLines),
+					Raw:     e.ToolOutput,
+				})
+			}
+		}
+		m.pendingToolName = ""
+		m.pendingToolArgs = ""
+		m.statusLabel = "thinking"
+
+	case event.ApprovalRequest:
+		if !m.busy {
+			return m
+		}
+		m.approval = &pendingApproval{
+			toolName: e.ApprovalName,
+			args:     e.ApprovalArgs,
+			respond:  e.ApprovalRespond,
+		}
+
+	case event.Notice:
+		m.statusMsg = e.Text
+
+	case event.ReasoningText:
+		if !m.busy {
+			return m
+		}
+		m = m.ingestReasoningChunk(e.ReasoningChunk)
+
+	case event.ToolProgress:
+		if !m.busy {
+			return m
+		}
+		m = m.ingestToolProgress(e.ToolCallID, e.ToolChunk)
+
+	case event.TurnDone:
+		if m.interrupted {
+			m.interrupted = false
+			m.busy = false
+			m.streamCh = nil
+			m.turnCancel = nil
+			m.toolStreamIdx = -1
+			m.toolStreamID = ""
+			m.toolTail = nil
+			m.toolPartial = ""
+			m.toolLineCount = 0
+			m.toolStreamStart = time.Time{}
+			return m
+		}
+		m = m.flushPending()
+		if e.Err != nil {
+			m.lastError = e.Err.Error()
+		}
+		m.busy = false
+		m.streamCh = nil
+		m.turnCancel = nil
+		m.statusLabel = ""
+		m.pendingToolName = ""
+		m.pendingToolArgs = ""
+		m.toolStreamIdx = -1
+		m.toolStreamID = ""
+		m.toolTail = nil
+		m.toolPartial = ""
+		m.toolLineCount = 0
+		m.toolStreamStart = time.Time{}
+	}
+	return m
+}
+
+// drainBatchMsg carries a batch of events drained from the stream channel.
+type drainBatchMsg struct {
+	events []event.Event
+}
+
+// drainEvents reads up to maxEventDrain events from the channel, then returns
+// a drainBatchMsg. If the channel is closed, it returns streamClosedMsg.
+func drainEvents(ch <-chan event.Event) tea.Cmd {
+	return func() tea.Msg {
+		events := make([]event.Event, 0, maxEventDrain)
+		for i := 0; i < maxEventDrain; i++ {
+			e, ok := <-ch
+			if !ok {
+				if len(events) == 0 {
+					return streamClosedMsg{}
+				}
+				break
+			}
+			events = append(events, e)
+			// If we just got a TurnDone, stop draining so it can be processed.
+			if e.Kind == event.TurnDone {
+				break
+			}
+		}
+		return drainBatchMsg{events: events}
+	}
 }

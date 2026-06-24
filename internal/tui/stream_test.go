@@ -324,3 +324,227 @@ func TestEntryToolStreamKindExists(t *testing.T) {
 		t.Fatalf("EntryToolStream = %d, want 6", EntryToolStream)
 	}
 }
+
+// --- Task 9: ToolResult stream collapse & drain loop ---
+
+func TestToolResultCollapsesStreamToSummary(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	// Create stream block with several lines
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolProgress,
+		ToolCallID: "call_abc",
+		ToolChunk:  "line1\nline2\nline3\nline4\nline5\n",
+	})
+	updated := next.(Model)
+
+	if updated.toolStreamIdx < 0 {
+		t.Fatal("toolStreamIdx should be >= 0 after ToolProgress")
+	}
+	if updated.transcript[updated.toolStreamIdx].Kind != EntryToolStream {
+		t.Fatal("transcript entry should be EntryToolStream before ToolResult")
+	}
+
+	// ToolResult should collapse the stream block into a summary
+	next, _ = updated.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: "result output",
+	})
+	updated = next.(Model)
+
+	// Stream state should be reset
+	if updated.toolStreamIdx != -1 {
+		t.Fatalf("toolStreamIdx = %d, want -1 after ToolResult", updated.toolStreamIdx)
+	}
+
+	// The stream entry should be converted to EntryToolOutput (collapsed summary)
+	found := false
+	for _, entry := range updated.transcript {
+		if entry.Kind == EntryToolOutput && strings.Contains(entry.Raw, "line1") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("stream block should be converted to collapsed EntryToolOutput summary")
+	}
+}
+
+func TestToolResultCollapseNoStream(t *testing.T) {
+	// When no active stream (toolStreamIdx < 0), ToolResult should not crash.
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: "output",
+	})
+	updated := next.(Model)
+
+	// Should have ToolCard and ToolOutput entries
+	if len(updated.transcript) < 1 {
+		t.Fatal("transcript should have entries after ToolResult")
+	}
+}
+
+func TestMaxEventDrainConstant(t *testing.T) {
+	if maxEventDrain != 512 {
+		t.Fatalf("maxEventDrain = %d, want 512", maxEventDrain)
+	}
+}
+
+func TestIngestDrainEventText(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	m = m.ingestDrainEvent(event.Event{Kind: event.Text, Text: "hello world"})
+
+	if m.pending.String() != "hello world" {
+		t.Fatalf("pending = %q, want 'hello world'", m.pending.String())
+	}
+}
+
+func TestIngestDrainEventToolProgress(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	m = m.ingestDrainEvent(event.Event{
+		Kind:       event.ToolProgress,
+		ToolCallID: "call_abc",
+		ToolChunk:  "output\n",
+	})
+
+	if len(m.transcript) != 1 {
+		t.Fatalf("transcript = %d, want 1", len(m.transcript))
+	}
+	if m.transcript[0].Kind != EntryToolStream {
+		t.Fatalf("transcript[0].Kind = %v, want EntryToolStream", m.transcript[0].Kind)
+	}
+}
+
+func TestIngestDrainEventToolResult(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	// First create a stream
+	m = m.ingestDrainEvent(event.Event{
+		Kind:       event.ToolProgress,
+		ToolCallID: "call_abc",
+		ToolChunk:  "line1\nline2\n",
+	})
+
+	if m.toolStreamIdx < 0 {
+		t.Fatal("toolStreamIdx should be >= 0 after ToolProgress")
+	}
+
+	// Then ToolResult should collapse it
+	m = m.ingestDrainEvent(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: "result",
+	})
+
+	if m.toolStreamIdx != -1 {
+		t.Fatalf("toolStreamIdx = %d, want -1 after ToolResult", m.toolStreamIdx)
+	}
+}
+
+func TestIngestDrainEventNoopWhenNotBusy(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = false
+
+	m = m.ingestDrainEvent(event.Event{Kind: event.Text, Text: "ignored"})
+
+	if m.pending.String() != "" {
+		t.Fatalf("pending = %q, want empty when not busy", m.pending.String())
+	}
+}
+
+func TestDrainEventsReadsMultiple(t *testing.T) {
+	ch := make(chan event.Event, 10)
+	for i := 0; i < 5; i++ {
+		ch <- event.Event{Kind: event.Text, Text: "msg"}
+	}
+	close(ch)
+
+	cmd := drainEvents(ch)
+	msg := cmd()
+
+	batch, ok := msg.(drainBatchMsg)
+	if !ok {
+		t.Fatalf("drainEvents returned %T, want drainBatchMsg", msg)
+	}
+	if len(batch.events) != 5 {
+		t.Fatalf("batch size = %d, want 5", len(batch.events))
+	}
+}
+
+func TestDrainEventsClosedChannel(t *testing.T) {
+	ch := make(chan event.Event)
+	close(ch)
+
+	cmd := drainEvents(ch)
+	msg := cmd()
+
+	if _, ok := msg.(streamClosedMsg); !ok {
+		t.Fatalf("drainEvents on closed channel returned %T, want streamClosedMsg", msg)
+	}
+}
+
+func TestDrainBatchMsgProcessing(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+	ch := make(chan event.Event, 1)
+	m.streamCh = ch
+
+	batch := drainBatchMsg{
+		events: []event.Event{
+			{Kind: event.Text, Text: "hello"},
+			{Kind: event.Text, Text: " world"},
+		},
+	}
+
+	next, cmd := m.Update(batch)
+	updated := next.(Model)
+
+	if updated.pending.String() != "hello world" {
+		t.Fatalf("pending = %q, want 'hello world'", updated.pending.String())
+	}
+	// Should continue draining if streamCh is set
+	if cmd == nil {
+		t.Fatal("drainBatchMsg should return a command to continue draining")
+	}
+}
+
+func TestDrainBatchMsgNoStreamCh(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	batch := drainBatchMsg{
+		events: []event.Event{
+			{Kind: event.Text, Text: "hello"},
+		},
+	}
+
+	next, cmd := m.Update(batch)
+	updated := next.(Model)
+
+	if updated.pending.String() != "hello" {
+		t.Fatalf("pending = %q, want 'hello'", updated.pending.String())
+	}
+	// No streamCh, should return nil command
+	if cmd != nil {
+		t.Fatal("drainBatchMsg without streamCh should return nil command")
+	}
+}
