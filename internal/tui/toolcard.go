@@ -243,3 +243,22 @@ func decodeToolCardRaw(raw string) (name, args string, isError bool) {
 	}
 	return name, args, isError
 }
+
+const toolOutputRawSep = "\x1e"
+
+// encodeToolOutputRaw encodes a toolCallID and output string into a single
+// Raw value. The format is toolCallID + \x1e + output.
+func encodeToolOutputRaw(toolCallID, output string) string {
+	return toolCallID + toolOutputRawSep + output
+}
+
+// decodeToolOutputRaw decodes a Raw value back into toolCallID and output.
+// If the raw does not contain the separator, it is treated as a legacy
+// plain-output entry and the entire string is returned as output.
+func decodeToolOutputRaw(raw string) (toolCallID, output string) {
+	parts := strings.SplitN(raw, toolOutputRawSep, 2)
+	if len(parts) < 2 {
+		return "", raw
+	}
+	return parts[0], parts[1]
+}

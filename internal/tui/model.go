@@ -167,10 +167,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Raw:     encodeToolCardRaw(name, args, false),
 				})
 				if msg.ToolOutput != "" {
+					raw := msg.ToolOutput
+					if msg.ToolCallID != "" {
+						raw = encodeToolOutputRaw(msg.ToolCallID, msg.ToolOutput)
+					}
 					m = m.appendEntry(TranscriptEntry{
 						Kind:    EntryToolOutput,
 						Content: renderToolOutput(msg.ToolOutput, toolOutputCollapseLines),
-						Raw:     msg.ToolOutput,
+						Raw:     raw,
 					})
 				}
 			}
@@ -306,6 +310,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.String() == "ctrl+o":
 			m.showReasoning = !m.showReasoning
 			m = m.rerenderReasoningEntry()
+			return m, nil
+
+		case msg.String() == "ctrl+b":
+			if m.busy {
+				return m, nil
+			}
+			m = m.toggleShellExpand()
 			return m, nil
 
 		case msg.String() == "ctrl+c":
@@ -678,6 +689,31 @@ func (m Model) collapseToolStream() Model {
 	return m
 }
 
+// toggleShellExpand reverse-scans the transcript from the end to find the
+// nearest EntryToolOutput entry whose Raw encodes a toolCallID. It toggles
+// the shellExpanded flag for that toolCallID and re-renders the entry in-place.
+func (m Model) toggleShellExpand() Model {
+	for i := len(m.transcript) - 1; i >= 0; i-- {
+		if m.transcript[i].Kind != EntryToolOutput {
+			continue
+		}
+		toolCallID, _ := decodeToolOutputRaw(m.transcript[i].Raw)
+		if toolCallID == "" {
+			continue
+		}
+		if _, ok := m.shellOutputs[toolCallID]; !ok {
+			continue
+		}
+		// Toggle the expanded state.
+		m.shellExpanded[toolCallID] = !m.shellExpanded[toolCallID]
+		// Re-render the entry in-place.
+		m.transcript[i] = m.renderEntry(m.transcript[i])
+		m = m.syncViewportContent()
+		return m
+	}
+	return m
+}
+
 // ingestDrainEvent applies a single event during a drain loop, without
 // syncing the viewport (the caller batches syncViewportContent at the end).
 func (m Model) ingestDrainEvent(e event.Event) Model {
@@ -735,10 +771,14 @@ func (m Model) ingestDrainEvent(e event.Event) Model {
 				Raw:     encodeToolCardRaw(name, args, false),
 			})
 			if e.ToolOutput != "" {
+				raw := e.ToolOutput
+				if e.ToolCallID != "" {
+					raw = encodeToolOutputRaw(e.ToolCallID, e.ToolOutput)
+				}
 				m = m.appendEntry(TranscriptEntry{
 					Kind:    EntryToolOutput,
 					Content: renderToolOutput(e.ToolOutput, toolOutputCollapseLines),
-					Raw:     e.ToolOutput,
+					Raw:     raw,
 				})
 			}
 		}

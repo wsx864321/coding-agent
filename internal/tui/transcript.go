@@ -63,7 +63,18 @@ func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
 			e.Content = renderToolCard(name, args, w)
 		}
 	case EntryToolOutput:
-		e.Content = renderToolOutput(e.Raw, toolOutputCollapseLines)
+		toolCallID, output := decodeToolOutputRaw(e.Raw)
+		if toolCallID != "" && m.shellExpanded[toolCallID] {
+			// Show full output when expanded (use len of lines as maxLines to avoid collapse)
+			fullOutput := m.shellOutputs[toolCallID]
+			if fullOutput == "" {
+				fullOutput = output
+			}
+			lines := splitLines(fullOutput)
+			e.Content = renderToolOutput(fullOutput, len(lines))
+		} else {
+			e.Content = renderToolOutput(output, toolOutputCollapseLines)
+		}
 	case EntryError:
 		e.Content = errorStyle.Render(e.Raw)
 	case EntryReasoning:

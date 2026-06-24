@@ -842,3 +842,246 @@ func TestInterruptTurnResetsReasoningState(t *testing.T) {
 		t.Fatal("showReasoning should be reset to false on interrupt")
 	}
 }
+
+// --- Task 13: Ctrl+B shell output toggle ---
+
+func TestEncodeDecodeToolOutputRaw(t *testing.T) {
+	toolCallID := "call_bash_abc"
+	output := "line1\nline2\nline3"
+
+	encoded := encodeToolOutputRaw(toolCallID, output)
+	if encoded == "" {
+		t.Fatal("encodeToolOutputRaw should return non-empty string")
+	}
+
+	decodedID, decodedOutput := decodeToolOutputRaw(encoded)
+	if decodedID != toolCallID {
+		t.Fatalf("decoded toolCallID = %q, want %q", decodedID, toolCallID)
+	}
+	if decodedOutput != output {
+		t.Fatalf("decoded output = %q, want %q", decodedOutput, output)
+	}
+}
+
+func TestDecodeToolOutputRawLegacy(t *testing.T) {
+	// Legacy format: raw is just the output string (no toolCallID prefix)
+	legacy := "just plain output"
+	decodedID, decodedOutput := decodeToolOutputRaw(legacy)
+	if decodedID != "" {
+		t.Fatalf("decoded toolCallID from legacy = %q, want empty", decodedID)
+	}
+	if decodedOutput != legacy {
+		t.Fatalf("decoded output from legacy = %q, want %q", decodedOutput, legacy)
+	}
+}
+
+func TestToolResultBashWritesToolCallIDToRaw(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	next, _ := m.Update(event.Event{
+		Kind:       event.ToolResult,
+		ToolName:   "bash",
+		ToolOutput: "hello world",
+		ToolCallID: "call_bash_x",
+	})
+	updated := next.(Model)
+
+	// Find the EntryToolOutput entry
+	var outputEntry *TranscriptEntry
+	for i := range updated.transcript {
+		if updated.transcript[i].Kind == EntryToolOutput {
+			outputEntry = &updated.transcript[i]
+			break
+		}
+	}
+	if outputEntry == nil {
+		t.Fatal("should have EntryToolOutput in transcript")
+	}
+
+	decodedID, decodedOutput := decodeToolOutputRaw(outputEntry.Raw)
+	if decodedID != "call_bash_x" {
+		t.Fatalf("decoded toolCallID = %q, want 'call_bash_x'", decodedID)
+	}
+	if decodedOutput != "hello world" {
+		t.Fatalf("decoded output = %q, want 'hello world'", decodedOutput)
+	}
+}
+
+func TestToggleShellExpandTogglesState(t *testing.T) {
+	m := New()
+	m.width = 80
+
+	// Set up: a bash tool output entry with toolCallID in Raw
+	m.shellOutputs["call_bash_t"] = "full output content"
+	m.shellExpanded["call_bash_t"] = false
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryToolOutput,
+		Raw:  encodeToolOutputRaw("call_bash_t", "collapsed view"),
+	})
+	m.transcript[0] = m.renderEntry(m.transcript[0])
+	m = m.syncViewportContent()
+
+	// First toggle: expand
+	m = m.toggleShellExpand()
+	if !m.shellExpanded["call_bash_t"] {
+		t.Fatal("shellExpanded should be true after first toggle")
+	}
+
+	// Second toggle: collapse
+	m = m.toggleShellExpand()
+	if m.shellExpanded["call_bash_t"] {
+		t.Fatal("shellExpanded should be false after second toggle")
+	}
+}
+
+func TestToggleShellExpandReversesScan(t *testing.T) {
+	m := New()
+	m.width = 80
+
+	// Two bash outputs: the last one should be found by reverse scan
+	m.shellOutputs["call_first"] = "first output"
+	m.shellOutputs["call_last"] = "last output"
+	m.shellExpanded["call_first"] = false
+	m.shellExpanded["call_last"] = false
+
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryToolOutput,
+		Raw:  encodeToolOutputRaw("call_first", "first collapsed"),
+	})
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryToolOutput,
+		Raw:  encodeToolOutputRaw("call_last", "last collapsed"),
+	})
+	m = m.rerenderTranscript()
+	m = m.syncViewportContent()
+
+	// Reverse scan should find "call_last" (the most recent bash output)
+	m = m.toggleShellExpand()
+	if m.shellExpanded["call_first"] {
+		t.Fatal("shellExpanded['call_first'] should remain false (not the nearest)")
+	}
+	if !m.shellExpanded["call_last"] {
+		t.Fatal("shellExpanded['call_last'] should be true (nearest bash output)")
+	}
+}
+
+func TestToggleShellExpandSkipsNonBashOutputs(t *testing.T) {
+	m := New()
+	m.width = 80
+
+	// A non-bash output (legacy format, no toolCallID) followed by a bash output
+	m.shellOutputs["call_bash_s"] = "bash output"
+	m.shellExpanded["call_bash_s"] = false
+
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryToolOutput,
+		Raw:  "plain output without toolCallID",
+	})
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryToolOutput,
+		Raw:  encodeToolOutputRaw("call_bash_s", "bash collapsed"),
+	})
+	m = m.rerenderTranscript()
+	m = m.syncViewportContent()
+
+	// Reverse scan should skip the legacy entry and find "call_bash_s"
+	m = m.toggleShellExpand()
+	if !m.shellExpanded["call_bash_s"] {
+		t.Fatal("shellExpanded['call_bash_s'] should be true (found after skipping legacy)")
+	}
+}
+
+func TestToggleShellExpandNoopWhenNoBashOutput(t *testing.T) {
+	m := New()
+	m.width = 80
+
+	// No bash outputs at all
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryUserMessage,
+		Raw:  "hello",
+	})
+	m = m.rerenderTranscript()
+	m = m.syncViewportContent()
+
+	before := m.renderTranscriptContent()
+	m = m.toggleShellExpand()
+	after := m.renderTranscriptContent()
+
+	if before != after {
+		t.Fatal("toggleShellExpand should be noop when no bash output found")
+	}
+}
+
+func TestCtrlBTogglesShellExpand(t *testing.T) {
+	m := New()
+	m.width = 80
+
+	// Set up a bash output entry
+	m.shellOutputs["call_ctrl_b"] = "full bash output for ctrl+b test"
+	m.shellExpanded["call_ctrl_b"] = false
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryToolOutput,
+		Raw:  encodeToolOutputRaw("call_ctrl_b", "collapsed bash"),
+	})
+	m = m.rerenderTranscript()
+	m = m.syncViewportContent()
+
+	// Press Ctrl+B
+	next, _ := m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	updated := next.(Model)
+
+	if !updated.shellExpanded["call_ctrl_b"] {
+		t.Fatal("shellExpanded should be true after Ctrl+B")
+	}
+}
+
+func TestCtrlBNoopWhenBusy(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.busy = true
+
+	m.shellOutputs["call_busy"] = "output"
+	m.shellExpanded["call_busy"] = false
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryToolOutput,
+		Raw:  encodeToolOutputRaw("call_busy", "collapsed"),
+	})
+	m = m.rerenderTranscript()
+
+	// Ctrl+B while busy should be a noop
+	next, _ := m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	updated := next.(Model)
+
+	if updated.shellExpanded["call_busy"] {
+		t.Fatal("shellExpanded should remain false when busy")
+	}
+}
+
+func TestToggleShellExpandRerendersEntry(t *testing.T) {
+	m := New()
+	m.width = 80
+
+	m.shellOutputs["call_render"] = "expanded\nmulti\nline\noutput"
+	m.shellExpanded["call_render"] = false
+	m.transcript = append(m.transcript, TranscriptEntry{
+		Kind: EntryToolOutput,
+		Raw:  encodeToolOutputRaw("call_render", "collapsed"),
+	})
+	m.transcript[0] = m.renderEntry(m.transcript[0])
+	m = m.syncViewportContent()
+
+	collapsedContent := m.transcript[0].Content
+
+	// Toggle to expand
+	m = m.toggleShellExpand()
+	expandedContent := m.transcript[0].Content
+
+	if expandedContent == collapsedContent {
+		t.Fatal("content should change after toggleShellExpand")
+	}
+	if !strings.Contains(expandedContent, "expanded") {
+		t.Fatalf("expanded content should contain full output, got: %q", expandedContent)
+	}
+}
