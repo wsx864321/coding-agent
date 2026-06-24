@@ -206,6 +206,84 @@ func TestBottomHeightWithApprovalAndError(t *testing.T) {
 	}
 }
 
+func TestViewThreePanelLayout(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m.modelName = "coding-agent"
+	m = m.syncLayout()
+	m = m.syncViewportContent()
+
+	view := viewContent(m)
+	for _, want := range []string{
+		"> ",
+		"Plan",
+		"coding-agent",
+		"Shift+Enter",
+		"Enter 发送",
+		"Ctrl+C",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("View missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestViewShowsApprovalBannerAboveStatusBar(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m.approval = &pendingApproval{
+		toolName: "write_file",
+		args:     map[string]any{"path": "config.yaml"},
+		respond:  func(bool) {},
+	}
+	m = m.syncLayout()
+
+	view := viewContent(m)
+	statusIdx := strings.Index(view, "Plan")
+	bannerIdx := strings.Index(view, "Allow")
+	if bannerIdx < 0 {
+		t.Fatalf("View missing approval banner:\n%s", view)
+	}
+	if statusIdx < 0 {
+		t.Fatalf("View missing status bar:\n%s", view)
+	}
+	if bannerIdx > statusIdx {
+		t.Fatalf("approval banner should appear above status bar:\n%s", view)
+	}
+}
+
+func TestViewBusyShowsWorkingLine(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m.busy = true
+	m.runStart = time.Now()
+	m = m.syncLayout()
+
+	view := viewContent(m)
+	if !strings.Contains(view, "thinking") {
+		t.Fatalf("View(busy) missing thinking:\n%s", view)
+	}
+}
+
+func TestViewWithTodoPanel(t *testing.T) {
+	m := New()
+	m.width = 80
+	m.height = 24
+	m.todoArgs = `[{"content":"task1","status":"in_progress","activeForm":"testing"}]`
+	m.todoItems = []todoItem{
+		{Content: "task1", Status: "in_progress", ActiveForm: "testing"},
+	}
+	m = m.syncLayout()
+
+	view := viewContent(m)
+	if !strings.Contains(view, "task1") {
+		t.Fatalf("View(todo) missing task:\n%s", view)
+	}
+}
+
 func TestWindowSizeSetsViewportHeightFromBottom(t *testing.T) {
 	m := New()
 	m.textarea.SetValue("line1\nline2")

@@ -172,6 +172,9 @@ func (m Model) bottomHeight() int {
 		h++ // 工作行
 	}
 	h += 2 // 模式行 + 数据行
+	if m.statusMsg != "" {
+		h++ // 状态消息行
+	}
 	if m.todoArgs != "" {
 		h++ // Todo 面板
 	}
