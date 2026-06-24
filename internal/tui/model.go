@@ -308,7 +308,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Err != nil {
 				m = m.syncLayout()
 			}
-			return m, tea.Batch(fetchGitStatus())
+			return m, tea.Batch(fetchGitStatus(), fetchBalance(m.runner))
 		}
 		if m.streamCh != nil {
 			return m, waitStreamEvent(m.streamCh)
@@ -317,6 +317,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case gitStatusMsg:
 		m.gitStatus = msg.status
+		return m, nil
+
+	case balanceMsg:
+		m.balance = msg.text
 		return m, nil
 
 	case streamClosedMsg:
@@ -578,7 +582,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	}()
 
 	m.streamCh = ch
-	return m, tea.Batch(waitStreamEvent(ch), m.spinner.Tick, fetchGitStatus())
+	return m, tea.Batch(waitStreamEvent(ch), m.spinner.Tick, fetchGitStatus(), fetchBalance(m.runner))
 }
 
 func waitStreamEvent(ch <-chan event.Event) tea.Cmd {

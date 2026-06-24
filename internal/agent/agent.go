@@ -359,6 +359,19 @@ func (a *Agent) SessionDir() string {
 	return a.sessionDir
 }
 
+// Balance 查询当前 provider 的余额信息。
+// 返回格式化后的余额字符串（如 "¥110.00"），错误时返回空串。
+func (a *Agent) Balance(ctx context.Context) (string, error) {
+	// 尝试将 provider 断言为支持余额查询的扩展接口。
+	type balanceQuerier interface {
+		QueryBalance(ctx context.Context) (string, error)
+	}
+	if bq, ok := a.prov.(balanceQuerier); ok {
+		return bq.QueryBalance(ctx)
+	}
+	return "", nil
+}
+
 // MemorySet 返回底层的 memory Set
 func (a *Agent) MemorySet() *memory.Set {
 	return a.memSet

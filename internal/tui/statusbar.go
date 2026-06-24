@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -165,6 +167,21 @@ func renderStatusBar(m Model) string {
 }
 
 // ---- bottomHeight 动态计算 ----
+
+// fetchBalance 异步查询余额。
+func fetchBalance(runner Runner) tea.Cmd {
+	return func() tea.Msg {
+		bp, ok := runner.(BalanceProvider)
+		if !ok {
+			return balanceMsg{}
+		}
+		text, err := bp.Balance(context.Background())
+		if err != nil || text == "" {
+			return balanceMsg{}
+		}
+		return balanceMsg{text: text}
+	}
+}
 
 func (m Model) bottomHeight() int {
 	h := 0
