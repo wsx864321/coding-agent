@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -12,7 +14,7 @@ var (
 	statusStyle  = lipgloss.NewStyle().Faint(true)
 )
 
-const helpText = "Shift+Enter 换行 · Enter 发送 · Esc 中断 · Ctrl+C 退出"
+const helpText = "Shift+Enter 换行 · Enter 发送 · Esc 中断 · Ctrl+O 推理 · Ctrl+B Shell · Ctrl+C 退出/复制"
 
 // View 渲染对话区、审批横幅、状态栏、输入区与快捷键帮助。
 func (m Model) View() tea.View {
@@ -21,7 +23,13 @@ func (m Model) View() tea.View {
 	}
 
 	var parts []string
-	parts = append(parts, messageStyle.Render(m.viewport.View()))
+	vpContent := m.viewport.View()
+	if !m.sel.empty() {
+		lines := strings.Split(vpContent, "\n")
+		lines = m.sel.highlightRange(lines)
+		vpContent = strings.Join(lines, "\n")
+	}
+	parts = append(parts, messageStyle.Render(vpContent))
 
 	if m.approval != nil {
 		banner := renderApprovalBanner(*m.approval, m.contentWidth())

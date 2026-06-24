@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,36 +12,64 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/atotto/clipboard"
 	"github.com/wsx864321/coding-agent/internal/event"
 )
 
 const interruptedStatusMsg = "已中断"
 
+const maxEventDrain = 512
+
+const maxShellOutputSize = 1024 * 1024 // 1MB
+
+// truncateShellOutput 对超过 1MB 的输出保留最后 1MB，并标注截断。
+func truncateShellOutput(output string) string {
+	if len(output) <= maxShellOutputSize {
+		return output
+	}
+	truncated := output[len(output)-maxShellOutputSize:]
+	return "[output truncated] " + truncated
+}
+
 // Model 是 Bubble Tea 聊天界面的状态机。
 type Model struct {
-	transcript  []TranscriptEntry
-	textarea    textarea.Model
-	viewport    viewport.Model
-	spinner     spinner.Model
-	mdRenderer  MarkdownRenderer
-	width       int
-	height      int
-	modelName   string
-	runStart    time.Time
-	quitting    bool
-	busy        bool
-	lastError   string
-	statusMsg   string
-	statusLabel string
-	interrupted     bool
-	pending         *strings.Builder
-	pendingToolName string
-	pendingToolArgs string
-	approval    *pendingApproval
-	runner      Runner
-	tuiSink     *TuiSink
-	streamCh    <-chan event.Event
-	turnCancel  context.CancelFunc
+	transcript       []TranscriptEntry
+	textarea         textarea.Model
+	viewport         viewport.Model
+	spinner          spinner.Model
+	mdRenderer       MarkdownRenderer
+	width            int
+	height           int
+	modelName        string
+	runStart         time.Time
+	quitting         bool
+	busy             bool
+	lastError        string
+	statusMsg        string
+	statusLabel      string
+	interrupted      bool
+	pending          *strings.Builder
+	pendingToolName  string
+	pendingToolArgs  string
+	approval         *pendingApproval
+	runner           Runner
+	tuiSink          *TuiSink
+	streamCh         <-chan event.Event
+	turnCancel       context.CancelFunc
+	reasoning        *strings.Builder
+	reasoningLineIdx int
+	showReasoning    bool
+	thinkStart       time.Time
+	toolStreamIdx    int
+	toolStreamID     string
+	toolTail         []string
+	toolPartial      string
+	toolLineCount    int
+	toolStreamStart  time.Time
+	shellOutputs     map[string]string
+	shellExpanded    map[string]bool
+	sel              selection
+	diffMaxLines     int // 0 = no limit, >0 = max visible lines before collapsing diff output
 }
 
 // New 构造初始 TUI model。
@@ -51,6 +81,11 @@ func New() Model {
 		mdRenderer: NewGlamourRenderer(),
 		modelName:  "coding-agent",
 		pending:    &strings.Builder{},
+		reasoning:  &strings.Builder{},
+		reasoningLineIdx: -1,
+		toolStreamIdx:    -1,
+		shellOutputs:     make(map[string]string),
+		shellExpanded:    make(map[string]bool),
 	}
 }
 
@@ -84,6 +119,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.busy {
 				return m, nil
 			}
+			// Finalize reasoning summary when text arrives
+			if m.reasoningLineIdx >= 0 {
+				m = m.finalizeReasoningSummary()
+			}
 			m.pending.WriteString(msg.Text)
 			if renderable, rest := flushableMarkdownPrefix(m.pending.String()); renderable != "" {
 				rendered := m.mdRenderer.Render(renderable, m.assistantInnerWidth())
@@ -105,6 +144,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.busy {
 				return m, nil
 			}
+			// Collapse active stream block into a summary before adding ToolResult.
+			if m.toolStreamIdx >= 0 {
+				m = m.collapseToolStream()
+			}
+			// Store bash output in shellOutputs with 1MB truncation.
+			if msg.ToolName == "bash" && msg.ToolCallID != "" {
+				m.shellOutputs[msg.ToolCallID] = truncateShellOutput(msg.ToolOutput)
+			}
 			name := msg.ToolName
 			if name == "" {
 				name = m.pendingToolName
@@ -124,11 +171,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Raw:     encodeToolCardRaw(name, args, false),
 				})
 				if msg.ToolOutput != "" {
-					m = m.appendEntry(TranscriptEntry{
-						Kind:    EntryToolOutput,
-						Content: renderToolOutput(msg.ToolOutput, toolOutputCollapseLines),
-						Raw:     msg.ToolOutput,
-					})
+					raw := msg.ToolOutput
+					if msg.ToolCallID != "" {
+						raw = encodeToolOutputRaw(msg.ToolCallID, msg.ToolOutput)
+					}
+					renderOutput := msg.ToolOutput
+					if isDiffOutput(msg.ToolOutput) {
+						m = m.appendEntry(TranscriptEntry{
+							Kind:    EntryToolOutput,
+							Content: renderDiffOutput(renderOutput, m.diffMaxLines),
+							Raw:     raw,
+						})
+					} else {
+						m = m.appendEntry(TranscriptEntry{
+							Kind:    EntryToolOutput,
+							Content: renderToolOutput(renderOutput, toolOutputCollapseLines),
+							Raw:     raw,
+						})
+					}
 				}
 			}
 			m.pendingToolName = ""
@@ -150,12 +210,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case event.Notice:
 			m.statusMsg = msg.Text
 
+		case event.ReasoningText:
+			if !m.busy {
+				return m, nil
+			}
+			m = m.ingestReasoningChunk(msg.ReasoningChunk)
+			m = m.syncViewportContent()
+			if m.streamCh != nil {
+				return m, waitStreamEvent(m.streamCh)
+			}
+			return m, nil
+
+		case event.ToolProgress:
+			if !m.busy {
+				return m, nil
+			}
+			m = m.ingestToolProgress(msg.ToolCallID, msg.ToolChunk)
+			m = m.syncViewportContent()
+			if m.streamCh != nil {
+				return m, waitStreamEvent(m.streamCh)
+			}
+			return m, nil
+
 		case event.TurnDone:
 			if m.interrupted {
 				m.interrupted = false
 				m.busy = false
 				m.streamCh = nil
 				m.turnCancel = nil
+				m.toolStreamIdx = -1
+				m.toolStreamID = ""
+				m.toolTail = nil
+				m.toolPartial = ""
+				m.toolLineCount = 0
+				m.toolStreamStart = time.Time{}
 				return m, nil
 			}
 			m = m.flushPending()
@@ -168,6 +256,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLabel = ""
 			m.pendingToolName = ""
 			m.pendingToolArgs = ""
+			m.toolStreamIdx = -1
+			m.toolStreamID = ""
+			m.toolTail = nil
+			m.toolPartial = ""
+			m.toolLineCount = 0
+			m.toolStreamStart = time.Time{}
 			m = m.syncViewportContent()
 			if msg.Err != nil {
 				m = m.syncLayout()
@@ -186,6 +280,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.syncViewportContent()
 		return m, nil
 
+	case drainBatchMsg:
+		for _, e := range msg.events {
+			m = m.ingestDrainEvent(e)
+		}
+		m = m.syncViewportContent()
+		if m.streamCh != nil {
+			return m, drainEvents(m.streamCh)
+		}
+		return m, nil
+
 	case spinner.TickMsg:
 		if !m.busy {
 			return m, nil
@@ -194,7 +298,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
-	case tea.MouseWheelMsg, tea.MouseMsg:
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			if m.sel.active {
+				// 单击取消选择
+				m.sel = selection{}
+			} else {
+				// 左键按下开始选择
+				m.sel = selection{
+					startLine: msg.Y,
+					startCol:  msg.X,
+					endLine:   msg.Y,
+					endCol:    msg.X,
+					active:    true,
+					dragging:  false,
+				}
+			}
+		}
+		return m, nil
+
+	case tea.MouseMotionMsg:
+		if m.sel.active && msg.Button == tea.MouseLeft {
+			m.sel.dragging = true
+			m.sel.endLine = msg.Y
+			m.sel.endCol = msg.X
+		}
+		return m, nil
+
+	case tea.MouseReleaseMsg:
+		if m.sel.active && msg.Button == tea.MouseLeft {
+			m.sel.dragging = false
+			m.sel.endLine = msg.Y
+			m.sel.endCol = msg.X
+		}
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		if m.sel.active {
+			// 选择时滚轮扩展选择范围
+			if msg.Button == tea.MouseWheelDown {
+				m.sel.endLine++
+			} else if msg.Button == tea.MouseWheelUp {
+				if m.sel.endLine > 0 {
+					m.sel.endLine--
+				}
+			}
+		}
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
@@ -216,7 +365,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
+		case msg.String() == "ctrl+o":
+			m.showReasoning = !m.showReasoning
+			m = m.rerenderReasoningEntry()
+			return m, nil
+
+		case msg.String() == "ctrl+b":
+			if m.busy {
+				return m, nil
+			}
+			m = m.toggleShellExpand()
+			return m, nil
+
 		case msg.String() == "ctrl+c":
+			if m.sel.active && !m.sel.empty() {
+				// 选中时 Ctrl+C 复制到剪贴板
+				lines := strings.Split(m.viewport.View(), "\n")
+				text := m.sel.extractSelectedText(lines)
+				if text != "" {
+					_ = clipboard.WriteAll(text)
+				}
+				m.sel = selection{}
+				return m, nil
+			}
 			m = m.interruptTurn()
 			m.approval = nil
 			m.quitting = true
@@ -227,6 +398,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case isSubmitKey(msg):
 			return m.submit()
+
+		case m.sel.active && (msg.String() == "pgup" || msg.String() == "pgdown"):
+			// 选择时 PgUp/PgDn 扩展选择范围
+			if msg.String() == "pgdown" {
+				m.sel.endLine++
+			} else {
+				if m.sel.endLine > 0 {
+					m.sel.endLine--
+				}
+			}
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 
 		case m.shouldRouteScrollToViewport(msg):
 			var cmd tea.Cmd
@@ -289,6 +473,29 @@ func (m Model) submit() (Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// 检测 /diff-fold 斜杠命令：解析 /diff-fold N 更新 diffMaxLines
+	if strings.HasPrefix(text, "/diff-fold") {
+		arg := strings.TrimSpace(strings.TrimPrefix(text, "/diff-fold"))
+		if arg == "" {
+			m.statusMsg = fmt.Sprintf("diff 折叠行数：%d (0=不限制)", m.diffMaxLines)
+		} else if n, err := strconv.Atoi(arg); err == nil {
+			if n < 0 {
+				n = 0
+			}
+			m.diffMaxLines = n
+			if n == 0 {
+				m.statusMsg = "diff 折叠行数：不限制"
+			} else {
+				m.statusMsg = fmt.Sprintf("diff 折叠行数设为 %d", n)
+			}
+		} else {
+			m.statusMsg = fmt.Sprintf("无效参数: /diff-fold %s (需要整数)", arg)
+		}
+		m.textarea.Reset()
+		m = m.syncLayout()
+		return m, nil
+	}
+
 	m.textarea.Reset()
 	m = m.syncLayout()
 	m.busy = true
@@ -298,6 +505,15 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.statusLabel = ""
 	m.interrupted = false
 	m.pending.Reset()
+	m.reasoning.Reset()
+	m.reasoningLineIdx = -1
+	m.showReasoning = false
+	m.toolStreamIdx = -1
+	m.toolStreamID = ""
+	m.toolTail = nil
+	m.toolPartial = ""
+	m.toolLineCount = 0
+	m.toolStreamStart = time.Time{}
 	m = m.appendUserMessage(text)
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
@@ -343,6 +559,106 @@ func (m Model) appendAssistantChunk(text string) Model {
 	m.transcript[last].Raw += text
 	m.transcript[last] = m.renderEntry(m.transcript[last])
 	return m
+}
+
+func (m Model) ingestReasoningChunk(chunk string) Model {
+	if chunk == "" || !m.busy {
+		return m
+	}
+	m.reasoning.WriteString(chunk)
+	if m.reasoningLineIdx < 0 {
+		// First reasoning chunk: create a new EntryReasoning summary line.
+		e := TranscriptEntry{Kind: EntryReasoning, Raw: m.reasoning.String()}
+		e = m.renderEntry(e)
+		m.transcript = append(m.transcript, e)
+		m.reasoningLineIdx = len(m.transcript) - 1
+		return m
+	}
+	// Subsequent chunks: update the existing EntryReasoning entry.
+	if m.reasoningLineIdx < len(m.transcript) && m.transcript[m.reasoningLineIdx].Kind == EntryReasoning {
+		m.transcript[m.reasoningLineIdx].Raw = m.reasoning.String()
+		m.transcript[m.reasoningLineIdx] = m.renderEntry(m.transcript[m.reasoningLineIdx])
+	}
+	return m
+}
+
+func (m Model) ingestToolProgress(toolCallID, chunk string) Model {
+	if chunk == "" || !m.busy {
+		return m
+	}
+
+	// If toolCallID changed, reset stream state.
+	if m.toolStreamID != "" && m.toolStreamID != toolCallID {
+		m.toolStreamIdx = -1
+		m.toolStreamID = ""
+		m.toolTail = nil
+		m.toolPartial = ""
+		m.toolLineCount = 0
+		m.toolStreamStart = time.Time{}
+	}
+
+	// First ToolProgress: create a new stream block entry.
+	if m.toolStreamIdx < 0 {
+		m.toolStreamID = toolCallID
+		m.toolStreamStart = time.Now()
+		m.toolTail = nil
+		m.toolPartial = ""
+		m.toolLineCount = 0
+		e := TranscriptEntry{Kind: EntryToolStream}
+		e = m.renderEntry(e)
+		m.transcript = append(m.transcript, e)
+		m.toolStreamIdx = len(m.transcript) - 1
+	}
+
+	// Append chunk and split into lines.
+	m.toolPartial += chunk
+	for {
+		idx := strings.Index(m.toolPartial, "\n")
+		if idx < 0 {
+			break
+		}
+		line := m.toolPartial[:idx]
+		m.toolPartial = m.toolPartial[idx+1:]
+		m.toolTail = append(m.toolTail, line)
+		m.toolLineCount++
+		// Keep only last 20 lines.
+		if len(m.toolTail) > 20 {
+			m.toolTail = m.toolTail[len(m.toolTail)-20:]
+		}
+	}
+
+	// Update the stream block entry in-place.
+	if m.toolStreamIdx >= 0 && m.toolStreamIdx < len(m.transcript) &&
+		m.transcript[m.toolStreamIdx].Kind == EntryToolStream {
+		m.transcript[m.toolStreamIdx] = m.renderEntry(m.transcript[m.toolStreamIdx])
+	}
+
+	return m
+}
+
+func (m Model) renderToolStreamBlock() string {
+	dur := time.Since(m.toolStreamStart)
+	durSec := int(dur.Seconds())
+	header := fmt.Sprintf("  ⎿  working · %ds", durSec)
+
+	var b strings.Builder
+	b.WriteString(header)
+
+	for _, line := range m.toolTail {
+		b.WriteString("\n  ⎿  ")
+		b.WriteString(line)
+	}
+
+	// Show partial line if any.
+	if m.toolPartial != "" {
+		b.WriteString("\n  ⎿  ")
+		b.WriteString(m.toolPartial)
+	}
+
+	footer := fmt.Sprintf("\n  ⎿  %d lines", m.toolLineCount)
+	b.WriteString(footer)
+
+	return b.String()
 }
 
 func (m Model) syncViewportContent() Model {
@@ -401,8 +717,271 @@ func (m Model) interruptTurn() Model {
 	m.approval = nil
 	m.statusMsg = interruptedStatusMsg
 	m.interrupted = true
+	m.reasoning.Reset()
+	m.reasoningLineIdx = -1
+	m.showReasoning = false
+	m.toolStreamIdx = -1
+	m.toolStreamID = ""
+	m.toolTail = nil
+	m.toolPartial = ""
+	m.toolLineCount = 0
+	m.toolStreamStart = time.Time{}
 	m = m.syncViewportContent()
 	m = m.syncLayout()
 	return m
 }
 
+// finalizeReasoningSummary updates the reasoning summary line to show
+// completed state and resets reasoningLineIdx to -1.
+func (m Model) finalizeReasoningSummary() Model {
+	if m.reasoningLineIdx < 0 || m.reasoningLineIdx >= len(m.transcript) {
+		return m
+	}
+	if m.transcript[m.reasoningLineIdx].Kind != EntryReasoning {
+		return m
+	}
+	m.transcript[m.reasoningLineIdx].Raw = m.reasoning.String()
+	m.transcript[m.reasoningLineIdx] = m.renderEntry(m.transcript[m.reasoningLineIdx])
+	m.reasoningLineIdx = -1
+	return m
+}
+
+// rerenderReasoningEntry re-renders the reasoning entry in-place when
+// showReasoning is toggled, so the transcript reflects expanded/collapsed state.
+func (m Model) rerenderReasoningEntry() Model {
+	if m.reasoningLineIdx < 0 || m.reasoningLineIdx >= len(m.transcript) {
+		return m
+	}
+	if m.transcript[m.reasoningLineIdx].Kind != EntryReasoning {
+		return m
+	}
+	m.transcript[m.reasoningLineIdx] = m.renderEntry(m.transcript[m.reasoningLineIdx])
+	m = m.syncViewportContent()
+	return m
+}
+
+// collapseToolStream converts the active EntryToolStream block into a collapsed
+// EntryToolOutput summary and resets all stream state fields.
+func (m Model) collapseToolStream() Model {
+	if m.toolStreamIdx < 0 || m.toolStreamIdx >= len(m.transcript) {
+		return m
+	}
+	if m.transcript[m.toolStreamIdx].Kind != EntryToolStream {
+		return m
+	}
+	// Build a collapsed summary from the stream tail lines.
+	var b strings.Builder
+	for _, line := range m.toolTail {
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	if m.toolPartial != "" {
+		b.WriteString(m.toolPartial)
+	}
+	raw := b.String()
+	m.transcript[m.toolStreamIdx].Kind = EntryToolOutput
+	m.transcript[m.toolStreamIdx].Raw = raw
+	m.transcript[m.toolStreamIdx] = m.renderEntry(m.transcript[m.toolStreamIdx])
+
+	// Reset stream state.
+	m.toolStreamIdx = -1
+	m.toolStreamID = ""
+	m.toolTail = nil
+	m.toolPartial = ""
+	m.toolLineCount = 0
+	m.toolStreamStart = time.Time{}
+	return m
+}
+
+// toggleShellExpand reverse-scans the transcript from the end to find the
+// nearest EntryToolOutput entry whose Raw encodes a toolCallID. It toggles
+// the shellExpanded flag for that toolCallID and re-renders the entry in-place.
+func (m Model) toggleShellExpand() Model {
+	for i := len(m.transcript) - 1; i >= 0; i-- {
+		if m.transcript[i].Kind != EntryToolOutput {
+			continue
+		}
+		toolCallID, _ := decodeToolOutputRaw(m.transcript[i].Raw)
+		if toolCallID == "" {
+			continue
+		}
+		if _, ok := m.shellOutputs[toolCallID]; !ok {
+			continue
+		}
+		// Toggle the expanded state.
+		m.shellExpanded[toolCallID] = !m.shellExpanded[toolCallID]
+		// Re-render the entry in-place.
+		m.transcript[i] = m.renderEntry(m.transcript[i])
+		m = m.syncViewportContent()
+		return m
+	}
+	return m
+}
+
+// ingestDrainEvent applies a single event during a drain loop, without
+// syncing the viewport (the caller batches syncViewportContent at the end).
+func (m Model) ingestDrainEvent(e event.Event) Model {
+	switch e.Kind {
+	case event.Text:
+		if !m.busy {
+			return m
+		}
+		if m.reasoningLineIdx >= 0 {
+			m = m.finalizeReasoningSummary()
+		}
+		m.pending.WriteString(e.Text)
+		if renderable, rest := flushableMarkdownPrefix(m.pending.String()); renderable != "" {
+			rendered := m.mdRenderer.Render(renderable, m.assistantInnerWidth())
+			m = m.appendAssistantRendered(rendered, renderable)
+			m.pending.Reset()
+			m.pending.WriteString(rest)
+		}
+
+	case event.ToolDispatch:
+		if !m.busy {
+			return m
+		}
+		m.statusLabel = "running " + e.ToolName + "..."
+		m.pendingToolName = e.ToolName
+		m.pendingToolArgs = e.ToolArgs
+
+	case event.ToolResult:
+		if !m.busy {
+			return m
+		}
+		if m.toolStreamIdx >= 0 {
+			m = m.collapseToolStream()
+		}
+		// Store bash output in shellOutputs with 1MB truncation.
+		if e.ToolName == "bash" && e.ToolCallID != "" {
+			m.shellOutputs[e.ToolCallID] = truncateShellOutput(e.ToolOutput)
+		}
+		name := e.ToolName
+		if name == "" {
+			name = m.pendingToolName
+		}
+		args := m.pendingToolArgs
+		w := m.contentWidth()
+		if e.ToolIsErr {
+			m = m.appendEntry(TranscriptEntry{
+				Kind:    EntryToolCard,
+				Content: renderToolCardError(name, e.ToolOutput, w),
+				Raw:     encodeToolCardRaw(name, e.ToolOutput, true),
+			})
+		} else {
+			m = m.appendEntry(TranscriptEntry{
+				Kind:    EntryToolCard,
+				Content: renderToolCard(name, args, w),
+				Raw:     encodeToolCardRaw(name, args, false),
+			})
+			if e.ToolOutput != "" {
+				raw := e.ToolOutput
+				if e.ToolCallID != "" {
+					raw = encodeToolOutputRaw(e.ToolCallID, e.ToolOutput)
+				}
+				renderOutput := e.ToolOutput
+				if isDiffOutput(e.ToolOutput) {
+					m = m.appendEntry(TranscriptEntry{
+						Kind:    EntryToolOutput,
+						Content: renderDiffOutput(renderOutput, m.diffMaxLines),
+						Raw:     raw,
+					})
+				} else {
+					m = m.appendEntry(TranscriptEntry{
+						Kind:    EntryToolOutput,
+						Content: renderToolOutput(renderOutput, toolOutputCollapseLines),
+						Raw:     raw,
+					})
+				}
+			}
+		}
+		m.pendingToolName = ""
+		m.pendingToolArgs = ""
+		m.statusLabel = "thinking"
+
+	case event.ApprovalRequest:
+		if !m.busy {
+			return m
+		}
+		m.approval = &pendingApproval{
+			toolName: e.ApprovalName,
+			args:     e.ApprovalArgs,
+			respond:  e.ApprovalRespond,
+		}
+
+	case event.Notice:
+		m.statusMsg = e.Text
+
+	case event.ReasoningText:
+		if !m.busy {
+			return m
+		}
+		m = m.ingestReasoningChunk(e.ReasoningChunk)
+
+	case event.ToolProgress:
+		if !m.busy {
+			return m
+		}
+		m = m.ingestToolProgress(e.ToolCallID, e.ToolChunk)
+
+	case event.TurnDone:
+		if m.interrupted {
+			m.interrupted = false
+			m.busy = false
+			m.streamCh = nil
+			m.turnCancel = nil
+			m.toolStreamIdx = -1
+			m.toolStreamID = ""
+			m.toolTail = nil
+			m.toolPartial = ""
+			m.toolLineCount = 0
+			m.toolStreamStart = time.Time{}
+			return m
+		}
+		m = m.flushPending()
+		if e.Err != nil {
+			m.lastError = e.Err.Error()
+		}
+		m.busy = false
+		m.streamCh = nil
+		m.turnCancel = nil
+		m.statusLabel = ""
+		m.pendingToolName = ""
+		m.pendingToolArgs = ""
+		m.toolStreamIdx = -1
+		m.toolStreamID = ""
+		m.toolTail = nil
+		m.toolPartial = ""
+		m.toolLineCount = 0
+		m.toolStreamStart = time.Time{}
+	}
+	return m
+}
+
+// drainBatchMsg carries a batch of events drained from the stream channel.
+type drainBatchMsg struct {
+	events []event.Event
+}
+
+// drainEvents reads up to maxEventDrain events from the channel, then returns
+// a drainBatchMsg. If the channel is closed, it returns streamClosedMsg.
+func drainEvents(ch <-chan event.Event) tea.Cmd {
+	return func() tea.Msg {
+		events := make([]event.Event, 0, maxEventDrain)
+		for i := 0; i < maxEventDrain; i++ {
+			e, ok := <-ch
+			if !ok {
+				if len(events) == 0 {
+					return streamClosedMsg{}
+				}
+				break
+			}
+			events = append(events, e)
+			// If we just got a TurnDone, stop draining so it can be processed.
+			if e.Kind == event.TurnDone {
+				break
+			}
+		}
+		return drainBatchMsg{events: events}
+	}
+}

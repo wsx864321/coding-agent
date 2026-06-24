@@ -243,3 +243,63 @@ func decodeToolCardRaw(raw string) (name, args string, isError bool) {
 	}
 	return name, args, isError
 }
+
+const toolOutputRawSep = "\x1e"
+
+// encodeToolOutputRaw encodes a toolCallID and output string into a single
+// Raw value. The format is toolCallID + \x1e + output.
+func encodeToolOutputRaw(toolCallID, output string) string {
+	return toolCallID + toolOutputRawSep + output
+}
+
+// decodeToolOutputRaw decodes a Raw value back into toolCallID and output.
+// If the raw does not contain the separator, it is treated as a legacy
+// plain-output entry and the entire string is returned as output.
+func decodeToolOutputRaw(raw string) (toolCallID, output string) {
+	parts := strings.SplitN(raw, toolOutputRawSep, 2)
+	if len(parts) < 2 {
+		return "", raw
+	}
+	return parts[0], parts[1]
+}
+
+// isDiffOutput reports whether a tool output string looks like a unified diff.
+// It requires at least one hunk header (@@ ... @@) and at least one line
+// starting with '+' or '-' to avoid false positives on plain text.
+func isDiffOutput(output string) bool {
+	if output == "" {
+		return false
+	}
+	hasHunk := false
+	hasChange := false
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "@@") {
+			hasHunk = true
+		}
+		if strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-") {
+			hasChange = true
+		}
+		if hasHunk && hasChange {
+			return true
+		}
+	}
+	return false
+}
+
+// renderDiffOutput renders diff output with optional collapse at maxLines.
+// When maxLines is 0, all lines are shown without collapse.
+// When maxLines > 0 and the diff has more lines, it shows the first maxLines
+// lines and appends a collapsed summary.
+func renderDiffOutput(result string, maxLines int) string {
+	lines := splitLines(result)
+	if len(lines) == 0 {
+		return ""
+	}
+	if maxLines <= 0 || len(lines) <= maxLines {
+		return connectorBlock(lines)
+	}
+	visible := lines[:maxLines]
+	summary := fmt.Sprintf("%sDiff: %d lines (%d visible, collapsed)", connector, len(lines), maxLines)
+	return connectorBlock(visible) + "\n" + toolGutterStyle.Render(summary)
+}

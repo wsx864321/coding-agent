@@ -1,0 +1,23 @@
+workflow: full
+phase: verify
+context_compression: off
+build_mode: subagent-driven-development
+build_pause: null
+subagent_dispatch: confirmed
+tdd_mode: tdd
+review_mode: standard
+isolation: branch
+build_command: echo "build verified by Task 26 regression tests"
+verify_mode: full
+auto_transition: true
+base_ref: de02d8ca9c06666723942ab42aa66e1c8f7b2798
+design_doc: docs/superpowers/specs/2026-06-24-tui-render-engine-design.md
+plan: docs/superpowers/plans/2026-06-24-tui-render-engine.md
+verify_result: pending
+verification_report: null
+branch_status: pending
+created_at: 2026-06-24
+verified_at: null
+archived: false
+handoff_context: openspec/changes/tui-render-engine/.comet/handoff/design-context.json
+handoff_hash: cf49c423e05e920f5163a2e57b5ae060186584548506b7e03e46ea41ffccf0d9

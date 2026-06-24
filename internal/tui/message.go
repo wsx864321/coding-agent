@@ -9,6 +9,8 @@ const (
 	EntryToolCard
 	EntryToolOutput
 	EntryError
+	EntryReasoning
+	EntryToolStream
 )
 
 // TranscriptEntry 是聊天区的一条结构化 transcript 条目。

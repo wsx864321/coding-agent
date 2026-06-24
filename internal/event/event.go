@@ -9,6 +9,8 @@ const (
 	ApprovalRequest
 	TurnDone
 	Notice
+	ReasoningText
+	ToolProgress
 )
 
 type Level int
@@ -32,6 +34,10 @@ type Event struct {
 	ApprovalName    string
 	ApprovalArgs    map[string]any
 	ApprovalRespond func(bool)
+
+	ReasoningChunk string
+	ToolCallID     string
+	ToolChunk      string
 
 	Err error
 }
