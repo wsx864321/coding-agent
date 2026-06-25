@@ -96,10 +96,16 @@ func (m *Manager) Start() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
+			if !m.isCommandAvailable(lang.Command) {
+				log.Printf("[LSP] %s detected but %s not found in PATH", lang.Name, lang.Command)
+				log.Printf("[LSP] %s install: %s", lang.Name, lang.InstallHint)
+				return
+			}
+
 			client, err := NewClient(lang.Command, lang.Args, m.rootPath)
 			if err != nil {
-				log.Printf("[LSP] %s server (%s) not available: %v", lang.Name, lang.Command, err)
-				log.Printf("[LSP] %s install hint: %s", lang.Name, lang.InstallHint)
+				log.Printf("[LSP] %s server (%s) failed to start: %v", lang.Name, lang.Command, err)
 				return
 			}
 
@@ -161,12 +167,12 @@ func (m *Manager) IsAvailable() bool {
 	return len(m.clients) > 0
 }
 
-// detect 根据项目文件结构检测语言
+// detect 根据项目文件结构检测语言（不检查命令是否可执行）
 func (m *Manager) detect() []LanguageConfig {
 	var detected []LanguageConfig
 
 	for _, lang := range m.languages {
-		if m.isLanguagePresent(lang) && m.isCommandAvailable(lang.Command) {
+		if m.isLanguagePresent(lang) {
 			detected = append(detected, lang)
 		}
 	}
