@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/wsx864321/coding-agent/internal/jsonrpc"
 )
 
 func TestRPCRequest_Marshal(t *testing.T) {
-	req := rpcRequest{
-		JSONRPC: jsonrpcVersion,
-		ID:      1,
-		Method:  "tools/list",
+	req, err := jsonrpc.NewRequest(1, "tools/list", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	data, err := json.Marshal(req)
@@ -34,7 +35,7 @@ func TestRPCRequest_Marshal(t *testing.T) {
 func TestRPCResponse_Unmarshal(t *testing.T) {
 	raw := `{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"test","description":"a test tool","inputSchema":{"type":"object"}}]}}`
 
-	var resp rpcResponse
+	var resp jsonrpc.Message
 	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +62,7 @@ func TestRPCResponse_Unmarshal(t *testing.T) {
 func TestRPCResponse_Error(t *testing.T) {
 	raw := `{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}`
 
-	var resp rpcResponse
+	var resp jsonrpc.Message
 	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
 		t.Fatal(err)
 	}
