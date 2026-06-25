@@ -8,6 +8,7 @@ package tools
 //   - write_file  : 写文件
 //   - edit_file   : 替换文件文本
 //   - glob_file   : glob 匹配
+//   - web_fetch   : HTTP/HTTPS URL 抓取
 //   - worktree    : git worktree 管理（create/list/remove）
 //   - todo_write  : 多步骤任务跟踪
 //   - complete_step: 步骤完成凭证
@@ -31,6 +32,7 @@ func DefaultRegistry(workdir string) *Registry {
 	r.Register(NewWriteFileTool(workdir))
 	r.Register(NewEditFileTool(workdir))
 	r.Register(NewGlobFileTool(workdir))
+	r.Register(NewWebFetchTool())
 	r.Register(NewWorktreeTool(workdir))
 	r.Register(NewTodoWriteTool())
 	r.Register(NewCompleteStepTool())
