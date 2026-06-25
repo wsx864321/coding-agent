@@ -2,6 +2,8 @@
 comet_change: tui-render-engine
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-25-tui-render-engine
+status: final
 ---
 
 # TUI 渲染引擎升级 — 技术设计

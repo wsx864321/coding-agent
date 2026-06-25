@@ -2,6 +2,8 @@
 comet_change: tui-overlays
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-25-tui-overlays
+status: final
 ---
 
 # TUI 覆盖层与模态系统 — 技术设计

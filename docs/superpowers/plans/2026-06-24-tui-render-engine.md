@@ -2,6 +2,7 @@
 change: tui-render-engine
 design-doc: docs/superpowers/specs/2026-06-24-tui-render-engine-design.md
 base-ref: de02d8ca9c06666723942ab42aa66e1c8f7b2798
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 # TUI 渲染引擎升级 实施计划
@@ -24,6 +25,7 @@ base-ref: de02d8ca9c06666723942ab42aa66e1c8f7b2798
 - 依赖 github.com/atotto/clipboard 已在 go.mod indirect，需提升为 direct
 - 依赖 github.com/alecthomas/chroma/v2 已在 go.mod indirect，glamour 已依赖
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 1: 事件系统扩展 — 新增 ReasoningText 与 ToolProgress 事件类型
@@ -58,6 +60,7 @@ git add internal/event/event.go
 git commit -m "feat(event): add ReasoningText and ToolProgress event types"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 2: 事件系统扩展 — 确保 TuiSink 正确转发新事件类型
@@ -90,6 +93,7 @@ git add internal/tui/sink_test.go
 git commit -m "test(tui): verify sink forwards ReasoningText and ToolProgress events"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 3: 推理文本渲染 — 新增 EntryReasoning 类型与 Model 状态字段
@@ -125,6 +129,7 @@ git add internal/tui/message.go internal/tui/model.go
 git commit -m "feat(tui): add EntryReasoning type and reasoning state fields"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 4: 推理文本渲染 — 处理 ReasoningText 事件与渲染
@@ -166,6 +171,7 @@ git add internal/tui/model.go internal/tui/transcript.go
 git commit -m "feat(tui): handle ReasoningText events with summary line and rendering"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 5: 推理文本渲染 — 推理完成处理与 Ctrl+O 切换
@@ -200,6 +206,7 @@ git add internal/tui/model.go
 git commit -m "feat(tui): handle reasoning completion on Text event and Ctrl+O toggle"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 6: 推理文本渲染 — 单元测试
@@ -228,6 +235,7 @@ git add internal/tui/reasoning_test.go
 git commit -m "test(tui): add reasoning text rendering tests"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 7: 工具流式输出 — 新增 Model 状态字段
@@ -256,6 +264,7 @@ git add internal/tui/model.go
 git commit -m "feat(tui): add tool streaming output state fields"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 8: 工具流式输出 — 处理 ToolProgress 事件与尾部截断
@@ -290,6 +299,7 @@ git add internal/tui/model.go
 git commit -m "feat(tui): handle ToolProgress events with tail truncation"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 9: 工具流式输出 — ToolResult 折叠与 Drain Loop
@@ -326,6 +336,7 @@ git add internal/tui/model.go
 git commit -m "feat(tui): add ToolResult stream collapse and drain loop"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 10: 工具流式输出 — 单元测试
@@ -354,6 +365,7 @@ git add internal/tui/stream_test.go
 git commit -m "test(tui): add tool streaming output tests"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 11: Shell 输出折叠/展开 — 新增 Model 状态字段
@@ -382,6 +394,7 @@ git add internal/tui/model.go
 git commit -m "feat(tui): add shell output collapse state fields"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 12: Shell 输出折叠/展开 — ToolResult 处理与存储
@@ -412,6 +425,7 @@ git add internal/tui/model.go
 git commit -m "feat(tui): store bash output in shellOutputs with 1MB truncation"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 13: Shell 输出折叠/展开 — Ctrl+B 切换与原地重写
@@ -443,6 +457,7 @@ git add internal/tui/model.go internal/tui/transcript.go
 git commit -m "feat(tui): implement Ctrl+B shell output toggle with in-place rewrite"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 14: Shell 输出折叠/展开 — 单元测试
@@ -471,6 +486,7 @@ git add internal/tui/shell_test.go
 git commit -m "test(tui): add shell output collapse tests"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 15: Markdown 渲染升级 — 配置 Chroma 语法高亮
@@ -503,6 +519,7 @@ git add internal/tui/markdown.go
 git commit -m "feat(tui): enable chroma syntax highlighting in glamour renderer"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 16: Markdown 渲染升级 — Diff 视图着色
@@ -537,6 +554,7 @@ git add internal/tui/markdown.go
 git commit -m "feat(tui): add diff view coloring with lipgloss overlay"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 17: Markdown 渲染升级 — 单元测试
@@ -565,6 +583,7 @@ git add internal/tui/markdown_test.go
 git commit -m "test(tui): add chroma and diff coloring tests"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 18: 文本选择与复制 — 新增 selection 结构体与 Model 字段
@@ -596,6 +615,7 @@ git add internal/tui/selection.go internal/tui/model.go
 git commit -m "feat(tui): add selection struct and model field"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 19: 文本选择与复制 — 鼠标交互处理
@@ -626,6 +646,7 @@ git add internal/tui/model.go
 git commit -m "feat(tui): implement mouse selection state machine"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 20: 文本选择与复制 — 选择区域高亮渲染
@@ -657,6 +678,7 @@ git add internal/tui/view.go internal/tui/selection.go
 git commit -m "feat(tui): render selection highlight with reverse style"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 21: 文本选择与复制 — Ctrl+C 复制到剪贴板
@@ -695,6 +717,7 @@ git add internal/tui/model.go internal/tui/selection.go go.mod go.sum
 git commit -m "feat(tui): implement Ctrl+C copy selection to clipboard"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 22: 文本选择与复制 — 单元测试
@@ -723,6 +746,7 @@ git add internal/tui/selection_test.go
 git commit -m "test(tui): add text selection and clipboard tests"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 23: Diff 视图渲染 — diffMaxLines 与折叠
@@ -754,6 +778,7 @@ git add internal/tui/model.go internal/tui/toolcard.go
 git commit -m "feat(tui): add diffMaxLines and diff block collapse rendering"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 24: Diff 视图渲染 — /diff-fold 斜杠命令
@@ -780,6 +805,7 @@ git add internal/tui/model.go
 git commit -m "feat(tui): implement /diff-fold slash command"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 25: Diff 视图渲染 — 单元测试
@@ -808,6 +834,7 @@ git add internal/tui/diffview_test.go
 git commit -m "test(tui): add diff view and /diff-fold command tests"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 26: 集成测试与验证 — 全量回归测试
@@ -841,6 +868,7 @@ cd D:\project\coding-agent; go test ./... -v
 
 确认 go test ./... 输出无 FAIL。
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 27: 集成测试与验证 — 帮助文本更新
@@ -869,6 +897,7 @@ git add internal/tui/view.go
 git commit -m "docs(tui): update help text with new keyboard shortcuts"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---
 
 ### Task 28: 集成测试与验证 — 最终检查清单
@@ -928,4 +957,5 @@ git commit -m "feat(tui): complete TUI render engine upgrade
 - Full test coverage"
 ```
 
+archived-with: 2026-06-25-tui-render-engine
 ---

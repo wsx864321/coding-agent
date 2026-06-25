@@ -2,6 +2,8 @@
 comet_change: tui-input-system
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-25-tui-input-system
+status: final
 ---
 
 # TUI 输入系统与交互增强 — 技术设计

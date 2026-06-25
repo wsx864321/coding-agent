@@ -18,6 +18,6 @@ verification_report: docs/superpowers/reports/2026-06-24-tui-input-system-verify
 branch_status: handled
 created_at: 2026-06-24
 verified_at: 2026-06-24
-archived: false
+archived: true
 handoff_context: openspec/changes/tui-input-system/.comet/handoff/design-context.json
 handoff_hash: 0eda650553c385b492abc176c15b099dee81d9474e16e16775eada363ba0f5e3

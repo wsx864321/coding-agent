@@ -2,6 +2,8 @@
 comet_change: tui-status-panels
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-25-tui-status-panels
+status: final
 ---
 
 # TUI 状态栏与信息面板重构 — 技术设计
