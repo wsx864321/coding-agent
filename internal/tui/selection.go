@@ -73,6 +73,9 @@ func (s selection) extractSelectedText(lines []string) string {
 	}
 
 	// 边界检查。
+	if lo < 0 || hi < 0 {
+		return ""
+	}
 	if lo >= len(lines) {
 		return ""
 	}

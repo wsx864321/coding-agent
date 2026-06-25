@@ -402,7 +402,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMotionMsg:
 		if m.sel.active && msg.Button == tea.MouseLeft {
 			m.sel.dragging = true
-			m.sel.endLine = msg.Y
+			m.sel.endLine = clampY(msg.Y, len(m.viewportLines()))
 			m.sel.endCol = msg.X
 		}
 		return m, nil
@@ -410,14 +410,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseReleaseMsg:
 		if m.sel.active && msg.Button == tea.MouseLeft {
 			m.sel.dragging = false
-			m.sel.endLine = msg.Y
+			m.sel.endLine = clampY(msg.Y, len(m.viewportLines()))
 			m.sel.endCol = msg.X
 		}
 		return m, nil
 
 	case tea.MouseWheelMsg:
 		if m.sel.active {
-			// 选择时滚轮扩展选择范围
 			if msg.Button == tea.MouseWheelDown {
 				m.sel.endLine++
 			} else if msg.Button == tea.MouseWheelUp {
@@ -425,10 +424,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.sel.endLine--
 				}
 			}
+			if n := len(m.viewportLines()); n > 0 && m.sel.endLine >= n {
+				m.sel.endLine = n - 1
+			}
+		} else {
+			// 非选择模式：直接滚动 viewport
+			switch msg.Button {
+			case tea.MouseWheelDown:
+				m.viewport.ScrollDown(3)
+			case tea.MouseWheelUp:
+				m.viewport.ScrollUp(3)
+			}
 		}
-		var cmd tea.Cmd
-		m.viewport, cmd = m.viewport.Update(msg)
-		return m, cmd
+		return m, nil
 
 	case tea.KeyPressMsg:
 		if m.approval != nil {
@@ -1227,4 +1235,20 @@ func runGitCmd(args ...string) string {
 		return ""
 	}
 	return string(out)
+}
+
+// viewportLines 返回 viewport 内容的行列表
+func (m Model) viewportLines() []string {
+	return strings.Split(m.viewport.View(), "\n")
+}
+
+// clampY 将 Y 坐标限制在有效范围内
+func clampY(y, n int) int {
+	if y < 0 {
+		return 0
+	}
+	if n > 0 && y >= n {
+		return n - 1
+	}
+	return y
 }
