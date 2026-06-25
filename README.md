@@ -153,13 +153,15 @@ docs/             ← 设计文档
 
 ---
 
+## 截图
+
 <p align="center">
-  <img src="docs/images/tui-welcome.png" width="45%" alt="TUI Welcome">
-  <img src="docs/images/tui-chat.png" width="45%" alt="Chat">
+  <img src="docs/images/tui-welcome.png" width="40%" alt="TUI Welcome">
+  <img src="docs/images/tui-chat.png" width="40%" alt="Chat">
 </p>
 <p align="center">
-  <img src="docs/images/tui-skills.png" width="45%" alt="Slash Commands">
-  <img src="docs/images/tui-lsp.png" width="45%" alt="LSP Intelligence">
+  <img src="docs/images/tui-skills.png" width="40%" alt="Slash Commands">
+  <img src="docs/images/tui-lsp.png" width="40%" alt="LSP Intelligence">
 </p>
 
 ---
