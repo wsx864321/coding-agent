@@ -211,10 +211,10 @@ func (m Model) renderWelcomeBanner() string {
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	logo := []string{
-		cyan.Render("         ▄▄▄▄▄▄▄▄▄▄▄▄▄"),
-		cyan.Render("         █") + white.Render("   ◉   ◉   ") + cyan.Render("█"),
-		cyan.Render("         █") + dim.Render("     ▽     ") + cyan.Render("█"),
-		cyan.Render("         ▀▀▀▀▀▀▀▀▀▀▀▀▀"),
+		cyan.Render("▄▄▄▄▄▄▄▄▄▄▄▄▄"),
+		cyan.Render("█") + white.Render("   ◉   ◉   ") + cyan.Render("█"),
+		cyan.Render("█") + dim.Render("     ▽     ") + cyan.Render("█"),
+		cyan.Render("▀▀▀▀▀▀▀▀▀▀▀▀▀"),
 	}
 
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).Render("coding-agent")
