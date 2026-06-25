@@ -188,20 +188,32 @@ func (m Model) renderTranscriptContent() string {
 
 func (m Model) renderWelcomeBanner() string {
 	w := m.contentWidth()
-	if w < 20 {
-		w = 20
+	maxW := 76
+	contentW := maxW
+	if w < maxW {
+		contentW = w - 4
 	}
-	border := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("8")).
-		Padding(1, 3).
-		Width(w)
-
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).Render("coding-agent")
-	subtitle := lipgloss.NewStyle().Faint(true).Render("AI 编码助手 — 在 Agent Loop 中驱动 LLM 操作文件系统")
+	if contentW < 30 {
+		contentW = 30
+	}
 
 	cwd, _ := os.Getwd()
+
+	logo := []string{
+		`         ██████╗`,
+		`        ██╔════╝`,
+		`        ██║      ██████╗ ██████╗ ██╗███╗   ██╗ ██████╗`,
+		`        ██║     ██╔════╝██╔═══██╗██║████╗  ██║██╔════╝`,
+		`        ╚██████╗██║     ██║   ██║██║██╔██╗ ██║██║  ███╗`,
+		`         ╚═════╝╚═╝     ╚═╝   ╚═╝╚═╝╚═╝ ╚████╗╚══════╝`,
+		`                                                         `,
+	}
+
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).Render("coding-agent")
+	subtitle := lipgloss.NewStyle().Faint(true).Render("AI 编码助手 — Agent Loop 驱动 LLM 操作文件系统")
+
 	info := lipgloss.JoinVertical(lipgloss.Left,
+		"",
 		lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("  Model : ") + m.modelName,
 		lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("  CWD   : ") + cwd,
 	)
@@ -210,25 +222,46 @@ func (m Model) renderWelcomeBanner() string {
 		"  /help 帮助  ·  /skills Skill  ·  Esc 中断  ·  Ctrl+C 退出",
 	)
 
-	body := lipgloss.JoinVertical(lipgloss.Center,
-		title,
-		"",
-		subtitle,
-		"",
-		info,
-		"",
-		shortcuts,
+	parts := make([]string, 0, len(logo)+8)
+	parts = append(parts, logo...)
+	parts = append(parts, "", title, "", subtitle, info, "", shortcuts, "")
+
+	body := lipgloss.NewStyle().Width(contentW).Align(lipgloss.Center).Render(
+		strings.Join(parts, "\n"),
 	)
-	// Center the banner vertically by adding empty lines
-	h := strings.Count(body, "\n") + 6 // border + padding
+
+	border := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("8")).
+		Padding(1, 2).
+		Width(contentW)
+
+	rendered := border.Render(body)
+
+	// 垂直居中
+	renderedH := strings.Count(rendered, "\n") + 1
 	vh := m.viewport.Height()
-	if vh > h+4 {
-		topPad := (vh - h) / 2
+	if vh > renderedH+4 {
+		topPad := (vh - renderedH) / 2
 		if topPad > 0 {
-			body = strings.Repeat("\n", topPad) + body
+			rendered = strings.Repeat("\n", topPad) + rendered
 		}
 	}
-	return border.Render(body)
+
+	// 水平居中
+	renderedW := lipgloss.Width(rendered)
+	if w > renderedW {
+		leftPad := (w - renderedW) / 2
+		if leftPad > 0 {
+			lines := strings.Split(rendered, "\n")
+			for i, l := range lines {
+				lines[i] = strings.Repeat(" ", leftPad) + l
+			}
+			rendered = strings.Join(lines, "\n")
+		}
+	}
+
+	return rendered
 }
 
 func (m Model) rebuildViewport() Model {
