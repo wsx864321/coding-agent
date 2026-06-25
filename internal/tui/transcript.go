@@ -219,7 +219,7 @@ func (m Model) renderWelcomeBanner() string {
 	)
 	// Center the banner vertically by adding empty lines
 	h := strings.Count(body, "\n") + 6 // border + padding
-	vh := m.viewport.Height
+	vh := m.viewport.Height()
 	if vh > h+4 {
 		topPad := (vh - h) / 2
 		if topPad > 0 {
