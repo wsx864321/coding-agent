@@ -9,6 +9,7 @@ import (
 	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/jobs"
+	"github.com/wsx864321/coding-agent/internal/mcp"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/skill"
@@ -21,6 +22,7 @@ type chatSetup struct {
 	SkillStore *skill.Store
 	Registry   *tools.Registry
 	TuiSink    *tui.TuiSink
+	MCPManager *mcp.Manager
 	cleanup    func()
 }
 
@@ -75,6 +77,14 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 		notify,
 	)
 
+	// 加载并启动 MCP server
+	mcpConfigs := mcp.Load(mcp.LoadOptions{ProjectRoot: workdir})
+	mcpManager := mcp.NewManager(mcpConfigs, registry)
+	mcpManager.Start()
+
+	// 注册 MCP 安装/卸载工具
+	registry.Register(mcp.NewInstallSourceTool(mcpManager, workdir))
+
 	a, err := agent.NewAgent(buildConfig(cmd),
 		agent.WithRegistry(registry),
 		agent.WithChecker(checker),
@@ -92,11 +102,17 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 	a.WireSkillTools()
 	a.WireMemoryTools()
 
+	cleanup := func() {
+		mcpManager.Stop()
+		jobMgr.Close()
+	}
+
 	return &chatSetup{
 		Agent:      a,
 		SkillStore: skillStore,
 		Registry:   registry,
 		TuiSink:    tuiSink,
-		cleanup:    jobMgr.Close,
+		MCPManager: mcpManager,
+		cleanup:    cleanup,
 	}, nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/hooks"
+	"github.com/wsx864321/coding-agent/internal/mcp"
 	"github.com/wsx864321/coding-agent/internal/permission"
 	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
@@ -70,6 +71,15 @@ func runOnce(cmd *cobra.Command, args []string) error {
 		hooks.DefaultSpawner,
 		notify,
 	)
+
+	// 加载并启动 MCP server
+	mcpConfigs := mcp.Load(mcp.LoadOptions{ProjectRoot: workdir})
+	mcpManager := mcp.NewManager(mcpConfigs, registry)
+	mcpManager.Start()
+	defer mcpManager.Stop()
+
+	// 注册 MCP 安装/卸载工具
+	registry.Register(mcp.NewInstallSourceTool(mcpManager, workdir))
 
 	a, err := agent.NewAgent(buildConfig(cmd),
 		agent.WithRegistry(registry),

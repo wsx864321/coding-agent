@@ -119,6 +119,7 @@ coding-agent chat --resume abc123     # 按 ID 前缀恢复
 | `recall` | 搜索/读取/列出记忆 |
 | `run_skill` | 触发已加载的 Skill |
 | `install_skill` | 安装新 Skill |
+| `install_source` | 安装/卸载 MCP server |
 
 > 后台任务工具（`bash_output`、`kill_shell`、`wait`）和记忆工具仅在 `chat` / `tui` 模式下可用。
 
@@ -198,6 +199,10 @@ Markdown 驱动的可复用技能。两种模式：`inline`（融入对话）和
 
 外部 shell 命令驱动的扩展机制，通过 `.coding-agent/hooks.json` 声明，stdin JSON payload + exit code 通信。四个事件：`UserPromptSubmit`、`PreToolUse`（可阻断）、`PostToolUse`、`Stop`（可强制续跑）。[详细设计 →](docs/hook-system-design.md)
 
+### MCP 支持
+
+通过 MCP (Model Context Protocol) 接入外部工具服务，支持 stdio 和 HTTP 两种传输方式。通过 `.coding-agent/mcp.json` 声明 server 配置，支持全局/项目两级配置合并。运行时可通过 `install_source` 工具动态安装/卸载。[详细设计 →](docs/mcp-design.md)
+
 ### 权限管控
 
 串行 Checker 管线，首个 Deny 即短路。内置 `deny-list`（黑名单）、`bash-ask`（交互审批）、`workdir-boundary`（文件系统沙箱）。`chat` 模式交互式询问；`once` 模式仅 deny-list 硬拒绝生效，其余默认放行；`tui` 模式高风险操作默认拒绝。
@@ -223,6 +228,7 @@ internal/
   tools/         ← 工具接口 + 全部工具实现
   permission/    ← Allow/Deny 管线 + Asker 接口
   hooks/         ← 外部 Shell Hook 引擎（JSON 配置 + 进程 Spawn）
+  mcp/           ← MCP 支持（配置加载、JSON-RPC 客户端、工具包装、生命周期管理）
   jobs/          ← 后台任务管理器（JobManager）
   memory/        ← 长期记忆（Store、Queue、Docs、BM25）
   retrieval/     ← 纯 Go BM25 搜索引擎
