@@ -9,6 +9,7 @@ import (
 	"github.com/wsx864321/coding-agent/internal/event"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/jobs"
+	"github.com/wsx864321/coding-agent/internal/lsp"
 	"github.com/wsx864321/coding-agent/internal/mcp"
 	"github.com/wsx864321/coding-agent/internal/memory"
 	"github.com/wsx864321/coding-agent/internal/permission"
@@ -23,6 +24,7 @@ type chatSetup struct {
 	Registry   *tools.Registry
 	TuiSink    *tui.TuiSink
 	MCPManager *mcp.Manager
+	LSPManager *lsp.Manager
 	cleanup    func()
 }
 
@@ -85,6 +87,17 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 	// 注册 MCP 安装/卸载工具
 	registry.Register(mcp.NewInstallSourceTool(mcpManager, workdir))
 
+	// 加载并启动 LSP server（多语言自动检测）
+	lspManager := lsp.NewManager(workdir)
+	lspManager.Start()
+
+	// 注册 LSP 工具
+	registry.Register(tools.NewLSPDefinitionTool(lspManager))
+	registry.Register(tools.NewLSPReferencesTool(lspManager))
+	registry.Register(tools.NewLSPHoverTool(lspManager))
+	registry.Register(tools.NewLSPDiagnosticsTool(lspManager))
+	registry.Register(tools.NewCodeIndexTool(lspManager))
+
 	a, err := agent.NewAgent(buildConfig(cmd),
 		agent.WithRegistry(registry),
 		agent.WithChecker(checker),
@@ -110,6 +123,7 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 	agent.EnsureWorktreeGitignore(workdir)
 
 	cleanup := func() {
+		lspManager.Stop()
 		mcpManager.Stop()
 		jobMgr.Close()
 	}
@@ -120,6 +134,7 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 		Registry:   registry,
 		TuiSink:    tuiSink,
 		MCPManager: mcpManager,
+		LSPManager: lspManager,
 		cleanup:    cleanup,
 	}, nil
 }

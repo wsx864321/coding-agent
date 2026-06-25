@@ -121,6 +121,11 @@ coding-agent chat --resume abc123     # 按 ID 前缀恢复
 | `run_skill` | 触发已加载的 Skill |
 | `install_skill` | 安装新 Skill |
 | `install_source` | 安装/卸载 MCP server |
+| `lsp_definition` | 跳转到符号定义 |
+| `lsp_references` | 查找符号的所有引用 |
+| `lsp_hover` | 符号的类型签名和文档 |
+| `lsp_diagnostics` | 编译/静态分析诊断 |
+| `code_index` | 符号索引（outline + search） |
 
 > 后台任务工具（`bash_output`、`kill_shell`、`wait`）和记忆工具仅在 `chat` / `tui` 模式下可用。
 
@@ -208,6 +213,10 @@ Markdown 驱动的可复用技能。两种模式：`inline`（融入对话）和
 
 自动检测 git worktree 状态，在 system prompt 中注入 worktree 上下文（路径、分支、detached HEAD 警告）。提供 `worktree` 工具支持 LLM 创建/列表/删除 worktree，自动管理 `.worktrees/` 目录并守护 `.gitignore`。[详细设计 →](docs/worktree-design.md)
 
+### LSP 代码智能
+
+通过 LSP 协议为 LLM 提供代码智能：跳转到定义、查找引用、类型提示、编译诊断、符号索引。支持 Go（gopls）、TypeScript（typescript-language-server）、Python（pyright）、Rust（rust-analyzer），自动检测项目语言并异步启动对应的语言服务器。[详细设计 →](docs/lsp-design.md)
+
 ### 权限管控
 
 串行 Checker 管线，首个 Deny 即短路。内置 `deny-list`（黑名单）、`bash-ask`（交互审批）、`workdir-boundary`（文件系统沙箱）。`chat` 模式交互式询问；`once` 模式仅 deny-list 硬拒绝生效，其余默认放行；`tui` 模式高风险操作默认拒绝。
@@ -233,6 +242,7 @@ internal/
   tools/         ← 工具接口 + 全部工具实现
   permission/    ← Allow/Deny 管线 + Asker 接口
   hooks/         ← 外部 Shell Hook 引擎（JSON 配置 + 进程 Spawn）
+  lsp/           ← LSP 支持（协议类型、stdio 客户端、多语言管理器）
   mcp/           ← MCP 支持（配置加载、JSON-RPC 客户端、工具包装、生命周期管理）
   jobs/          ← 后台任务管理器（JobManager）
   memory/        ← 长期记忆（Store、Queue、Docs、BM25）
