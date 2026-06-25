@@ -560,6 +560,11 @@ func (m *Model) SetSlashCommands(cmds []string) {
 	m.slashCommands = cmds
 }
 
+// SetModelName 设置显示的模型名称。
+func (m *Model) SetModelName(name string) {
+	m.modelName = name
+}
+
 // checkSlashCompletion 检测当前输入是否触发斜杠命令补全。
 func (m Model) checkSlashCompletion() Model {
 	val := m.textarea.Value()

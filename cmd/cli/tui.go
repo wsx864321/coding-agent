@@ -35,6 +35,7 @@ func runTui(cmd *cobra.Command, args []string) error {
 
 	m := tui.NewWithRunner(newAgentRunner(setup.Agent), setup.TuiSink)
 	m.SetSlashCommands(defaultSlashCommands())
+	m.SetModelName(cfg.Model)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		return err
