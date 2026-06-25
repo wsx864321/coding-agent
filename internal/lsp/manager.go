@@ -61,6 +61,7 @@ var defaultLanguages = []LanguageConfig{
 type Manager struct {
 	rootPath  string
 	languages []LanguageConfig
+	logger    *log.Logger
 
 	mu      sync.RWMutex
 	clients map[string]*Client // language name → client
@@ -72,7 +73,16 @@ func NewManager(rootPath string) *Manager {
 		rootPath:  rootPath,
 		languages: defaultLanguages,
 		clients:   make(map[string]*Client),
+		logger:    log.Default(),
 	}
+}
+
+// SetLogger 设置日志记录器；nil 恢复默认
+func (m *Manager) SetLogger(l *log.Logger) {
+	if l == nil {
+		l = log.Default()
+	}
+	m.logger = l
 }
 
 // SetLanguages 覆盖默认语言列表（用于测试）
@@ -86,7 +96,7 @@ func (m *Manager) SetLanguages(langs []LanguageConfig) {
 func (m *Manager) Start() {
 	detected := m.detect()
 	if len(detected) == 0 {
-		log.Printf("[LSP] no supported language detected in %s", m.rootPath)
+		m.logger.Printf("[LSP] no supported language detected in %s", m.rootPath)
 		return
 	}
 
@@ -98,14 +108,14 @@ func (m *Manager) Start() {
 			defer wg.Done()
 
 			if !m.isCommandAvailable(lang.Command) {
-				log.Printf("[LSP] %s detected but %s not found in PATH", lang.Name, lang.Command)
-				log.Printf("[LSP] %s install: %s", lang.Name, lang.InstallHint)
+				m.logger.Printf("[LSP] %s detected but %s not found in PATH", lang.Name, lang.Command)
+				m.logger.Printf("[LSP] %s install: %s", lang.Name, lang.InstallHint)
 				return
 			}
 
 			client, err := NewClient(lang.Command, lang.Args, m.rootPath)
 			if err != nil {
-				log.Printf("[LSP] %s server (%s) failed to start: %v", lang.Name, lang.Command, err)
+				m.logger.Printf("[LSP] %s server (%s) failed to start: %v", lang.Name, lang.Command, err)
 				return
 			}
 
@@ -113,7 +123,7 @@ func (m *Manager) Start() {
 			m.clients[lang.Name] = client
 			m.mu.Unlock()
 
-			log.Printf("[LSP] %s server started (%s)", lang.Name, lang.Command)
+			m.logger.Printf("[LSP] %s server started (%s)", lang.Name, lang.Command)
 		}()
 	}
 	wg.Wait()
@@ -126,11 +136,11 @@ func (m *Manager) Stop() {
 
 	for name, client := range m.clients {
 		if err := client.Close(); err != nil {
-			log.Printf("[LSP] error closing %s: %v", name, err)
+			m.logger.Printf("[LSP] error closing %s: %v", name, err)
 		}
 	}
 	m.clients = make(map[string]*Client)
-	log.Printf("[LSP] all servers stopped")
+	m.logger.Printf("[LSP] all servers stopped")
 }
 
 // ClientForFile 返回处理指定文件的语言客户端

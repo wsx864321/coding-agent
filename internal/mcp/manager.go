@@ -13,6 +13,7 @@ import (
 // Manager 管理所有 MCP server 的连接生命周期和工具注册
 type Manager struct {
 	configs []ServerConfig
+	logger  *log.Logger
 
 	mu      sync.RWMutex
 	clients map[string]Client       // serverName → Client
@@ -38,6 +39,7 @@ func NewManager(configs []ServerConfig, registry *tools.Registry) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		configs:  configs,
+		logger:   log.Default(),
 		clients:  make(map[string]Client),
 		tools:    make(map[string]*Tool),
 		servers:  make(map[string]*serverState),
@@ -45,6 +47,14 @@ func NewManager(configs []ServerConfig, registry *tools.Registry) *Manager {
 		ctx:      ctx,
 		cancel:   cancel,
 	}
+}
+
+// SetLogger 设置日志记录器；nil 恢复默认
+func (m *Manager) SetLogger(l *log.Logger) {
+	if l == nil {
+		l = log.Default()
+	}
+	m.logger = l
 }
 
 // Start 启动所有 MCP server 连接
@@ -81,7 +91,7 @@ func (m *Manager) Start() {
 
 // connectServer 连接单个 MCP server 并注册其工具
 func (m *Manager) connectServer(cfg ServerConfig) {
-	log.Printf("[MCP] connecting to server %q (%s)...", cfg.Name, cfg.Transport)
+	m.logger.Printf("[MCP] connecting to server %q (%s)...", cfg.Name, cfg.Transport)
 
 	var client Client
 	switch {
@@ -90,7 +100,7 @@ func (m *Manager) connectServer(cfg ServerConfig) {
 	case cfg.IsHTTP():
 		client = NewHTTPClient(cfg)
 	default:
-		log.Printf("[MCP] unsupported transport for server %q", cfg.Name)
+		m.logger.Printf("[MCP] unsupported transport for server %q", cfg.Name)
 		return
 	}
 
@@ -98,7 +108,7 @@ func (m *Manager) connectServer(cfg ServerConfig) {
 	defer cancel()
 
 	if err := client.Connect(ctx); err != nil {
-		log.Printf("[MCP] failed to connect to server %q: %v", cfg.Name, err)
+		m.logger.Printf("[MCP] failed to connect to server %q: %v", cfg.Name, err)
 		m.mu.Lock()
 		m.servers[cfg.Name] = &serverState{
 			Config: cfg,
@@ -111,7 +121,7 @@ func (m *Manager) connectServer(cfg ServerConfig) {
 	// 发现工具
 	toolInfos, err := client.ListTools(ctx)
 	if err != nil {
-		log.Printf("[MCP] failed to list tools from server %q: %v", cfg.Name, err)
+		m.logger.Printf("[MCP] failed to list tools from server %q: %v", cfg.Name, err)
 		client.Close()
 		m.mu.Lock()
 		m.servers[cfg.Name] = &serverState{
@@ -141,7 +151,7 @@ func (m *Manager) connectServer(cfg ServerConfig) {
 
 		// 检查是否有命名冲突
 		if existing := m.registry.Get(fullName); existing != nil {
-			log.Printf("[MCP] tool %q from server %q conflicts with existing tool, skipping", fullName, cfg.Name)
+			m.logger.Printf("[MCP] tool %q from server %q conflicts with existing tool, skipping", fullName, cfg.Name)
 			continue
 		}
 
@@ -150,7 +160,7 @@ func (m *Manager) connectServer(cfg ServerConfig) {
 		m.registry.Register(tool)
 	}
 
-	log.Printf("[MCP] server %q connected with %d tools", cfg.Name, len(toolInfos))
+	m.logger.Printf("[MCP] server %q connected with %d tools", cfg.Name, len(toolInfos))
 }
 
 // Stop 关闭所有 MCP 连接并注销工具
@@ -168,13 +178,13 @@ func (m *Manager) Stop() {
 
 	for name, client := range m.clients {
 		if err := client.Close(); err != nil {
-			log.Printf("[MCP] error closing server %q: %v", name, err)
+			m.logger.Printf("[MCP] error closing server %q: %v", name, err)
 		}
 	}
 	m.clients = make(map[string]Client)
 	m.servers = make(map[string]*serverState)
 
-	log.Printf("[MCP] all servers stopped")
+	m.logger.Printf("[MCP] all servers stopped")
 }
 
 // AddServer 动态添加一个 MCP server
@@ -212,7 +222,7 @@ func (m *Manager) RemoveServer(name string) error {
 	delete(m.clients, name)
 	delete(m.servers, name)
 
-	log.Printf("[MCP] server %q removed", name)
+	m.logger.Printf("[MCP] server %q removed", name)
 	return nil
 }
 

@@ -20,6 +20,7 @@ type BaseClient struct {
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 	transport Transport
+	logger     *log.Logger
 
 	mu      sync.Mutex
 	nextID  int64
@@ -42,6 +43,7 @@ type BaseClientOptions struct {
 func NewBaseClient(opts BaseClientOptions) (*BaseClient, error) {
 	c := &BaseClient{
 		transport: opts.Transport,
+		logger:    log.Default(),
 		pending:   make(map[int64]chan *Message),
 	}
 	if c.transport == nil {
@@ -69,7 +71,7 @@ func NewBaseClient(opts BaseClientOptions) (*BaseClient, error) {
 	// 启动 reader goroutine
 	go func() {
 		if err := c.transport.ReadLoop(c.stdout, c.handleFrame); err != nil {
-			log.Printf("[jsonrpc] read loop: %v", err)
+			c.logger.Printf("[jsonrpc] read loop: %v", err)
 		}
 	}()
 
@@ -182,4 +184,12 @@ func (c *BaseClient) Close() error {
 		timer.Stop()
 	}
 	return nil
+}
+
+// SetLogger 设置日志记录器；nil 恢复默认
+func (c *BaseClient) SetLogger(l *log.Logger) {
+	if l == nil {
+		l = log.Default()
+	}
+	c.logger = l
 }
