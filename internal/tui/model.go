@@ -171,6 +171,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.syncViewportContent()
 		return m, nil
 
+	case tea.PasteMsg:
+		if m.busy || m.approval != nil {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.textarea, cmd = m.textarea.Update(msg)
+		return m, cmd
+
 	case event.Event:
 		switch msg.Kind {
 		case event.Text:
@@ -516,6 +524,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.String() == "esc":
 			if m.slashOverlay != "" {
 				m.slashOverlay = ""
+				m = m.syncLayout()
 				return m, nil
 			}
 			return m.interruptTurn(), nil
@@ -668,6 +677,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 			if status != "" {
 				if strings.Contains(status, "\n") {
 					m.slashOverlay = status
+					m = m.syncLayout() // 给 overlay 腾出空间
 				} else {
 					m.statusMsg = status
 				}
