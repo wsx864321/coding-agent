@@ -102,6 +102,13 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 	a.WireSkillTools()
 	a.WireMemoryTools()
 
+	// 检测 worktree 状态并注入 system prompt 上下文
+	wtInfo := agent.DetectWorktree(workdir)
+	a.SetWorktreeContext(wtInfo)
+
+	// 确保 .worktrees/ 在 .gitignore 中（安全守护）
+	agent.EnsureWorktreeGitignore(workdir)
+
 	cleanup := func() {
 		mcpManager.Stop()
 		jobMgr.Close()

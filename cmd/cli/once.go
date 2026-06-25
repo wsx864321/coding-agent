@@ -94,6 +94,13 @@ func runOnce(cmd *cobra.Command, args []string) error {
 	a.WireTaskTool()
 	a.WireSkillTools()
 
+	// 检测 worktree 状态并注入 system prompt 上下文
+	wtInfo := agent.DetectWorktree(workdir)
+	a.SetWorktreeContext(wtInfo)
+
+	// 确保 .worktrees/ 在 .gitignore 中（安全守护）
+	agent.EnsureWorktreeGitignore(workdir)
+
 	if !onceQuiet {
 		fmt.Fprintf(os.Stderr, "[coding-agent] running once, message=%q\n", truncate(onceMessage, 60))
 	}

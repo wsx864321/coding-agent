@@ -110,6 +110,7 @@ coding-agent chat --resume abc123     # 按 ID 前缀恢复
 | `write_file` | 写入/覆盖文件，自动创建目录 |
 | `edit_file` | 精确查找替换 |
 | `glob_file` | Glob 模式文件发现 |
+| `worktree` | git worktree 管理（create/list/remove） |
 | `todo_write` | 结构化任务列表管理 |
 | `complete_step` | 签署完成步骤（附验证证据） |
 | `task` | 派生子代理执行隔离子任务，支持 `run_in_background` |
@@ -202,6 +203,10 @@ Markdown 驱动的可复用技能。两种模式：`inline`（融入对话）和
 ### MCP 支持
 
 通过 MCP (Model Context Protocol) 接入外部工具服务，支持 stdio 和 HTTP 两种传输方式。通过 `.coding-agent/mcp.json` 声明 server 配置，支持全局/项目两级配置合并。运行时可通过 `install_source` 工具动态安装/卸载。[详细设计 →](docs/mcp-design.md)
+
+### Git Worktree 隔离
+
+自动检测 git worktree 状态，在 system prompt 中注入 worktree 上下文（路径、分支、detached HEAD 警告）。提供 `worktree` 工具支持 LLM 创建/列表/删除 worktree，自动管理 `.worktrees/` 目录并守护 `.gitignore`。[详细设计 →](docs/worktree-design.md)
 
 ### 权限管控
 
