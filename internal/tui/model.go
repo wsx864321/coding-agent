@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,42 @@ import (
 	"github.com/atotto/clipboard"
 	"github.com/wsx864321/coding-agent/internal/event"
 )
+
+// gitStatus 保存最近一次 git 状态快照。
+type gitStatus struct {
+	branch string
+	ahead  int
+	behind int
+	dirty  bool
+}
+
+// todoItem 表示 todo_write 工具中的单个任务项。
+type todoItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ActiveForm string `json:"activeForm"`
+}
+
+// gitStatusMsg 携带异步 git 查询结果。
+type gitStatusMsg struct {
+	status gitStatus
+}
+
+// balanceMsg 携带异步余额查询结果。
+type balanceMsg struct {
+	text string
+}
+
+// statuslineMsg 携带自定义状态行命令的输出。
+type statuslineMsg struct {
+	out string
+}
+
+// CacheHitRateProvider 提供缓存命中率查询（0-100）。
+// Runner 可选择实现此接口；TUI 通过类型断言使用。
+type CacheHitRateProvider interface {
+	CacheHitRate() int
+}
 
 const interruptedStatusMsg = "已中断"
 
@@ -70,6 +107,21 @@ type Model struct {
 	shellExpanded    map[string]bool
 	sel              selection
 	diffMaxLines     int // 0 = no limit, >0 = max visible lines before collapsing diff output
+
+	// --- 斜杠命令补全 ---
+	completion    completion
+	slashCommands []string
+
+	// --- 状态面板字段 ---
+	gitStatus     gitStatus
+	contextUsed   int
+	contextWindow int
+	cacheHitRate  int    // 0-100 百分比
+	balance       string // 格式化后的余额文本，如 "¥110.00"
+	todoArgs      string // 最近一次 todo_write 的原始 JSON 参数
+	todoItems     []todoItem
+	statuslineCmd string
+	statuslineOut string
 }
 
 // New 构造初始 TUI model。
@@ -86,6 +138,11 @@ func New() Model {
 		toolStreamIdx:    -1,
 		shellOutputs:     make(map[string]string),
 		shellExpanded:    make(map[string]bool),
+		slashCommands: []string{
+			"/help", "/skills", "/model", "/clear", "/reset",
+			"/exit", "/quit", "/history", "/tools", "/hooks",
+			"/compact", "/jobs", "/diff-fold",
+		},
 	}
 }
 
@@ -139,6 +196,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLabel = "running " + msg.ToolName + "..."
 			m.pendingToolName = msg.ToolName
 			m.pendingToolArgs = msg.ToolArgs
+			// 识别 todo_write 工具并解析任务列表
+			if msg.ToolName == "todo_write" {
+				m.todoArgs = msg.ToolArgs
+				m.todoItems = parseTodoItems(msg.ToolArgs)
+			}
 
 		case event.ToolResult:
 			if !m.busy {
@@ -262,15 +324,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolPartial = ""
 			m.toolLineCount = 0
 			m.toolStreamStart = time.Time{}
+			// 刷新上下文快照
+			if csp, ok := m.runner.(ContextSnapshotProvider); ok {
+				m.contextUsed, m.contextWindow = csp.ContextSnapshot()
+			}
+			// 刷新缓存命中率
+			if chp, ok := m.runner.(CacheHitRateProvider); ok {
+				m.cacheHitRate = chp.CacheHitRate()
+			}
 			m = m.syncViewportContent()
 			if msg.Err != nil {
 				m = m.syncLayout()
 			}
-			return m, nil
+			return m, tea.Batch(fetchGitStatus(), fetchBalance(m.runner), runStatuslineIfSet(m))
 		}
 		if m.streamCh != nil {
 			return m, waitStreamEvent(m.streamCh)
 		}
+		return m, nil
+
+	case gitStatusMsg:
+		m.gitStatus = msg.status
+		return m, nil
+
+	case balanceMsg:
+		m.balance = msg.text
+		return m, nil
+
+	case statuslineMsg:
+		m.statuslineOut = msg.out
 		return m, nil
 
 	case streamClosedMsg:
@@ -393,6 +475,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 
+		case m.completion.active:
+			// 补全菜单激活时的按键处理
+			switch msg.String() {
+			case "up":
+				if m.completion.selected > 0 {
+					m.completion.selected--
+				}
+				return m, nil
+			case "down":
+				if m.completion.selected < len(m.completion.items)-1 {
+					m.completion.selected++
+				}
+				return m, nil
+			case "tab", "enter":
+				if len(m.completion.items) > 0 {
+					sel := m.completion.items[m.completion.selected]
+					m.textarea.SetValue(sel + " ")
+					m.textarea.MoveToEnd()
+				}
+				m.completion = completion{}
+				return m, nil
+			case "esc":
+				m.completion = completion{}
+				return m, nil
+			default:
+				m.completion = completion{}
+				// fall through to default
+			}
+
 		case msg.String() == "esc":
 			return m.interruptTurn(), nil
 
@@ -423,6 +534,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			m.textarea, cmd = m.textarea.Update(msg)
+			m = m.checkSlashCompletion()
 			m = m.syncLayout()
 			return m, cmd
 		}
@@ -441,6 +553,32 @@ func isSubmitKey(msg tea.KeyPressMsg) bool {
 	default:
 		return false
 	}
+}
+
+// SetSlashCommands 设置可补全的斜杠命令列表。
+func (m *Model) SetSlashCommands(cmds []string) {
+	m.slashCommands = cmds
+}
+
+// checkSlashCompletion 检测当前输入是否触发斜杠命令补全。
+func (m Model) checkSlashCompletion() Model {
+	val := m.textarea.Value()
+	// 仅在输入以单独 "/" 开头且未包含空格时激活补全
+	if strings.HasPrefix(val, "/") && !strings.Contains(val, " ") {
+		items := filterCommands(m.slashCommands, val)
+		if len(items) > 0 {
+			m.completion = completion{
+				items:    items,
+				selected: 0,
+				active:   true,
+			}
+		} else {
+			m.completion = completion{}
+		}
+	} else {
+		m.completion = completion{}
+	}
+	return m
 }
 
 func (m Model) shouldRouteScrollToViewport(msg tea.KeyPressMsg) bool {
@@ -518,6 +656,14 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
 
+	// 启动时刷新同步数据源
+	if csp, ok := m.runner.(ContextSnapshotProvider); ok {
+		m.contextUsed, m.contextWindow = csp.ContextSnapshot()
+	}
+	if chp, ok := m.runner.(CacheHitRateProvider); ok {
+		m.cacheHitRate = chp.CacheHitRate()
+	}
+
 	ch := make(chan event.Event, 16)
 	if m.tuiSink != nil {
 		m.tuiSink.SetChan(ch)
@@ -532,7 +678,11 @@ func (m Model) submit() (Model, tea.Cmd) {
 	}()
 
 	m.streamCh = ch
-	return m, tea.Batch(waitStreamEvent(ch), m.spinner.Tick)
+	cmds := []tea.Cmd{waitStreamEvent(ch), m.spinner.Tick, fetchGitStatus(), fetchBalance(m.runner)}
+	if m.statuslineCmd != "" {
+		cmds = append(cmds, runStatusline(m.statuslineCmd, ""))
+	}
+	return m, tea.Batch(cmds...)
 }
 
 func waitStreamEvent(ch <-chan event.Event) tea.Cmd {
@@ -844,6 +994,11 @@ func (m Model) ingestDrainEvent(e event.Event) Model {
 		m.statusLabel = "running " + e.ToolName + "..."
 		m.pendingToolName = e.ToolName
 		m.pendingToolArgs = e.ToolArgs
+		// 识别 todo_write 工具并解析任务列表
+		if e.ToolName == "todo_write" {
+			m.todoArgs = e.ToolArgs
+			m.todoItems = parseTodoItems(e.ToolArgs)
+		}
 
 	case event.ToolResult:
 		if !m.busy {
@@ -954,6 +1109,14 @@ func (m Model) ingestDrainEvent(e event.Event) Model {
 		m.toolPartial = ""
 		m.toolLineCount = 0
 		m.toolStreamStart = time.Time{}
+		// 刷新上下文快照
+		if csp, ok := m.runner.(ContextSnapshotProvider); ok {
+			m.contextUsed, m.contextWindow = csp.ContextSnapshot()
+		}
+		// 刷新缓存命中率
+		if chp, ok := m.runner.(CacheHitRateProvider); ok {
+			m.cacheHitRate = chp.CacheHitRate()
+		}
 	}
 	return m
 }
@@ -984,4 +1147,47 @@ func drainEvents(ch <-chan event.Event) tea.Cmd {
 		}
 		return drainBatchMsg{events: events}
 	}
+}
+
+// runStatuslineIfSet 在 statuslineCmd 非空时返回 runStatusline 命令，
+// 否则返回 nil（由 tea.Batch 忽略）。
+func runStatuslineIfSet(m Model) tea.Cmd {
+	if m.statuslineCmd == "" {
+		return nil
+	}
+	return runStatusline(m.statuslineCmd, "")
+}
+
+// fetchGitStatus 异步执行 git 命令获取分支和状态。
+func fetchGitStatus() tea.Cmd {
+	return func() tea.Msg {
+		branch := runGitCmd("rev-parse", "--abbrev-ref", "HEAD")
+		porcelain := runGitCmd("status", "--porcelain")
+		ahead := runGitCmd("rev-list", "--count", "HEAD..@{upstream}")
+		behind := runGitCmd("rev-list", "--count", "@{upstream}..HEAD")
+
+		gs := gitStatus{
+			branch: strings.TrimSpace(branch),
+			dirty:  strings.TrimSpace(porcelain) != "",
+		}
+		// 解析 ahead/behind 计数（忽略解析错误）
+		if n, err := strconv.Atoi(strings.TrimSpace(ahead)); err == nil {
+			gs.ahead = n
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(behind)); err == nil {
+			gs.behind = n
+		}
+		return gitStatusMsg{status: gs}
+	}
+}
+
+// runGitCmd 执行 git 命令，忽略错误并返回 stdout 字符串。
+func runGitCmd(args ...string) string {
+	cmd := exec.Command("git", args...)
+	cmd.Stderr = nil
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }

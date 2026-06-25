@@ -16,7 +16,7 @@ var (
 
 const helpText = "Shift+Enter 换行 · Enter 发送 · Esc 中断 · Ctrl+O 推理 · Ctrl+B Shell · Ctrl+C 退出/复制"
 
-// View 渲染对话区、审批横幅、状态栏、输入区与快捷键帮助。
+// View 渲染对话区、审批横幅、三行状态栏、Todo 面板、输入区与快捷键帮助。
 func (m Model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
@@ -38,9 +38,38 @@ func (m Model) View() tea.View {
 	if m.lastError != "" {
 		parts = append(parts, errorStyle.Render("错误: "+m.lastError))
 	}
-	parts = append(parts, statusStyle.Render(renderStatusBar(m)))
+
+	// 三行状态栏
+	if wl := renderWorkingLine(m); wl != "" {
+		parts = append(parts, statusStyle.Render(wl))
+	}
+	parts = append(parts, statusStyle.Render(renderModeLine(m)))
+	parts = append(parts, statusStyle.Render(renderDataLine(m)))
+
+	// 状态消息
+	if m.statusMsg != "" {
+		parts = append(parts, statusStyle.Render(m.statusMsg))
+	}
+
+	// Todo 面板
+	if m.todoArgs != "" {
+		parts = append(parts, renderTodoPanel(m.todoItems))
+	}
+
 	parts = append(parts, m.textarea.View())
 	parts = append(parts, helpStyle.Render(helpText))
+
+	// 斜杠命令补全菜单（渲染在输入区上方）
+	if m.completion.active {
+		menu := renderCompletion(m.completion, m.contentWidth())
+		if menu != "" {
+			// 插入到输入区之前
+			idx := len(parts) - 2 // textarea is second-to-last
+			if idx >= 0 {
+				parts = append(parts[:idx], append([]string{menu}, parts[idx:]...)...)
+			}
+		}
+	}
 
 	v := tea.NewView(joinLines(parts))
 	v.AltScreen = true
@@ -58,3 +87,5 @@ func joinLines(lines []string) string {
 	}
 	return out
 }
+
+

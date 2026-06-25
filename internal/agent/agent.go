@@ -326,6 +326,11 @@ func (a *Agent) ContextStats() string {
 		a.contextWindow, a.softCompactRatio*100, a.compactRatio*100, a.compactForceRatio*100, a.compactStuck)
 }
 
+// ContextSnapshot 返回当前上下文用量快照（已用 tokens，窗口上限）。
+func (a *Agent) ContextSnapshot() (used int, window int) {
+	return a.lastPromptTokens, a.contextWindow
+}
+
 // SetSessionPath 绑定当前 session 的文件路径。
 func (a *Agent) SetSessionPath(path string) {
 	a.sessionPath = path
@@ -357,6 +362,19 @@ func (a *Agent) SaveCurrentSession() error {
 // SessionDir 返回 session 持久化根目录。
 func (a *Agent) SessionDir() string {
 	return a.sessionDir
+}
+
+// Balance 查询当前 provider 的余额信息。
+// 返回格式化后的余额字符串（如 "¥110.00"），错误时返回空串。
+func (a *Agent) Balance(ctx context.Context) (string, error) {
+	// 尝试将 provider 断言为支持余额查询的扩展接口。
+	type balanceQuerier interface {
+		QueryBalance(ctx context.Context) (string, error)
+	}
+	if bq, ok := a.prov.(balanceQuerier); ok {
+		return bq.QueryBalance(ctx)
+	}
+	return "", nil
 }
 
 // MemorySet 返回底层的 memory Set
