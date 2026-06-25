@@ -42,7 +42,10 @@ func (s selection) highlightLine(line string, lineIdx int) string {
 	if !s.containsLine(lineIdx) {
 		return line
 	}
-	return lipgloss.NewStyle().Reverse(true).Render(line)
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color("4")). // blue background
+		Foreground(lipgloss.Color("15")). // bright white text
+		Render(line)
 }
 
 // highlightRange 对 lines 中每一行调用 highlightLine，返回新切片。

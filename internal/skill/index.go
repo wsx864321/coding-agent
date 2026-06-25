@@ -73,11 +73,15 @@ func Catalog(skills []Skill) string {
 			if sk.RunAs == RunSubagent {
 				tag = "[subagent] "
 			}
-			desc := sk.Description
-			if len(desc) > 60 {
-				desc = desc[:57] + "..."
+			name := sk.Name
+			if len(name) > 25 {
+				name = name[:22] + "..."
 			}
-			fmt.Fprintf(&b, "  %s%s — %s\n", tag, sk.Name, desc)
+			desc := sk.Description
+			if len(desc) > 50 {
+				desc = desc[:47] + "..."
+			}
+			fmt.Fprintf(&b, "  %s%s — %s\n", tag, name, desc)
 		}
 		b.WriteByte('\n')
 	}

@@ -46,6 +46,12 @@ func (m Model) View() tea.View {
 	parts = append(parts, statusStyle.Render(renderModeLine(m)))
 	parts = append(parts, statusStyle.Render(renderDataLine(m)))
 
+	// 斜杠命令输出浮动面板
+	if m.slashOverlay != "" {
+		overlay := renderSlashOverlay(m.slashOverlay, m.contentWidth())
+		parts = append(parts, overlay)
+	}
+
 	// 状态消息
 	if m.statusMsg != "" {
 		parts = append(parts, statusStyle.Render(m.statusMsg))
@@ -75,6 +81,51 @@ func (m Model) View() tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+func renderSlashOverlay(content string, maxW int) string {
+	if maxW < 40 {
+		maxW = 40
+	}
+	w := maxW
+	if w > 76 {
+		w = 76
+	}
+
+	// 从 content 中提取标题行（第二行）
+	lines := strings.Split(content, "\n")
+	title := "Output"
+	if len(lines) > 1 {
+		t := strings.TrimSpace(lines[1])
+		if t != "" {
+			title = t
+		}
+	}
+
+	var b strings.Builder
+	// 顶部 bar
+	bar := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(strings.Repeat("─", w))
+	b.WriteString(bar)
+	b.WriteByte('\n')
+
+	// 标题
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true).Render("  " + title))
+	b.WriteString(lipgloss.NewStyle().Faint(true).Render("  (ESC 关闭)"))
+	b.WriteByte('\n')
+	b.WriteString(bar)
+	b.WriteByte('\n')
+
+	// 内容（跳过标题和 divider line）
+	start := 0
+	if len(lines) > 2 && strings.Contains(lines[0], "──") {
+		start = 3 // 跳过分隔线、标题、空行
+	}
+	for i := start; i < len(lines); i++ {
+		b.WriteString(lipgloss.NewStyle().Faint(true).Render("  " + lines[i]))
+		b.WriteByte('\n')
+	}
+	b.WriteString(bar)
+	return b.String()
 }
 
 func joinLines(lines []string) string {

@@ -92,6 +92,7 @@ type Model struct {
 	runner           Runner
 	tuiSink          *TuiSink
 	slashHandler     func(line string) (handled bool, status string, prompt string, quit bool)
+	slashOverlay     string // 斜杠命令输出浮动面板内容
 	streamCh         <-chan event.Event
 	turnCancel       context.CancelFunc
 	reasoning        *strings.Builder
@@ -513,6 +514,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case msg.String() == "esc":
+			if m.slashOverlay != "" {
+				m.slashOverlay = ""
+				return m, nil
+			}
 			return m.interruptTurn(), nil
 
 		case isSubmitKey(msg):
@@ -660,10 +665,8 @@ func (m Model) submit() (Model, tea.Cmd) {
 			m.textarea.Reset()
 			m = m.syncLayout()
 			if status != "" {
-				// 多行输出 → 追加为可滚动的 transcript 条目
 				if strings.Contains(status, "\n") {
-					m = m.appendEntry(TranscriptEntry{Kind: EntryNotice, Raw: status})
-					m = m.syncViewportContent()
+					m.slashOverlay = status
 				} else {
 					m.statusMsg = status
 				}
