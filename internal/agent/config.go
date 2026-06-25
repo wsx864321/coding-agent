@@ -92,8 +92,8 @@ const (
 	DefaultArchiveProjectCap = 1024 * 1024 * 1024
 )
 
-// resolve 应用环境变量回退与默认值
-func (c *Config) resolve() error {
+// Resolve 应用环境变量回退与默认值
+func (c *Config) Resolve() error {
 	// Provider kind
 	if c.ProviderKind == "" {
 		c.ProviderKind = os.Getenv("PROVIDER_KIND")

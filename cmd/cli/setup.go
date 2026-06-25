@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -37,7 +38,7 @@ func buildConfig(cmd *cobra.Command) agent.Config {
 	maxSnip, _ := cmd.Flags().GetInt("max-messages-snip")
 	archiveDir, _ := cmd.Flags().GetString("archive-dir")
 
-	return agent.Config{
+	cfg := agent.Config{
 		ProviderKind:      providerKind,
 		Model:             model,
 		BaseURL:           baseURL,
@@ -51,4 +52,10 @@ func buildConfig(cmd *cobra.Command) agent.Config {
 		MaxMessagesSnip:   maxSnip,
 		ArchiveDir:        archiveDir,
 	}
+	// 统一在此处完成环境变量回退与默认值解析
+	if err := cfg.Resolve(); err != nil {
+		// 只在 APIKey 缺失时才会失败；cobra 的 MarkFlagRequired 保证不会到这里
+		panic(fmt.Sprintf("buildConfig: %v", err))
+	}
+	return cfg
 }

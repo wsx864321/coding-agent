@@ -60,7 +60,9 @@ type Agent struct {
 
 // NewAgent 构造 Agent
 func NewAgent(cfg Config, opts ...Option) (*Agent, error) {
-	if err := cfg.resolve(); err != nil {
+	// 兼容直接调用 NewAgent 的代码（如测试）；cmd/cli/buildConfig 已提前解析，
+	// 此处是对未解析 Config 的安全网，对已解析 Config 幂等
+	if err := cfg.Resolve(); err != nil {
 		return nil, err
 	}
 
