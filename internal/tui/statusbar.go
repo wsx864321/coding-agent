@@ -220,6 +220,9 @@ func (m Model) bottomHeight() int {
 	if m.todoArgs != "" {
 		h++ // Todo 面板
 	}
+	if m.completion.active && len(m.completion.items) > 0 {
+		h += len(m.completion.items) + 2 // 补全菜单项 + border/padding
+	}
 	h += m.textarea.Height() // 输入区
 	h += 1                    // 帮助行
 	if m.approval != nil {

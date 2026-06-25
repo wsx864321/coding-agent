@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -102,7 +103,7 @@ func (m Model) contentWidth() int {
 }
 
 func (m Model) assistantInnerWidth() int {
-	prefixWidth := runewidth.StringWidth("assistant: ")
+	prefixWidth := runewidth.StringWidth("> ")
 	w := m.contentWidth() - prefixWidth
 	if w < 4 {
 		w = 4
@@ -120,7 +121,7 @@ func renderUserBubble(raw string, width int) string {
 }
 
 func (m Model) renderAssistantText(raw string, width int) string {
-	prefix := "assistant: "
+	prefix := "> "
 	prefixWidth := runewidth.StringWidth(prefix)
 	innerWidth := width - prefixWidth
 	if innerWidth < 4 {
@@ -137,14 +138,14 @@ func (m Model) renderAssistantText(raw string, width int) string {
 }
 
 func (m Model) formatAssistantBody(rendered string) string {
-	prefix := "assistant: "
+	prefix := "> "
 	prefixWidth := runewidth.StringWidth(prefix)
 	body := strings.TrimRight(rendered, "\n")
 	return m.applyAssistantPrefix(body, prefix, prefixWidth)
 }
 
 func (m Model) formatAssistantContinuation(rendered string) string {
-	prefix := "assistant: "
+	prefix := "> "
 	prefixWidth := runewidth.StringWidth(prefix)
 	body := strings.TrimRight(rendered, "\n")
 	if body == "" {
@@ -174,13 +175,58 @@ func (m Model) applyAssistantPrefix(body, prefix string, prefixWidth int) string
 
 func (m Model) renderTranscriptContent() string {
 	if len(m.transcript) == 0 {
-		return "(暂无消息)"
+		return m.renderWelcomeBanner()
 	}
 	parts := make([]string, len(m.transcript))
 	for i, e := range m.transcript {
 		parts[i] = e.Content
 	}
 	return joinLines(parts)
+}
+
+func (m Model) renderWelcomeBanner() string {
+	w := m.contentWidth()
+	if w < 20 {
+		w = 20
+	}
+	border := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("8")).
+		Padding(1, 3).
+		Width(w)
+
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).Render("coding-agent")
+	subtitle := lipgloss.NewStyle().Faint(true).Render("AI 编码助手 — 在 Agent Loop 中驱动 LLM 操作文件系统")
+
+	cwd, _ := os.Getwd()
+	info := lipgloss.JoinVertical(lipgloss.Left,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("  Model : ") + m.modelName,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("  CWD   : ") + cwd,
+	)
+
+	shortcuts := lipgloss.NewStyle().Faint(true).Render(
+		"  /help 帮助  ·  /skills Skill  ·  Esc 中断  ·  Ctrl+C 退出",
+	)
+
+	body := lipgloss.JoinVertical(lipgloss.Center,
+		title,
+		"",
+		subtitle,
+		"",
+		info,
+		"",
+		shortcuts,
+	)
+	// Center the banner vertically by adding empty lines
+	h := strings.Count(body, "\n") + 6 // border + padding
+	vh := m.viewport.Height
+	if vh > h+4 {
+		topPad := (vh - h) / 2
+		if topPad > 0 {
+			body = strings.Repeat("\n", topPad) + body
+		}
+	}
+	return border.Render(body)
 }
 
 func (m Model) rebuildViewport() Model {

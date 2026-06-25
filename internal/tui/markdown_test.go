@@ -112,7 +112,7 @@ func TestModelRendersAssistantWithMarkdown(t *testing.T) {
 	if !hasANSI(content) {
 		t.Fatalf("expected ANSI in assistant entry: %s", content)
 	}
-	if !strings.HasPrefix(content, "assistant: ") {
+	if !strings.HasPrefix(content, "> ") {
 		t.Fatalf("expected assistant prefix: %s", content)
 	}
 }
