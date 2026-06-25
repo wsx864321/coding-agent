@@ -26,3 +26,4 @@ package.json
 
 # git worktree 工作目录
 .worktrees/
+*~
