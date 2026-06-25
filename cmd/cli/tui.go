@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"io"
-	"log"
-
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 	"github.com/wsx864321/coding-agent/internal/agent"
@@ -30,11 +27,6 @@ func runTui(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer setup.cleanup()
-
-	// TUI 模式下静默 LSP/MCP 启动日志（避免污染终端）
-	discardLogger := log.New(io.Discard, "", 0)
-	setup.LSPManager.SetLogger(discardLogger)
-	setup.MCPManager.SetLogger(discardLogger)
 
 	cfg := buildConfig(cmd)
 	workdir := resolveWorkdir(cmd)

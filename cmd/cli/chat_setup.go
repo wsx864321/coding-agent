@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"io"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -31,17 +33,17 @@ type chatSetup struct {
 // setupChatAgent 构造 chat/tui 共用的 agent 装配链；调用方须 defer setup.cleanup()。
 func setupChatAgent(cmd *cobra.Command) (*chatSetup, error) {
 	asker := &permission.StdinAsker{Reader: os.Stdin, Writer: os.Stderr}
-	return setupAgentWithAsker(cmd, asker, nil)
+	return setupAgentWithAsker(cmd, asker, nil, log.Default())
 }
 
 // setupTuiAgent 为 TUI 构造 agent：通过 TuiSink 在 TUI 横幅中请求用户审批。
 func setupTuiAgent(cmd *cobra.Command) (*chatSetup, error) {
 	tuiSink := &tui.TuiSink{}
 	asker := agent.SinkAsker{Sink: tuiSink}
-	return setupAgentWithAsker(cmd, asker, tuiSink)
+	return setupAgentWithAsker(cmd, asker, tuiSink, log.New(io.Discard, "", 0))
 }
 
-func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tui.TuiSink) (*chatSetup, error) {
+func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tui.TuiSink, logger *log.Logger) (*chatSetup, error) {
 	workdir := resolveWorkdir(cmd)
 	registry := tools.DefaultRegistry(workdir)
 
@@ -82,6 +84,7 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 	// 加载并启动 MCP server
 	mcpConfigs := mcp.Load(mcp.LoadOptions{ProjectRoot: workdir})
 	mcpManager := mcp.NewManager(mcpConfigs, registry)
+	mcpManager.SetLogger(logger)
 	mcpManager.Start()
 
 	// 注册 MCP 安装/卸载工具
@@ -89,6 +92,7 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 
 	// 加载并启动 LSP server（多语言自动检测）
 	lspManager := lsp.NewManager(workdir)
+	lspManager.SetLogger(logger)
 	lspManager.Start()
 
 	// 注册 LSP 工具
