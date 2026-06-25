@@ -79,7 +79,13 @@ func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
 	case EntryError:
 		e.Content = errorStyle.Render(e.Raw)
 	case EntryNotice:
-		e.Content = statusStyle.Render("  ⎿  " + e.Raw)
+		// 给横线分隔符加点颜色
+		text := e.Raw
+		if idx := strings.IndexByte(text, '\n'); idx > 0 {
+			divider := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(text[:idx])
+			text = divider + text[idx:]
+		}
+		e.Content = statusStyle.Render("  ⎿  " + text)
 	case EntryReasoning:
 		e = m.renderReasoningEntry(e)
 	case EntryToolStream:
@@ -199,14 +205,16 @@ func (m Model) renderWelcomeBanner() string {
 
 	cwd, _ := os.Getwd()
 
+	// 彩色机器人 logo
+	cyan := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	white := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
 	logo := []string{
-		`         ██████╗`,
-		`        ██╔════╝`,
-		`        ██║      ██████╗ ██████╗ ██╗███╗   ██╗ ██████╗`,
-		`        ██║     ██╔════╝██╔═══██╗██║████╗  ██║██╔════╝`,
-		`        ╚██████╗██║     ██║   ██║██║██╔██╗ ██║██║  ███╗`,
-		`         ╚═════╝╚═╝     ╚═╝   ╚═╝╚═╝╚═╝ ╚████╗╚══════╝`,
-		`                                                         `,
+		cyan.Render("         ▄▄▄▄▄▄▄▄▄▄▄▄▄"),
+		cyan.Render("         █") + white.Render("   ◉   ◉   ") + cyan.Render("█"),
+		cyan.Render("         █") + dim.Render("     ▽     ") + cyan.Render("█"),
+		cyan.Render("         ▀▀▀▀▀▀▀▀▀▀▀▀▀"),
 	}
 
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).Render("coding-agent")

@@ -73,8 +73,11 @@ func Catalog(skills []Skill) string {
 			if sk.RunAs == RunSubagent {
 				tag = "[subagent] "
 			}
-			n := tokenCount(sk.Description)
-			fmt.Fprintf(&b, "  %s%s · ~%d tokens\n", tag, sk.Name, n)
+			desc := sk.Description
+			if len(desc) > 60 {
+				desc = desc[:57] + "..."
+			}
+			fmt.Fprintf(&b, "  %s%s — %s\n", tag, sk.Name, desc)
 		}
 		b.WriteByte('\n')
 	}
@@ -83,11 +86,4 @@ func Catalog(skills []Skill) string {
 	writeGroup("Global skills (~/.coding-agent/skills)", global)
 	writeGroup("Builtin skills", builtin)
 	return b.String()
-}
-
-func tokenCount(s string) int {
-	if s == "" {
-		return 0
-	}
-	return len(strings.Fields(s))
 }
