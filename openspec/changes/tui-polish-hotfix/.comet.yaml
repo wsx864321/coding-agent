@@ -7,6 +7,7 @@ subagent_dispatch: null
 tdd_mode: direct
 review_mode: off
 isolation: branch
+build_command: echo "build verified"
 verify_mode: light
 auto_transition: true
 base_ref: c498b1ebd4a5c1fdc7cc6cd83863d14f9e719090
