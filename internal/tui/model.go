@@ -659,6 +659,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	}
 
 	// 通用斜杠命令处理（/help, /reset, /exit, /skills 等）
+	originalText := text
 	if strings.HasPrefix(text, "/") && m.slashHandler != nil {
 		handled, status, prompt, quit := m.slashHandler(text)
 		if handled {
@@ -675,7 +676,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			if prompt != "" {
-				text = prompt
+				text = prompt // agent gets the full skill body
 			} else {
 				return m, nil
 			}
@@ -700,7 +701,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	m.toolPartial = ""
 	m.toolLineCount = 0
 	m.toolStreamStart = time.Time{}
-	m = m.appendUserMessage(text)
+	m = m.appendUserMessage(originalText)
 	m = m.appendEntry(TranscriptEntry{Kind: EntryAssistantChunk})
 	m = m.syncViewportContent()
 
