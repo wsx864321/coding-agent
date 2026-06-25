@@ -525,6 +525,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.slashOverlay != "" {
 				m.slashOverlay = ""
 				m = m.syncLayout()
+				m = m.syncViewportContent()
 				return m, nil
 			}
 			return m.interruptTurn(), nil
