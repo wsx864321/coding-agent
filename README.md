@@ -16,15 +16,6 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"></a>
 </p>
 
-<p align="center">
-  <img src="docs/images/tui-welcome.png" width="45%" alt="TUI Welcome">
-  <img src="docs/images/tui-chat.png" width="45%" alt="Chat">
-</p>
-<p align="center">
-  <img src="docs/images/tui-skills.png" width="45%" alt="Slash Commands">
-  <img src="docs/images/tui-lsp.png" width="45%" alt="LSP Intelligence">
-</p>
-
 ---
 
 ## 安装
@@ -159,6 +150,17 @@ internal/
   tui/            ← Bubble Tea 全屏界面
 docs/             ← 设计文档
 ```
+
+---
+
+<p align="center">
+  <img src="docs/images/tui-welcome.png" width="45%" alt="TUI Welcome">
+  <img src="docs/images/tui-chat.png" width="45%" alt="Chat">
+</p>
+<p align="center">
+  <img src="docs/images/tui-skills.png" width="45%" alt="Slash Commands">
+  <img src="docs/images/tui-lsp.png" width="45%" alt="LSP Intelligence">
+</p>
 
 ---
 
