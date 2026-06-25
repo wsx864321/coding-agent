@@ -78,6 +78,8 @@ func (m Model) renderEntry(e TranscriptEntry) TranscriptEntry {
 		}
 	case EntryError:
 		e.Content = errorStyle.Render(e.Raw)
+	case EntryNotice:
+		e.Content = statusStyle.Render("  ⎿  " + e.Raw)
 	case EntryReasoning:
 		e = m.renderReasoningEntry(e)
 	case EntryToolStream:

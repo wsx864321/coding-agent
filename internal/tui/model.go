@@ -652,13 +652,19 @@ func (m Model) submit() (Model, tea.Cmd) {
 			m.textarea.Reset()
 			m = m.syncLayout()
 			if status != "" {
-				m.statusMsg = status
+				// 多行输出 → 追加为可滚动的 transcript 条目
+				if strings.Contains(status, "\n") {
+					m = m.appendEntry(TranscriptEntry{Kind: EntryNotice, Raw: status})
+					m = m.syncViewportContent()
+				} else {
+					m.statusMsg = status
+				}
 			}
 			if quit {
 				return m, tea.Quit
 			}
 			if prompt != "" {
-				text = prompt // skill 触发：用构造的 prompt 替代原始输入
+				text = prompt
 			} else {
 				return m, nil
 			}

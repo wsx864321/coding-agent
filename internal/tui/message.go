@@ -11,6 +11,7 @@ const (
 	EntryError
 	EntryReasoning
 	EntryToolStream
+	EntryNotice // slash 命令反馈
 )
 
 // TranscriptEntry 是聊天区的一条结构化 transcript 条目。
