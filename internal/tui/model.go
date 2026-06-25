@@ -91,6 +91,7 @@ type Model struct {
 	approval         *pendingApproval
 	runner           Runner
 	tuiSink          *TuiSink
+	slashHandler     func(line string) (handled bool, status string, prompt string, quit bool)
 	streamCh         <-chan event.Event
 	turnCancel       context.CancelFunc
 	reasoning        *strings.Builder
@@ -139,9 +140,8 @@ func New() Model {
 		shellOutputs:     make(map[string]string),
 		shellExpanded:    make(map[string]bool),
 		slashCommands: []string{
-			"/help", "/skills", "/model", "/clear", "/reset",
-			"/exit", "/quit", "/history", "/tools", "/hooks",
-			"/compact", "/jobs", "/diff-fold",
+			"/help", "/skills", "/reset", "/exit", "/quit",
+			"/history", "/tools", "/compact", "/jobs", "/diff-fold",
 		},
 	}
 }
@@ -560,6 +560,12 @@ func (m *Model) SetSlashCommands(cmds []string) {
 	m.slashCommands = cmds
 }
 
+// SetSlashHandler 设置斜杠命令处理器（TUI 在 submit 时会先调用此处理器）。
+// 处理器签名: func(line) (handled, status, prompt, quit)
+func (m *Model) SetSlashHandler(h func(string) (bool, string, string, bool)) {
+	m.slashHandler = h
+}
+
 // SetModelName 设置显示的模型名称。
 func (m *Model) SetModelName(name string) {
 	m.modelName = name
@@ -616,7 +622,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// 检测 /diff-fold 斜杠命令：解析 /diff-fold N 更新 diffMaxLines
+	// TUI 特有命令：/diff-fold
 	if strings.HasPrefix(text, "/diff-fold") {
 		arg := strings.TrimSpace(strings.TrimPrefix(text, "/diff-fold"))
 		if arg == "" {
@@ -637,6 +643,26 @@ func (m Model) submit() (Model, tea.Cmd) {
 		m.textarea.Reset()
 		m = m.syncLayout()
 		return m, nil
+	}
+
+	// 通用斜杠命令处理（/help, /reset, /exit, /skills 等）
+	if strings.HasPrefix(text, "/") && m.slashHandler != nil {
+		handled, status, prompt, quit := m.slashHandler(text)
+		if handled {
+			m.textarea.Reset()
+			m = m.syncLayout()
+			if status != "" {
+				m.statusMsg = status
+			}
+			if quit {
+				return m, tea.Quit
+			}
+			if prompt != "" {
+				text = prompt // skill 触发：用构造的 prompt 替代原始输入
+			} else {
+				return m, nil
+			}
+		}
 	}
 
 	m.textarea.Reset()

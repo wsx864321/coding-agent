@@ -33,8 +33,20 @@ func runTui(cmd *cobra.Command, args []string) error {
 	sessionBucket := agent.SessionBucket(agent.ResolveSessionDir(cfg.SessionDir), workdir)
 	setup.Agent.SetSessionPath(agent.NewSessionPath(sessionBucket, cfg.Model))
 
+	// 构造斜杠命令处理器
+	slashHandler := &SlashHandler{
+		Agent:    setup.Agent,
+		Registry: setup.Registry,
+		Skills:   setup.SkillStore,
+	}
+
 	m := tui.NewWithRunner(newAgentRunner(setup.Agent), setup.TuiSink)
 	m.SetSlashCommands(defaultSlashCommands())
+	m.SetSlashHandler(func(line string) (bool, string, string, bool) {
+		ctx := cmd.Context()
+		r := slashHandler.Handle(ctx, line)
+		return r.Handled, r.Status, r.Prompt, r.Quit
+	})
 	m.SetModelName(cfg.Model)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
@@ -43,11 +55,10 @@ func runTui(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// defaultSlashCommands 返回 TUI 中可用的斜杠命令列表。
+// defaultSlashCommands 返回 TUI 中可用的斜杠命令列表（用于补全）。
 func defaultSlashCommands() []string {
 	return []string{
-		"/help", "/skills", "/model", "/clear", "/reset",
-		"/exit", "/quit", "/history", "/tools", "/hooks",
-		"/compact", "/jobs", "/diff-fold",
+		"/help", "/skills", "/reset", "/exit", "/quit",
+		"/history", "/tools", "/compact", "/jobs", "/diff-fold",
 	}
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/wsx864321/coding-agent/internal/agent"
 	"github.com/wsx864321/coding-agent/internal/hooks"
 	"github.com/wsx864321/coding-agent/internal/provider"
-	"github.com/wsx864321/coding-agent/internal/skill"
 	"github.com/wsx864321/coding-agent/internal/tools"
 )
 
@@ -58,6 +57,7 @@ func init() {
 	rootCmd.AddCommand(chatCmd)
 }
 
+// runChat 交互式 REPL 主循环
 func runChat(cmd *cobra.Command, args []string) error {
 	workdir := resolveWorkdir(cmd)
 	cfg := buildConfig(cmd)
@@ -117,6 +117,8 @@ func runChat(cmd *cobra.Command, args []string) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	slashHandler := &SlashHandler{Agent: a, Registry: registry, Skills: skillStore}
+
 	for {
 		fmt.Print("> ")
 		if !scanner.Scan() {
@@ -130,11 +132,20 @@ func runChat(cmd *cobra.Command, args []string) error {
 
 		// 内建命令分发
 		if strings.HasPrefix(line, "/") {
-			handled, err := handleSlashCommand(ctx, a, skillStore, registry, line)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[coding-agent] %v\n", err)
-			}
-			if handled {
+			result := slashHandler.Handle(ctx, line)
+			if result.Handled {
+				if result.Status != "" {
+					fmt.Println(result.Status)
+				}
+				if result.Quit {
+					return nil
+				}
+				if result.Prompt != "" {
+					// skill 触发：将构造好的 prompt 发送给 agent
+					if err := runOneTurn(ctx, a, result.Prompt); err != nil {
+						fmt.Fprintf(os.Stderr, "[coding-agent] %v\n", err)
+					}
+				}
 				continue
 			}
 			// 未匹配任何命令/skill，当做普通输入
@@ -148,97 +159,6 @@ func runChat(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "[coding-agent] 调用失败: %v\n", err)
 		}
 	}
-}
-
-// handleSlashCommand 处理 / 开头的命令，返回 (是否已处理, 错误)
-func handleSlashCommand(ctx context.Context, a *agent.Agent, store *skill.Store, registry *tools.Registry, line string) (bool, error) {
-	parts := strings.SplitN(line, " ", 2)
-	cmd := strings.ToLower(parts[0])
-	slashArgs := ""
-	if len(parts) > 1 {
-		slashArgs = strings.TrimSpace(parts[1])
-	}
-
-	switch cmd {
-	case "/exit", "/quit":
-		fmt.Println("[coding-agent] 再见！")
-		os.Exit(0)
-		return true, nil
-
-	case "/help":
-		printChatHelp(store)
-		return true, nil
-
-	case "/reset":
-		a.Reset()
-		fmt.Println("[coding-agent] 历史已清空")
-		return true, nil
-
-	case "/history":
-		fmt.Printf("[coding-agent] 当前消息条数: %d\n", len(a.Messages()))
-		return true, nil
-
-	case "/tools":
-		fmt.Printf("[coding-agent] 已注册工具: %s\n", joinToolNames(registry))
-		return true, nil
-
-	case "/hooks":
-		if info := hookCountInfo(a.Hooks()); info != "" {
-			fmt.Printf("[coding-agent] 已注册 hooks: %s\n", info)
-		} else {
-			fmt.Println("[coding-agent] 未配置 hooks")
-		}
-		return true, nil
-
-	case "/skills":
-		skills := store.List()
-		fmt.Println(skill.Catalog(skills))
-		return true, nil
-
-	case "/compact":
-		if err := a.CompactNow(ctx, slashArgs); err != nil {
-			return true, fmt.Errorf("/compact 失败: %w", err)
-		}
-		fmt.Printf("[coding-agent] context compact 完成 (%s)\n", a.ContextStats())
-		return true, nil
-
-	case "/jobs":
-		mgr := a.JobManager()
-		if mgr == nil {
-			fmt.Println("[coding-agent] 后台任务未启用")
-			return true, nil
-		}
-		running := mgr.Running()
-		if len(running) == 0 {
-			fmt.Println("[coding-agent] 无运行中的后台任务")
-			return true, nil
-		}
-		fmt.Printf("[coding-agent] 运行中的后台任务 (%d):\n", len(running))
-		for _, v := range running {
-			label := v.ID
-			if v.Label != "" {
-				label = fmt.Sprintf("%s (%s)", v.ID, v.Label)
-			}
-			fmt.Printf("  %s\n", label)
-		}
-		return true, nil
-	}
-
-	// 尝试匹配 skill slash 命令：/<skill_name> [args]
-	skillName := strings.TrimPrefix(cmd, "/")
-	sk := store.Get(skillName)
-	if sk != nil {
-		prompt := fmt.Sprintf("[skill: %s] %s\n\n%s", sk.Name, sk.Description, sk.Body)
-		if slashArgs != "" {
-			prompt += fmt.Sprintf("\n\n用户参数: %s", slashArgs)
-		}
-		if err := runOneTurn(ctx, a, prompt); err != nil {
-			return true, err
-		}
-		return true, nil
-	}
-
-	return false, nil
 }
 
 func runOneTurn(ctx context.Context, a *agent.Agent, prompt string) error {
@@ -283,31 +203,6 @@ func formatHookCounts(m map[hooks.Event]int) string {
 	return strings.Join(parts, ", ")
 }
 
-func printChatHelp(store *skill.Store) {
-	fmt.Println("可用命令:")
-	fmt.Println("  /help     查看帮助")
-	fmt.Println("  /reset    清空对话历史")
-	fmt.Println("  /history  查看当前消息条数")
-	fmt.Println("  /tools    查看已注册工具")
-	fmt.Println("  /hooks    查看已注册 hook 数量")
-	fmt.Println("  /skills   查看已加载的 skill 列表")
-	fmt.Println("  /compact  手动触发一次上下文压缩（可附 focus）")
-	fmt.Println("  /jobs     查看运行中的后台任务")
-	fmt.Println("  /exit     退出")
-
-	if store != nil {
-		skills := store.List()
-		if len(skills) > 0 {
-			fmt.Println()
-			fmt.Println("Skill 快捷命令:")
-			for _, sk := range skills {
-				fmt.Printf("  /%-18s %s\n", sk.Name, sk.Description)
-			}
-		}
-	}
-}
-
-// listAndPrintSessions 列出当前项目所有 session 并打印。
 func listAndPrintSessions(dir string) error {
 	sessions, err := agent.ListSessions(dir)
 	if err != nil {
