@@ -1,5 +1,5 @@
 workflow: hotfix
-phase: verify
+phase: archive
 context_compression: off
 build_mode: direct
 build_pause: null
@@ -13,9 +13,9 @@ auto_transition: true
 base_ref: c498b1ebd4a5c1fdc7cc6cd83863d14f9e719090
 design_doc: null
 plan: null
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-06-25-tui-polish-hotfix-verify.md
 branch_status: handled
 created_at: 2026-06-25
-verified_at: null
-archived: false
+verified_at: 2026-06-25
+archived: true
