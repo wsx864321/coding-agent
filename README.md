@@ -8,12 +8,21 @@
 <h1 align="center">coding-agent</h1>
 
 <p align="center">
-  <strong>CLI AI 编码助手 — 连接 OpenAI / Anthropic 兼容 API，在 Agent Loop 中驱动 LLM 操作文件系统</strong>
+  <strong>终端 AI 编码助手 — REPL / TUI 双界面，LSP 代码智能 · MCP 外部工具 · Git Worktree 隔离</strong>
 </p>
 
 <p align="center">
   <a href="#安装"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go" alt="Go 1.26+"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/tui-welcome.png" width="45%" alt="TUI Welcome">
+  <img src="docs/images/tui-chat.png" width="45%" alt="Chat">
+</p>
+<p align="center">
+  <img src="docs/images/tui-skills.png" width="45%" alt="Slash Commands">
+  <img src="docs/images/tui-lsp.png" width="45%" alt="LSP Intelligence">
 </p>
 
 ---
@@ -32,68 +41,39 @@ cd coding-agent
 go build -o coding-agent ./cmd
 ```
 
-### 环境变量（必需）
+### 环境变量
 
 ```bash
 # OpenAI 兼容
 export OPENAI_API_KEY=sk-xxx
 
-# 如需切换 Base URL（DeepSeek 等）
+# DeepSeek 等兼容 API
 export OPEN_BASE_URL=https://api.deepseek.com/v1
 
-# 如需使用 Anthropic
+# Anthropic
 export PROVIDER_KIND=anthropic
 export ANTHROPIC_API_KEY=sk-ant-xxx
 ```
 
-项目根目录支持 `.env` 文件自动加载，通过 `--env` 指定路径或 `--env -` 禁用。
+支持 `.env` 文件自动加载（`--env` 指定路径，`--env -` 禁用）。
 
 ---
 
 ## 快速开始
 
-### One-Shot 模式
-
 ```bash
-coding-agent once -m "阅读 main.go 并总结核心逻辑"
-coding-agent once -m "重构 utils 包" -q    # --quiet 仅输出最终回答
-```
+# 一次性对话
+coding-agent once -m "总结项目架构"
 
-### 交互式 REPL
-
-```bash
+# 交互式 REPL（支持 / 命令）
 coding-agent chat
-```
 
-支持 Slash 命令：
-
-| 命令 | 说明 |
-|------|------|
-| `/help` | 帮助 |
-| `/reset` | 清空对话历史 |
-| `/compact [focus]` | 手动压缩上下文 |
-| `/tools` | 列出所有工具 |
-| `/hooks` | 查看 hook 统计 |
-| `/skills` | 列出已加载 Skill |
-| `/<skill_name>` | 触发指定 Skill |
-| `/history` | 查看消息数量 |
-| `/jobs` | 查看运行中的后台任务 |
-| `/exit`（`/quit`） | 退出 |
-
-### TUI 全屏界面
-
-```bash
+# 全屏 TUI 界面
 coding-agent tui
-```
 
-基于 Bubble Tea 的全屏终端界面，支持流式输出、快捷键操作。详见 [TUI 文档](docs/tui.md)。
-
-### 会话恢复
-
-```bash
-coding-agent chat --list              # 列出当前项目所有会话
-coding-agent chat --resume latest     # 恢复最近会话
-coding-agent chat --resume abc123     # 按 ID 前缀恢复
+# 会话恢复
+coding-agent chat --list
+coding-agent chat --resume latest
 ```
 
 ---
@@ -102,155 +82,82 @@ coding-agent chat --resume abc123     # 按 ID 前缀恢复
 
 | 工具 | 说明 |
 |------|------|
-| `bash` | 执行 shell 命令，支持 `run_in_background` 后台执行 |
-| `bash_output` | 读取后台任务的增量输出 |
-| `kill_shell` | 终止后台任务 |
-| `wait` | 阻塞等待后台任务完成 |
-| `read_file` | 读取文件，支持行范围 |
-| `write_file` | 写入/覆盖文件，自动创建目录 |
-| `edit_file` | 精确查找替换 |
+| `read_file` / `write_file` / `edit_file` | 文件读写编辑 |
 | `glob_file` | Glob 模式文件发现 |
-| `worktree` | git worktree 管理（create/list/remove） |
-| `todo_write` | 结构化任务列表管理 |
-| `complete_step` | 签署完成步骤（附验证证据） |
-| `task` | 派生子代理执行隔离子任务，支持 `run_in_background` |
-| `compact` | 模型主动请求上下文压缩 |
-| `remember` | 保存事实到长期记忆 |
-| `forget` | 删除记忆 |
-| `recall` | 搜索/读取/列出记忆 |
-| `run_skill` | 触发已加载的 Skill |
-| `install_skill` | 安装新 Skill |
-| `install_source` | 安装/卸载 MCP server |
+| `web_fetch` | HTTP/HTTPS 抓取（HTML 转纯文本） |
+| `bash` | Shell 命令执行（支持后台） |
+| `worktree` | Git worktree 管理（create / list / remove） |
 | `lsp_definition` | 跳转到符号定义 |
-| `lsp_references` | 查找符号的所有引用 |
-| `lsp_hover` | 符号的类型签名和文档 |
-| `lsp_diagnostics` | 编译/静态分析诊断 |
+| `lsp_references` | 查找所有引用 |
+| `lsp_hover` | 类型签名和文档 |
+| `lsp_diagnostics` | 编译 / 静态分析诊断 |
 | `code_index` | 符号索引（outline + search） |
-
-> 后台任务工具（`bash_output`、`kill_shell`、`wait`）和记忆工具仅在 `chat` / `tui` 模式下可用。
-
----
-
-## 配置
-
-### CLI 参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `-P, --provider` | `openai` | Provider 类型（`openai` / `anthropic`） |
-| `-M, --model` | 按 Provider 自动选择 | 模型名称 |
-| `-u, --base-url` | env 自动推导 | API 地址 |
-| `-t, --max-turns` | `100` | Agent 循环最大轮数 |
-| `-s, --system` | 自动生成 | 自定义 System Prompt |
-| `-w, --workdir` | 当前目录 | 文件操作允许的根目录 |
-| `-e, --env` | `.env` | 环境变量文件路径，`-` 禁用 |
-| `-q, --quiet` | `false` | （`once` 专用）仅输出最终回答 |
-| `--context-window` | `0`（关闭） | 上下文窗口 token 数，>0 开启自动压缩 |
-| `--soft-compact-ratio` | `0.50` | 软阈值，仅提示不压缩 |
-| `--compact-ratio` | `0.80` | 摘要压缩触发阈值 |
-| `--compact-force-ratio` | `0.90` | 强制压缩阈值 |
-| `--recent-keep` | `3` | 压缩时保留的最近消息下限 |
-| `--max-messages-snip` | `80` | 消息裁剪上限，<=0 关闭 |
-| `--archive-dir` | `~/.coding-agent/archives` | 压缩归档根目录 |
-
-### 环境变量
-
-| 变量 | 说明 |
-|------|------|
-| `OPENAI_API_KEY` | OpenAI API Key |
-| `OPEN_BASE_URL` | OpenAI 兼容 API 地址 |
-| `OPENAI_MODEL` | OpenAI 模型名覆盖 |
-| `PROVIDER_KIND` | Provider 类型（`openai` / `anthropic`） |
-| `ANTHROPIC_API_KEY` | Anthropic API Key |
-| `ANTHROPIC_BASE_URL` | Anthropic API 地址 |
-| `ANTHROPIC_MODEL` | Anthropic 模型名覆盖 |
-| `CODING_AGENT_MAX_TURNS` | 最大轮数 |
-| `CODING_AGENT_CONTEXT_WINDOW` | 上下文窗口大小 |
-| `CODING_AGENT_TEMPERATURE` | 温度参数 |
-| `CODING_AGENT_MAX_TOKENS` | 最大输出 token 数 |
-| `CODING_AGENT_SYSTEM_PROMPT` | 自定义 System Prompt |
-| `CODING_AGENT_COMPACT_RATIO` | 压缩阈值 |
-| `CODING_AGENT_SOFT_COMPACT_RATIO` | 软压缩阈值 |
-| `CODING_AGENT_COMPACT_FORCE_RATIO` | 强制压缩阈值 |
-| `CODING_AGENT_RECENT_KEEP` | 保留最近消息数 |
-| `CODING_AGENT_MAX_MESSAGES_SNIP` | 消息裁剪上限 |
-| `CODING_AGENT_ARCHIVE_DIR` | 压缩归档目录 |
-| `CODING_AGENT_SESSION_DIR` | 会话存储目录 |
+| `todo_write` / `complete_step` | 任务跟踪 |
+| `task` | 派生子代理 |
+| `remember` / `forget` / `recall` | 长期记忆 |
+| `run_skill` / `install_skill` | Skill 管理 |
+| `install_source` | MCP server 安装 / 卸载 |
 
 ---
 
 ## 核心特性
 
-### 上下文压缩
+### LSP 代码智能
 
-三层递进策略，仅在 PromptTokens 接近窗口上限时才触发，维持 append-only 高 Cache 命中率。LLM 返回 `prompt_too_long` 时自动响应式压缩恢复。压缩前自动提取关键信息写入长期记忆。[详细设计 →](docs/compaction-design.md)
+通过 LSP 协议提供跳转定义、查找引用、类型提示、编译诊断、符号索引。支持 Go / TypeScript / Python / Rust，自动检测项目语言。[详细设计 →](docs/lsp-design.md)
 
-### 子代理
+### MCP 外部工具
 
-`task` 工具派生隔离子代理，独立对话上下文和证据账本，共享文件系统和 LLM 客户端。支持后台执行。[详细设计 →](docs/subagent.md)
-
-### 后台任务
-
-`bash` 和 `task` 支持 `run_in_background` 非阻塞执行，通过 `bash_output` / `kill_shell` / `wait` 管理生命周期。[详细设计 →](docs/background-jobs.md)
-
-### 长期记忆
-
-双层记忆：层级化 `AGENTS.md` 文档 + 持久化存储（BM25 检索）。四种类型：`user`、`feedback`、`project`、`reference`。[详细设计 →](docs/memory-design.md)
-
-### Skill 系统
-
-Markdown 驱动的可复用技能。两种模式：`inline`（融入对话）和 `subagent`（隔离执行）。三级发现：项目级 → 全局级 → 内置。[详细设计 →](docs/skill-system.md)
-
-### Hook 系统
-
-外部 shell 命令驱动的扩展机制，通过 `.coding-agent/hooks.json` 声明，stdin JSON payload + exit code 通信。四个事件：`UserPromptSubmit`、`PreToolUse`（可阻断）、`PostToolUse`、`Stop`（可强制续跑）。[详细设计 →](docs/hook-system-design.md)
-
-### MCP 支持
-
-通过 MCP (Model Context Protocol) 接入外部工具服务，支持 stdio 和 HTTP 两种传输方式。通过 `.coding-agent/mcp.json` 声明 server 配置，支持全局/项目两级配置合并。运行时可通过 `install_source` 工具动态安装/卸载。[详细设计 →](docs/mcp-design.md)
+通过 MCP 协议接入外部工具服务（stdio / HTTP），运行时动态安装卸载。[详细设计 →](docs/mcp-design.md)
 
 ### Git Worktree 隔离
 
-自动检测 git worktree 状态，在 system prompt 中注入 worktree 上下文（路径、分支、detached HEAD 警告）。提供 `worktree` 工具支持 LLM 创建/列表/删除 worktree，自动管理 `.worktrees/` 目录并守护 `.gitignore`。[详细设计 →](docs/worktree-design.md)
+启动时自动检测 worktree 状态，提供 `worktree` 工具管理隔离工作空间。[详细设计 →](docs/worktree-design.md)
 
-### LSP 代码智能
+### Skill 系统
 
-通过 LSP 协议为 LLM 提供代码智能：跳转到定义、查找引用、类型提示、编译诊断、符号索引。支持 Go（gopls）、TypeScript（typescript-language-server）、Python（pyright）、Rust（rust-analyzer），自动检测项目语言并异步启动对应的语言服务器。[详细设计 →](docs/lsp-design.md)
+Markdown 驱动的可复用技能，支持 inline 和 subagent 两种模式，三级发现。[详细设计 →](docs/skill-system.md)
+
+### 子代理 & 后台任务
+
+`task` 派生子代理，`bash` 和 `task` 均支持后台执行。[详细设计 →](docs/subagent.md) [详细设计 →](docs/background-jobs.md)
+
+### 上下文压缩 & 长期记忆
+
+三层递进压缩策略，BM25 检索记忆系统。[详细设计 →](docs/compaction-design.md) [详细设计 →](docs/memory-design.md)
+
+### Hook 系统
+
+外部 shell 命令扩展，四个事件：`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`。[详细设计 →](docs/hook-system-design.md)
 
 ### 权限管控
 
-串行 Checker 管线，首个 Deny 即短路。内置 `deny-list`（黑名单）、`bash-ask`（交互审批）、`workdir-boundary`（文件系统沙箱）。`chat` 模式交互式询问；`once` 模式仅 deny-list 硬拒绝生效，其余默认放行；`tui` 模式高风险操作默认拒绝。
+串行 Checker 管线（deny-list / bash-ask / workdir-boundary），按模式分级。
 
-### 会话持久化
+### 多 Provider
 
-自动保存到 `~/.coding-agent/sessions/<project-bucket>/`，JSONL 格式。支持按 `latest` 或 ID 前缀恢复。[详细设计 →](docs/session-design.md)
-
-### 多 Provider 支持
-
-内置 OpenAI 和 Anthropic 两个 Provider，通过 `-P` 或 `PROVIDER_KIND` 切换。OpenAI 默认模型 `gpt-4o-mini`，Anthropic 默认模型 `claude-sonnet-4-20250514`。
+OpenAI / Anthropic 双 Provider，通过 `-P` 切换。
 
 ---
 
 ## 架构
 
 ```
-cmd/
-  cli/           ← Cobra CLI（root / chat / once / tui）
+cmd/cli/          ← Cobra CLI（root / chat / once / tui）
 internal/
-  agent/         ← Agent 循环、压缩、子代理、System Prompt
-  provider/      ← LLM Provider 抽象层（OpenAI / Anthropic）
-  tools/         ← 工具接口 + 全部工具实现
-  permission/    ← Allow/Deny 管线 + Asker 接口
-  hooks/         ← 外部 Shell Hook 引擎（JSON 配置 + 进程 Spawn）
-  lsp/           ← LSP 支持（协议类型、stdio 客户端、多语言管理器）
-  mcp/           ← MCP 支持（配置加载、JSON-RPC 客户端、工具包装、生命周期管理）
-  jobs/          ← 后台任务管理器（JobManager）
-  memory/        ← 长期记忆（Store、Queue、Docs、BM25）
-  retrieval/     ← 纯 Go BM25 搜索引擎
-  skill/         ← Skill 发现、解析、目录
-  tui/           ← Bubble Tea 全屏终端界面
-  evidence/      ← todo_write / complete_step 证据账本
-docs/            ← 设计文档
+  agent/          ← Agent 循环、压缩、子代理、System Prompt
+  provider/       ← LLM Provider（OpenAI / Anthropic）
+  tools/          ← 工具接口 + 全部工具实现
+  lsp/            ← LSP 客户端（多语言）
+  mcp/            ← MCP 客户端
+  jsonrpc/        ← JSON-RPC 2.0 传输层（LSP/MCP 共享）
+  permission/     ← Allow/Deny 管线
+  hooks/          ← Shell Hook 引擎
+  skill/          ← Skill 发现 / 解析
+  memory/         ← 长期记忆（BM25）
+  jobs/           ← 后台任务管理
+  tui/            ← Bubble Tea 全屏界面
+docs/             ← 设计文档
 ```
 
 ---
