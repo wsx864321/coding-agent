@@ -45,14 +45,49 @@ func Catalog(skills []Skill) string {
 		return "当前未加载任何 skill。"
 	}
 
-	var b strings.Builder
-	b.WriteString("已加载的 skills:\n")
+	// 按 scope 分组
+	var project, global, builtin []Skill
 	for _, sk := range skills {
-		mode := "inline"
-		if sk.RunAs == RunSubagent {
-			mode = "subagent"
+		switch sk.Scope {
+		case ScopeProject:
+			project = append(project, sk)
+		case ScopeGlobal:
+			global = append(global, sk)
+		default:
+			builtin = append(builtin, sk)
 		}
-		fmt.Fprintf(&b, "  %-20s [%s] %s  (%s)\n", sk.Name, mode, sk.Description, sk.Scope)
 	}
+
+	var b strings.Builder
+	b.WriteString("──────────────────────────────────────────────────────────────────────────────\n")
+	b.WriteString("  Skills\n")
+	fmt.Fprintf(&b, "  %d skills\n\n", len(skills))
+
+	writeGroup := func(label string, group []Skill) {
+		if len(group) == 0 {
+			return
+		}
+		fmt.Fprintf(&b, "  %s\n", label)
+		for _, sk := range group {
+			tag := ""
+			if sk.RunAs == RunSubagent {
+				tag = "[subagent] "
+			}
+			n := tokenCount(sk.Description)
+			fmt.Fprintf(&b, "  %s%s · ~%d tokens\n", tag, sk.Name, n)
+		}
+		b.WriteByte('\n')
+	}
+
+	writeGroup("Project skills (.coding-agent/skills)", project)
+	writeGroup("Global skills (~/.coding-agent/skills)", global)
+	writeGroup("Builtin skills", builtin)
 	return b.String()
+}
+
+func tokenCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	return len(strings.Fields(s))
 }
