@@ -593,9 +593,13 @@ func globMatch(ctx context.Context, base, pattern string, maxResults int) ([]str
 func globToRegexp(pattern string) (*regexp.Regexp, error) {
 	var b strings.Builder
 	b.WriteString("^")
-	// strings.Split 已处理分隔符，段间不再补 /
 	segments := strings.Split(pattern, "/")
 	for i, seg := range segments {
+		// 相邻的普通段（非 **）之间补回 / 分隔符
+		// ** 段无需补，因为 (?:.*/)? 已自带结尾 /
+		if i > 0 && seg != "**" && segments[i-1] != "**" {
+			b.WriteString("/")
+		}
 		if seg == "**" {
 			// 单独的 ** 段
 			if i == len(segments)-1 {
