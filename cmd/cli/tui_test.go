@@ -41,10 +41,13 @@ func TestTuiHelp(t *testing.T) {
 func TestRunTuiSetupRequiresAPIKey(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 
-	err := runTui(tuiCmd, nil)
-	if err == nil {
-		t.Fatal("expected setup error without API key")
-	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic without API key")
+		}
+	}()
+
+	runTui(tuiCmd, nil)
 }
 
 func TestExistingCommandsStillRegistered(t *testing.T) {

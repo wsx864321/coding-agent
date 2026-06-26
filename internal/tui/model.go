@@ -345,7 +345,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Err != nil {
 				m = m.syncLayout()
 			}
-			return m, tea.Batch(fetchGitStatus(), fetchBalance(m.runner), runStatuslineIfSet(m))
+			return m, nil
 		}
 		if m.streamCh != nil {
 			return m, waitStreamEvent(m.streamCh)

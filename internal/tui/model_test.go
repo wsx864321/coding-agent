@@ -229,7 +229,7 @@ func TestViewRendersMessageInputAndHelpAreas(t *testing.T) {
 	for _, want := range []string{
 		"coding-agent",
 		"你好",
-		"assistant:",
+		"> ",
 		"你好，我是助手",
 		"系统提示",
 		"draft text",

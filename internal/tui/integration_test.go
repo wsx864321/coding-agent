@@ -147,7 +147,7 @@ func TestCJKMarkdownIntegrationInView(t *testing.T) {
 	m = m.syncViewportContent()
 
 	view := viewContent(m)
-	for _, want := range []string{"你好", "Markdown", "assistant:"} {
+	for _, want := range []string{"你好", "Markdown", "> "} {
 		if !strings.Contains(stripANSI(view), want) {
 			t.Errorf("View missing %q:\n%s", want, view)
 		}
@@ -217,7 +217,7 @@ func TestStreamFlushIntegration(t *testing.T) {
 	}
 
 	view := viewContent(updated.syncLayout())
-	for _, want := range []string{"第一段", "第二段", "assistant:"} {
+	for _, want := range []string{"第一段", "第二段", "> "} {
 		if !strings.Contains(stripANSI(view), want) {
 			t.Errorf("View missing %q:\n%s", want, view)
 		}

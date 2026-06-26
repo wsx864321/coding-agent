@@ -219,8 +219,8 @@ func TestViewThreePanelLayout(t *testing.T) {
 		"> ",
 		"Plan",
 		"coding-agent",
-		"Shift+Enter",
 		"Enter 发送",
+		"Ctrl+J 换行",
 		"Ctrl+C",
 	} {
 		if !strings.Contains(view, want) {

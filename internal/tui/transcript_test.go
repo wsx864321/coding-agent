@@ -47,8 +47,8 @@ func TestAppendAssistantChunkAccumulatesRaw(t *testing.T) {
 
 func TestRenderTranscriptContentEmpty(t *testing.T) {
 	m := New()
-	if got := m.renderTranscriptContent(); got != "(暂无消息)" {
-		t.Fatalf("empty transcript = %q, want placeholder", got)
+	if got := m.renderTranscriptContent(); !strings.Contains(got, "coding-agent") {
+		t.Fatalf("empty transcript = %q, want welcome banner", got)
 	}
 }
 

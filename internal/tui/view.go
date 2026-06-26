@@ -14,7 +14,7 @@ var (
 	statusStyle  = lipgloss.NewStyle().Faint(true)
 )
 
-const helpText = "Shift+Enter 换行 · Enter 发送 · Esc 中断 · Ctrl+O 推理 · Ctrl+B Shell · Ctrl+C 退出/复制"
+const helpText = "Enter 发送 · Ctrl+J 换行 · Esc 中断 · Ctrl+O 推理 · Ctrl+B Shell · Ctrl+C 退出/复制"
 
 // View 渲染对话区、审批横幅、三行状态栏、Todo 面板、输入区与快捷键帮助。
 func (m Model) View() tea.View {
