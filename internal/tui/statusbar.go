@@ -48,11 +48,6 @@ func renderDataLine(m Model) string {
 
 	var parts []string
 
-	// 上下文仪表
-	if gauge := renderContextGauge(m.contextUsed, m.contextWindow); gauge != "" {
-		parts = append(parts, gauge)
-	}
-
 	// 缓存命中率
 	if m.cacheHitRate > 0 {
 		parts = append(parts, fmt.Sprintf("cache %d%%", m.cacheHitRate))
@@ -68,13 +63,26 @@ func renderDataLine(m Model) string {
 
 // ---- 上下文仪表 ----
 
-// renderContextGauge 渲染上下文窗口用量仪表。window <= 0 时返回空。
+// contextBarWidth 是内联进度条的固定宽度（字符数）。
+const contextBarWidth = 20
+
+// renderContextGauge 渲染上下文窗口用量仪表（固定宽度内联进度条）。
+// window <= 0 时返回空。
 func renderContextGauge(used, window int) string {
 	if window <= 0 {
 		return ""
 	}
 	pct := used * 100 / window
-	return fmt.Sprintf("ctx %s/%s (%d%%)", shortTokens(used), shortTokens(window), pct)
+	if pct > 100 {
+		pct = 100
+	}
+	filled := pct * contextBarWidth / 100
+	if filled > contextBarWidth {
+		filled = contextBarWidth
+	}
+	empty := contextBarWidth - filled
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", empty)
+	return gaugeColor(pct).Render(fmt.Sprintf("ctx %s %s/%s %d%%", bar, shortTokens(used), shortTokens(window), pct))
 }
 
 // gaugeColor 根据百分比返回对应颜色样式。
@@ -227,7 +235,7 @@ func (m Model) bottomHeight() int {
 		h += strings.Count(m.slashOverlay, "\n") + 5 // overlay 行数 + bar + title + margin
 	}
 	h += m.textarea.Height() // 输入区
-	h += 1                    // 帮助行
+	h += 1 // 帮助行
 	if m.approval != nil {
 		h += 2 // 审批横幅
 	}

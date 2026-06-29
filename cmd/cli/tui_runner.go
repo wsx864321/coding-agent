@@ -20,3 +20,8 @@ func (r agentRunner) RunTurn(ctx context.Context, prompt string) error {
 	_, err := r.agent.Run(ctx, prompt)
 	return err
 }
+
+// ContextSnapshot 实现 tui.ContextSnapshotProvider 接口，委托给底层 agent。
+func (r agentRunner) ContextSnapshot() (used int, window int) {
+	return r.agent.ContextSnapshot()
+}

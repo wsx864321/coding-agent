@@ -63,15 +63,22 @@ func (m Model) View() tea.View {
 	}
 
 	parts = append(parts, m.textarea.View())
-	parts = append(parts, helpStyle.Render(helpText))
+	// 底部脚注：帮助行 + 上下文窗口进度条（整合在一列）
+	parts = append(parts, renderBottomFooter(m))
 
 	// 斜杠命令补全菜单（渲染在输入区上方）
 	if m.completion.active {
 		menu := renderCompletion(m.completion, m.contentWidth())
 		if menu != "" {
-			// 插入到输入区之前
-			idx := len(parts) - 2 // textarea is second-to-last
-			if idx >= 0 {
+			// 从后往前找 textarea 位置以插入补全菜单
+			idx := len(parts)
+			for i := len(parts) - 1; i >= 0; i-- {
+				if parts[i] == m.textarea.View() {
+					idx = i
+					break
+				}
+			}
+			if idx > 0 {
 				parts = append(parts[:idx], append([]string{menu}, parts[idx:]...)...)
 			}
 		}
@@ -139,4 +146,16 @@ func joinLines(lines []string) string {
 	return out
 }
 
-
+// renderBottomFooter 渲染底部脚注：快捷键帮助（左）+ 上下文仪表（右对齐）。
+func renderBottomFooter(m Model) string {
+	help := helpStyle.Render(helpText)
+	gauge := renderContextGauge(m.contextUsed, m.contextWindow)
+	if gauge == "" {
+		return help
+	}
+	gapW := m.contentWidth() - lipgloss.Width(help) - lipgloss.Width(gauge)
+	if gapW < 1 {
+		gapW = 1
+	}
+	return help + strings.Repeat(" ", gapW) + gauge
+}
