@@ -95,8 +95,16 @@ func CollectWithText(ch <-chan Chunk, onText func(string)) (Message, *Usage, err
 			}
 		case ChunkToolCallStart:
 			if chunk.ToolCall != nil {
-				toolCalls = append(toolCalls, *chunk.ToolCall)
-				currentTCIndex = len(toolCalls) - 1
+				// 部分 provider（如 DeepSeek）在每个 delta 帧都携带 id 和 name，
+				// 导致同一个 tool call 被拆成多条 ChunkToolCallStart。
+				// 按 ID 去重：如果 ID 已存在则当作 delta 拼接 arguments。
+				if idx := findToolCallByID(toolCalls, chunk.ToolCall.ID); idx >= 0 {
+					toolCalls[idx].Arguments += chunk.ToolCall.Arguments
+					currentTCIndex = idx
+				} else {
+					toolCalls = append(toolCalls, *chunk.ToolCall)
+					currentTCIndex = len(toolCalls) - 1
+				}
 			}
 		case ChunkToolCallDelta:
 			if chunk.ToolCall != nil && currentTCIndex >= 0 && currentTCIndex < len(toolCalls) {
@@ -117,6 +125,19 @@ func CollectWithText(ch <-chan Chunk, onText func(string)) (Message, *Usage, err
 		ToolCalls: toolCalls,
 	}
 	return msg, usage, nil
+}
+
+// findToolCallByID 在 toolCalls 中按 ID 查找，返回索引或 -1。
+func findToolCallByID(toolCalls []ToolCall, id string) int {
+	if id == "" {
+		return -1
+	}
+	for i := range toolCalls {
+		if toolCalls[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // SanitizeToolPairing 修复消息历史中的配对问题，确保：
