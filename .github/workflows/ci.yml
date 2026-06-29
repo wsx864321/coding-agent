@@ -1,0 +1,83 @@
+# GitHub Actions CI for coding-agent (Go 1.26)
+# 触发：push 到 master、PR 到 master；支持手动运行。
+# 作业：vet 静态检查 -> 单测+覆盖率 -> 编译主二进制。
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (go vet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Go version
+        run: go version
+
+      - name: go vet
+        run: go vet ./...
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Run tests with coverage
+        run: go test ./... -race -count=1 -coverprofile=coverage.out
+
+      - name: Print coverage summary
+        run: go tool cover -func=coverage.out
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 7
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Build binary
+        run: go build -trimpath -ldflags "-s -w" -o coding-agent ./cmd
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coding-agent
+          path: coding-agent
+          retention-days: 7

@@ -585,10 +585,11 @@ func globMatch(ctx context.Context, base, pattern string, maxResults int) ([]str
 // globToRegexp 将 glob 模式编译为正则表达式
 //
 // 语法：
-//   - `**`      段：匹配任意层目录（含零层）
-//   - `*`       匹配除 `/` 外的任意字符序列
-//   - `?`       匹配除 `/` 外的单个字符
-//   - `[abc]`   字符集
+//   - `**`        段：匹配任意层目录（含零层）
+//   - `*`         匹配除 `/` 外的任意字符序列
+//   - `?`         匹配除 `/` 外的单个字符
+//   - `[abc]`     字符集
+//   - `{a,b,c}`   花括号扩展，匹配其中任一选项（支持嵌套），如 `*.{go,md}`
 //   - 其它字符按字面量匹配（自动转义）
 func globToRegexp(pattern string) (*regexp.Regexp, error) {
 	var b strings.Builder
@@ -601,41 +602,160 @@ func globToRegexp(pattern string) (*regexp.Regexp, error) {
 			b.WriteString("/")
 		}
 		if seg == "**" {
-			// 单独的 ** 段
-			if i == len(segments)-1 {
+			// ** 的正则随位置而变：
+			//   唯一段 "**"        -> .*           （匹配一切）
+			//   开头非最后 "**/foo" -> (?:.*/)?     （可选前缀路径，无前导 /）
+			//   结尾非开头 "foo/**" -> (?:/.*)?     （匹配 foo 或 foo/...）
+			//   中间 "a/**/b"      -> /(?:.*/)?    （要求 a/ 前导，ab 不应匹配）
+			switch {
+			case i == 0 && i == len(segments)-1:
 				b.WriteString(".*")
-			} else {
+			case i == 0:
 				b.WriteString("(?:.*/)?")
+			case i == len(segments)-1:
+				b.WriteString("(?:/.*)?")
+			default:
+				b.WriteString("/(?:.*/)?")
 			}
 		} else {
-			j := 0
-			for j < len(seg) {
-				ch := seg[j]
-				switch ch {
-				case '*':
-					b.WriteString("[^/]*")
-					j++
-				case '?':
-					b.WriteString("[^/]")
-					j++
-				case '[':
-					// 查找匹配的 ]
-					if k := strings.IndexByte(seg[j:], ']'); k > 0 {
-						b.WriteString(seg[j : j+k+1])
-						j += k + 1
-					} else {
-						b.WriteString(regexp.QuoteMeta(string(ch)))
-						j++
-					}
-				default:
-					b.WriteString(regexp.QuoteMeta(string(ch)))
-					j++
-				}
+			part, err := segmentToRegexp(seg)
+			if err != nil {
+				return nil, err
 			}
+			b.WriteString(part)
 		}
 	}
 	b.WriteString("$")
 	return regexp.Compile(b.String())
+}
+
+// segmentToRegexp 把单段 glob（不含 `/`）转为正则片段。
+// 支持 `*`/`?`/`[abc]`/`{a,b}`，其中花括号可嵌套。
+func segmentToRegexp(seg string) (string, error) {
+	var b strings.Builder
+	j := 0
+	for j < len(seg) {
+		ch := seg[j]
+		switch ch {
+		case '*':
+			b.WriteString("[^/]*")
+			j++
+		case '?':
+			b.WriteString("[^/]")
+			j++
+		case '[':
+			// 查找匹配的 ]
+			k := strings.IndexByte(seg[j:], ']')
+			if k < 0 {
+				b.WriteString(regexp.QuoteMeta(string(ch)))
+				j++
+				continue
+			}
+			inner := seg[j+1 : j+k]
+			if inner == "" {
+				return "", fmt.Errorf("glob: empty char class at position %d", j)
+			}
+			cc, err := charClassToRegexp(inner)
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(cc)
+			j += k + 1
+		case '{':
+			// 花括号扩展：{a,b,c} -> (?:a|b|c)，支持嵌套
+			end := findMatchingBrace(seg, j)
+			if end < 0 {
+				// 无匹配的 }，按字面量处理
+				b.WriteString(regexp.QuoteMeta(string(ch)))
+				j++
+				continue
+			}
+			inner := seg[j+1 : end]
+			b.WriteString("(?:")
+			for k, opt := range splitBraceOptions(inner) {
+				if k > 0 {
+					b.WriteString("|")
+				}
+				part, err := segmentToRegexp(opt)
+				if err != nil {
+					return "", err
+				}
+				b.WriteString(part)
+			}
+			b.WriteString(")")
+			j = end + 1
+		default:
+			b.WriteString(regexp.QuoteMeta(string(ch)))
+			j++
+		}
+	}
+	return b.String(), nil
+}
+
+// charClassToRegexp 将 glob 字符集内部文本转为正则字符集。
+// glob 取反用 !（如 [!abc]），转为正则的 ^（[^abc]）。
+// 空字符集已在调用方处理。
+func charClassToRegexp(inner string) (string, error) {
+	var b strings.Builder
+	b.WriteString("[")
+	var j int
+	chars := []rune(inner)
+	// 取反：glob 的 [!...] 等价于正则的 [^...]
+	if len(chars) > 0 && chars[0] == '!' {
+		b.WriteString("^")
+		j = 1
+	}
+	for j < len(chars) {
+		ch := chars[j]
+		if ch == ']' {
+			b.WriteString("\\]")
+		} else {
+			b.WriteString(string(ch))
+		}
+		j++
+	}
+	b.WriteString("]")
+	return b.String(), nil
+}
+
+// findMatchingBrace 返回 seg[start] 处 '{' 对应的 '}' 的索引，无匹配返回 -1。
+// 用深度计数支持嵌套花括号。
+func findMatchingBrace(seg string, start int) int {
+	depth := 0
+	for i := start; i < len(seg); i++ {
+		switch seg[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// splitBraceOptions 按逗号分割花括号内的选项，忽略嵌套花括号里的逗号。
+func splitBraceOptions(s string) []string {
+	var opts []string
+	depth := 0
+	start := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				opts = append(opts, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	opts = append(opts, s[start:])
+	return opts
 }
 
 // allowedDirsFromWorkdir 把 NewXxxTool 的 workdir 形参翻译成 AllowedDirs 字段

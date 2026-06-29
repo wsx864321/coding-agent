@@ -148,11 +148,12 @@ func (c *client) buildRequestBody(model string, req provider.Request) anthReques
 				})
 			}
 			for _, tc := range m.ToolCalls {
-				var input json.RawMessage
-				if tc.Arguments != "" {
+				// Arguments 来自流式增量拼接，可能为空或被截断成非法 JSON；
+				// json.RawMessage 对空/非法内容会报 "unexpected end of JSON input"。
+				// 用 json.Valid 校验，非法时回退为 "{}"，保证序列化成功。
+				input := json.RawMessage("{}")
+				if json.Valid([]byte(tc.Arguments)) {
 					input = json.RawMessage(tc.Arguments)
-				} else {
-					input = json.RawMessage("{}")
 				}
 				blocks = append(blocks, anthContentBlock{
 					Type:  "tool_use",
@@ -195,10 +196,17 @@ func (c *client) buildRequestBody(model string, req provider.Request) anthReques
 	if len(req.Tools) > 0 {
 		tools := make([]anthTool, len(req.Tools))
 		for i, t := range req.Tools {
+			// Parameters 可能来自 MCP 等外部源，可能为空或非法 JSON；
+			// 空切片会让 json.RawMessage 序列化报 "unexpected end of JSON input"。
+			// 非法时回退为最小合法 schema。
+			schema := t.Parameters
+			if len(schema) == 0 || !json.Valid(schema) {
+				schema = json.RawMessage(`{"type":"object","properties":{}}`)
+			}
 			tools[i] = anthTool{
 				Name:        t.Name,
 				Description: t.Description,
-				InputSchema: t.Parameters,
+				InputSchema: schema,
 			}
 		}
 		r.Tools = tools

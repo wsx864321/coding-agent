@@ -44,7 +44,9 @@ func (m Model) View() tea.View {
 		parts = append(parts, statusStyle.Render(wl))
 	}
 	parts = append(parts, statusStyle.Render(renderModeLine(m)))
-	parts = append(parts, statusStyle.Render(renderDataLine(m)))
+	if dl := renderDataLine(m); dl != "" {
+		parts = append(parts, statusStyle.Render(dl))
+	}
 
 	// 斜杠命令输出浮动面板
 	if m.slashOverlay != "" {

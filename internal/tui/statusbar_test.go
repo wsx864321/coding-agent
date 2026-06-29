@@ -163,8 +163,8 @@ func TestBottomHeightBase(t *testing.T) {
 	m.height = 24
 	m = m.syncLayout()
 
-	// 2 (mode + data) + 1 (help) + textarea
-	want := 2 + 1 + m.textarea.Height()
+	// 1 (mode) + 1 (help) + textarea — New() 无 balance/cache，data 行不渲染
+	want := 1 + 1 + m.textarea.Height()
 	if got := m.bottomHeight(); got != want {
 		t.Fatalf("bottomHeight() = %d, want %d", got, want)
 	}
@@ -177,8 +177,8 @@ func TestBottomHeightBusy(t *testing.T) {
 	m.busy = true
 	m = m.syncLayout()
 
-	// 1 (working) + 2 (mode + data) + 1 (help) + textarea
-	want := 1 + 2 + 1 + m.textarea.Height()
+	// 1 (working) + 1 (mode) + 1 (help) + textarea — data 行为空时不渲染
+	want := 1 + 1 + 1 + m.textarea.Height()
 	if got := m.bottomHeight(); got != want {
 		t.Fatalf("bottomHeight(busy) = %d, want %d", got, want)
 	}
@@ -191,8 +191,8 @@ func TestBottomHeightWithTodo(t *testing.T) {
 	m.todoArgs = `[{"content":"task1","status":"pending"}]`
 	m = m.syncLayout()
 
-	// 2 (mode + data) + 1 (todo) + 1 (help) + textarea
-	want := 2 + 1 + 1 + m.textarea.Height()
+	// 1 (mode) + 1 (todo) + 1 (help) + textarea — data 行为空时不渲染
+	want := 1 + 1 + 1 + m.textarea.Height()
 	if got := m.bottomHeight(); got != want {
 		t.Fatalf("bottomHeight(todo) = %d, want %d", got, want)
 	}
@@ -206,7 +206,8 @@ func TestBottomHeightWithApprovalAndError(t *testing.T) {
 	m.lastError = "network down"
 	m = m.syncLayout()
 
-	want := 2 + 1 + m.textarea.Height() + 2 + 1
+	// 1 (mode) + 1 (help) + textarea + 2 (approval) + 1 (error) — data 行为空时不渲染
+	want := 1 + 1 + m.textarea.Height() + 2 + 1
 	if got := m.bottomHeight(); got != want {
 		t.Fatalf("bottomHeight() = %d, want %d", got, want)
 	}

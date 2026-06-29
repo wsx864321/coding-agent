@@ -221,7 +221,10 @@ func (m Model) bottomHeight() int {
 	if m.busy {
 		h++ // 工作行
 	}
-	h += 2 // 模式行 + 数据行
+	h++ // 模式行（renderModeLine 始终渲染）
+	if renderDataLine(m) != "" {
+		h++ // 数据行（renderDataLine 仅非空时才渲染，需与 View 保持一致）
+	}
 	if m.statusMsg != "" {
 		h++ // 状态消息行
 	}

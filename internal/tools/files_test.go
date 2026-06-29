@@ -371,6 +371,38 @@ func TestGlobToRegexp(t *testing.T) {
 		{"[abc].go", "a.go", true},
 		{"[abc].go", "d.go", false},
 		{"a-b_c.d", "a-b_c.d", true}, // 字面量
+		// 花括号扩展
+		{"*.{go,md}", "main.go", true},
+		{"*.{go,md}", "main.md", true},
+		{"*.{go,md}", "main.txt", false},
+		// 花括号嵌套
+		{"a{b,c{d,e}}f", "abf", true},
+		{"a{b,c{d,e}}f", "acdf", true},
+		{"a{b,c{d,e}}f", "acef", true},
+		{"a{b,c{d,e}}f", "af", false},
+		// 字符集范围
+		{"[a-z].txt", "m.txt", true},
+		{"[a-z].txt", "9.txt", false},
+		{"[0-9].txt", "5.txt", true},
+		// 取反字符集 [!...]
+		{"[!abc].go", "d.go", true},
+		{"[!abc].go", "a.go", false},
+		{"[!abc].go", "b.go", false},
+		// 字符集内包含特殊字符
+		{"[*].txt", "*.txt", true},
+		{"[*].txt", "a.txt", false},
+		// ** 边界
+		{"foo/**", "foo/bar/baz.go", true},
+		{"foo/**", "foo", true},
+		{"foo/**", "foobar", false},  // 修复后不匹配
+		{"a/**/b", "a/b", true},
+		{"a/**/b", "a/x/b", true},
+		{"a/**/b", "a/x/y/b", true},
+		{"a/**/b", "ab", false},
+		// 前导 **
+		{"**/foo", "foo", true},
+		{"**/foo", "a/foo", true},
+		{"**/foo", "a/b/foo", true},
 	}
 	for _, c := range cases {
 		t.Run(c.pattern+"/"+c.input, func(t *testing.T) {
@@ -383,5 +415,32 @@ func TestGlobToRegexp(t *testing.T) {
 				t.Errorf("pattern=%q input=%q got=%v want=%v", c.pattern, c.input, got, c.want)
 			}
 		})
+	}
+}
+
+func TestGlobToRegexp_EmptyCharClass(t *testing.T) {
+	_, err := globToRegexp("file[].txt")
+	if err == nil {
+		t.Error("expected error for empty char class []")
+	}
+}
+
+func TestGlobFile_BraceExpansion(t *testing.T) {
+	dir := mkTempDir(t)
+	writeTemp(t, dir, "a.go", "x")
+	writeTemp(t, dir, "b.md", "x")
+	writeTemp(t, dir, "c.txt", "x")
+
+	tool := NewGlobFileTool(dir)
+	out, err := tool.Execute(context.Background(), map[string]any{
+		"pattern":  "*.{go,md}",
+		"base_dir": dir,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 {
+		t.Errorf("expected 2 matches (go, md), got %d: %q", len(lines), out)
 	}
 }
