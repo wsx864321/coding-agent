@@ -213,7 +213,6 @@ func (c *client) readStream(ctx context.Context, body io.ReadCloser, ch chan<- p
 	defer body.Close()
 
 	hasOutput := false
-	var currentEvent string
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -262,30 +261,48 @@ func (c *client) readStream(ctx context.Context, body io.ReadCloser, ch chan<- p
 				return
 			}
 
-			if strings.HasPrefix(line, "event: ") {
-				currentEvent = strings.TrimPrefix(line, "event: ")
+			// 只处理 data 行。不同网关对 "event:" 行冒号后是否带空格处理不一
+			// （实测 deepseek 网关发 "event:message_start" 无空格），而每个 data
+			// JSON 的顶层 "type" 字段才是权威的事件判别依据，与 Anthropic 官方一致。
+			// 因此忽略 event 行，直接从 data JSON 解析 type。
+			if !strings.HasPrefix(line, "data:") {
 				continue
 			}
-			if !strings.HasPrefix(line, "data: ") {
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "" {
 				continue
 			}
-			data := strings.TrimPrefix(line, "data: ")
 
-			chunks := c.processEvent(currentEvent, []byte(data), &hasOutput)
+			// message_stop / error 是终止事件：发出对应 chunk 后必须立即 return。
+			// 否则消费端（CollectWithText 收到 ChunkError 会立刻放弃读 channel，
+			// 收到 ChunkDone 会继续 range 等 channel 关闭）与 readStream 产生死锁
+			// 或 120s 空等——继续往无人读取的 channel 写会永久阻塞。
+			terminal, chunks := c.processEvent([]byte(data), &hasOutput)
 			for _, chunk := range chunks {
 				ch <- chunk
 			}
-			currentEvent = ""
+			if terminal {
+				return
+			}
 		}
 	}
 }
 
-func (c *client) processEvent(event string, data []byte, hasOutput *bool) []provider.Chunk {
-	switch event {
+// processEvent 解析单个 SSE data 事件。返回 terminal=true 表示该事件是流的
+// 终止信号（message_stop / error），调用方应立即结束 readStream。
+// 事件类型取自 data JSON 的顶层 "type" 字段（而非 SSE event 行），以兼容各网关。
+func (c *client) processEvent(data []byte, hasOutput *bool) (terminal bool, chunks []provider.Chunk) {
+	var head struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return false, nil
+	}
+	switch head.Type {
 	case "message_start":
 		var evt anthMessageStart
 		if json.Unmarshal(data, &evt) == nil && evt.Message.Usage.InputTokens > 0 {
-			return []provider.Chunk{{
+			return false, []provider.Chunk{{
 				Type: provider.ChunkUsage,
 				Usage: &provider.Usage{
 					PromptTokens: evt.Message.Usage.InputTokens,
@@ -296,14 +313,14 @@ func (c *client) processEvent(event string, data []byte, hasOutput *bool) []prov
 	case "content_block_start":
 		var evt anthContentBlockStart
 		if json.Unmarshal(data, &evt) != nil {
-			return nil
+			return false, nil
 		}
 		switch evt.ContentBlock.Type {
 		case "text":
 			// 文本块开始，等 delta 再发送
 		case "tool_use":
 			*hasOutput = true
-			return []provider.Chunk{{
+			return false, []provider.Chunk{{
 				Type: provider.ChunkToolCallStart,
 				ToolCall: &provider.ToolCall{
 					ID:   evt.ContentBlock.ID,
@@ -315,18 +332,18 @@ func (c *client) processEvent(event string, data []byte, hasOutput *bool) []prov
 	case "content_block_delta":
 		var evt anthContentBlockDelta
 		if json.Unmarshal(data, &evt) != nil {
-			return nil
+			return false, nil
 		}
 		switch evt.Delta.Type {
 		case "text_delta":
 			*hasOutput = true
-			return []provider.Chunk{{
+			return false, []provider.Chunk{{
 				Type: provider.ChunkText,
 				Text: evt.Delta.Text,
 			}}
 		case "input_json_delta":
 			*hasOutput = true
-			return []provider.Chunk{{
+			return false, []provider.Chunk{{
 				Type: provider.ChunkToolCallDelta,
 				ToolCall: &provider.ToolCall{
 					Arguments: evt.Delta.PartialJSON,
@@ -337,7 +354,7 @@ func (c *client) processEvent(event string, data []byte, hasOutput *bool) []prov
 	case "message_delta":
 		var evt anthMessageDelta
 		if json.Unmarshal(data, &evt) != nil {
-			return nil
+			return false, nil
 		}
 		reason := evt.Delta.StopReason
 		switch reason {
@@ -348,7 +365,7 @@ func (c *client) processEvent(event string, data []byte, hasOutput *bool) []prov
 		case "max_tokens":
 			reason = provider.FinishReasonLength
 		}
-		return []provider.Chunk{{
+		return false, []provider.Chunk{{
 			Type: provider.ChunkUsage,
 			Usage: &provider.Usage{
 				CompletionTokens: evt.Usage.OutputTokens,
@@ -357,26 +374,26 @@ func (c *client) processEvent(event string, data []byte, hasOutput *bool) []prov
 		}}
 
 	case "message_stop":
-		return []provider.Chunk{{Type: provider.ChunkDone}}
+		return true, []provider.Chunk{{Type: provider.ChunkDone}}
 
 	case "error":
 		var evt anthError
 		if json.Unmarshal(data, &evt) == nil {
 			err := fmt.Errorf("anthropic: %s: %s", evt.Error.Type, evt.Error.Message)
 			if *hasOutput {
-				return []provider.Chunk{{
+				return true, []provider.Chunk{{
 					Type: provider.ChunkError,
 					Err:  &provider.StreamInterruptedError{Err: err},
 				}}
 			}
-			return []provider.Chunk{{
+			return true, []provider.Chunk{{
 				Type: provider.ChunkError,
 				Err:  err,
 			}}
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
 // --- Wire types ---
