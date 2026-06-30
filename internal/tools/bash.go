@@ -172,7 +172,7 @@ func (b *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 
 	// 合并输出
 	output := mergeOutput(stdout.String(), stderr.String())
-	if b.MaxOutputBytes > 0 && int64(len(output)) > int64(b.MaxOutputBytes) {
+	if b.MaxOutputBytes > 0 && int64(len(output)) >= int64(b.MaxOutputBytes) {
 		output = output[:b.MaxOutputBytes] + "\n... (输出被截断)"
 	}
 
