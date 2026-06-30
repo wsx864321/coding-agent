@@ -175,7 +175,7 @@ func TestPartitionToolCalls_UnknownToolsSerial(t *testing.T) {
 
 func TestRunParallel_ExecutesAll(t *testing.T) {
 	results := make([]int, 10)
-	runParallel(0, 10, func(i int) {
+	runParallel(0, 10, nil, func(i int) {
 		results[i] = i * 2
 	})
 	for i := 0; i < 10; i++ {
@@ -187,14 +187,14 @@ func TestRunParallel_ExecutesAll(t *testing.T) {
 
 func TestRunParallel_SingleElement(t *testing.T) {
 	var called bool
-	runParallel(0, 1, func(i int) { called = true })
+	runParallel(0, 1, nil, func(i int) { called = true })
 	if !called {
 		t.Error("single element should be executed")
 	}
 }
 
 func TestRunParallel_EmptyRange(t *testing.T) {
-	runParallel(5, 5, func(i int) { t.Error("should not be called") })
+	runParallel(5, 5, nil, func(i int) { t.Error("should not be called") })
 }
 
 func TestRunParallel_ConcurrentExecution(t *testing.T) {

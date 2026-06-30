@@ -3,6 +3,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,13 +14,17 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 // =====================================================================
 // ReadFileTool —— 读取单个文件
 // =====================================================================
 
-// ReadFileTool 读取一个文本文件并返回其内容
+// ReadFileTool 读取一个文本文件并返回其内容，带行号前缀。
 type ReadFileTool struct {
 	// AllowedDirs 允许读取的目录白名单；为空表示不限制
 	AllowedDirs []string
@@ -27,21 +32,17 @@ type ReadFileTool struct {
 	MaxBytes int
 }
 
+const (
+	readFileDefaultLimit  = 2000 // 默认返回行数
+	readFileBinaryPeek    = 8 * 1024
+	readFileDetectSample  = 256 * 1024
+)
+
 // NewReadFileTool 创建具有默认配置的 ReadFileTool
 //
 // 参数 workdir 是 AllowedDirs 白名单的基准目录：
 //   - 传非空路径：AllowedDirs = []string{workdir}，LLM 只能读该目录下文件
 //   - 传 ""：AllowedDirs = nil，不限制
-//
-// 推荐用法（CLI 入口）：
-//
-//	wd, _ := os.Getwd()
-//	tool := tools.NewReadFileTool(wd)
-//
-// 如需自定义白名单，可继续覆盖：
-//
-//	tool.AllowedDirs = []string{"/path/a", "/path/b"}
-//	tool.AllowedDirs = nil
 func NewReadFileTool(workdir string) *ReadFileTool {
 	return &ReadFileTool{
 		AllowedDirs: allowedDirsFromWorkdir(workdir),
@@ -57,15 +58,14 @@ func (t *ReadFileTool) Name() string { return "read_file" }
 
 // Description 返回工具功能描述
 func (t *ReadFileTool) Description() string {
-	return "读取单个文本文件的内容。返回完整文件内容，编码假设为 UTF-8。" +
-		"受 AllowedDirs 白名单限制。"
+	return "Read a text file with optional line offset/limit. Output prefixes each line with its 1-based number (e.g. `   42→...`) so subsequent edit_file calls can target exact lines. Use `offset` and `limit` to page through large files; the tool reports total length and pagination hints in a trailer."
 }
 
 // readFileArgs read_file 的入参
 type readFileArgs struct {
-	Path  string `json:"path"`
-	Start int    `json:"start,omitempty"` // 起始行号（1-based），0 表示从头开始
-	End   int    `json:"end,omitempty"`   // 结束行号（1-based，闭区间），0 表示到文件末尾
+	Path   string `json:"path"`
+	Offset int    `json:"offset,omitempty"` // 0-based 起始行，缺省 0
+	Limit  int    `json:"limit,omitempty"`  // 返回行数，缺省 2000
 }
 
 // Schema 返回工具 JSON Schema
@@ -75,17 +75,17 @@ func (t *ReadFileTool) Schema() json.RawMessage {
 		"properties": map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "待读取文件的相对或绝对路径",
+				"description": "File path",
 			},
-			"start": map[string]any{
+			"offset": map[string]any{
+				"type":        "integer",
+				"minimum":     0,
+				"description": "0-based line offset to start reading from (default 0)",
+			},
+			"limit": map[string]any{
 				"type":        "integer",
 				"minimum":     1,
-				"description": "起始行号（1-based，包含），缺省为 1",
-			},
-			"end": map[string]any{
-				"type":        "integer",
-				"minimum":     1,
-				"description": "结束行号（1-based，包含），缺省为文件末尾",
+				"description": "Maximum lines to return (default 2000)",
 			},
 		},
 		"required": []string{"path"},
@@ -103,50 +103,128 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]any) (string
 	if strings.TrimSpace(p.Path) == "" {
 		return "", errors.New("path 不能为空")
 	}
+	p.Path = NormalizeMingwPath(p.Path)
+	// 兼容旧的 start/end 参数（支持 float64（JSON 反序列化）和 int（Go 字面量））
+	if p.Offset == 0 {
+		if start, ok := args["start"].(float64); ok {
+			p.Offset = int(start) - 1 // 1-based → 0-based
+		} else if start, ok := args["start"].(int); ok {
+			p.Offset = start - 1
+		}
+	}
+	if p.Limit == 0 {
+		if end, ok := args["end"].(float64); ok {
+			p.Limit = int(end) - p.Offset
+		} else if end, ok := args["end"].(int); ok {
+			p.Limit = end - p.Offset
+		}
+	}
 	if err := t.checkPath(p.Path); err != nil {
 		return "", err
 	}
+	if p.Offset < 0 {
+		p.Offset = 0
+	}
+	if p.Limit <= 0 {
+		p.Limit = readFileDefaultLimit
+	}
 
-	data, err := os.ReadFile(p.Path)
+	// 目录检查
+	if info, err := os.Stat(p.Path); err == nil && info.IsDir() {
+		return "", fmt.Errorf("%s 是目录，不是文件 — 用 ls 工具列出内容", p.Path)
+	}
+
+	// 大小检查
+	if t.MaxBytes > 0 {
+		if info, err := os.Stat(p.Path); err == nil && info.Size() > int64(t.MaxBytes) {
+			return "", fmt.Errorf("文件大小 %d 超过限制 %d", info.Size(), t.MaxBytes)
+		}
+	}
+
+	f, err := os.Open(p.Path)
 	if err != nil {
-		return "", fmt.Errorf("读取文件失败: %w", err)
+		return "", fmt.Errorf("读取 %s: %w", p.Path, err)
 	}
-	if t.MaxBytes > 0 && len(data) > t.MaxBytes {
-		return "", fmt.Errorf("文件大小 %d 超过限制 %d", len(data), t.MaxBytes)
+	defer f.Close()
+
+	// Peek 前 8KB 做二进制检测
+	peek := make([]byte, readFileBinaryPeek)
+	pn, perr := io.ReadFull(f, peek)
+	peek = peek[:pn]
+	peekEOF := perr != nil
+
+	// BOM 检测（UTF-16 含 NUL 是正常的，不能用 NUL 检测误判）
+	if enc := detectEncoding(peek); enc != encUTF8 {
+		rest, rerr := io.ReadAll(f)
+		if rerr != nil {
+			return "", fmt.Errorf("读取 %s: %w", p.Path, rerr)
+		}
+		all := append(peek, rest...)
+		return t.scanLines(string(decodeBytes(all, enc)), p.Offset, p.Limit)
 	}
 
-	// 行号范围过滤
-	if p.Start > 0 || p.End > 0 {
-		lines := bytes.Split(data, []byte("\n"))
-		// 去掉因文件末尾换行产生的空行
-		if len(lines) > 0 && len(lines[len(lines)-1]) == 0 {
-			lines = lines[:len(lines)-1]
-		}
-		start := p.Start
-		if start < 1 {
-			start = 1
-		}
-		end := p.End
-		if end < 1 || end > len(lines) {
-			end = len(lines)
-		}
-		if start > end {
-			return "", fmt.Errorf("start (%d) > end (%d)", start, end)
-		}
-		if start > len(lines) {
-			return "", fmt.Errorf("start (%d) 超过文件总行数 %d", start, len(lines))
-		}
-		var buf bytes.Buffer
-		for i := start - 1; i < end; i++ {
-			buf.Write(lines[i])
-			if i < end-1 {
-				buf.WriteByte('\n')
-			}
-		}
-		return buf.String(), nil
+	// NUL 字节 → 二进制文件
+	if bytes.IndexByte(peek, 0) >= 0 {
+		return "", fmt.Errorf("%s 可能是二进制文件（检测到 NUL 字节）", p.Path)
 	}
 
-	return string(data), nil
+	// 读取样本做编码检测
+	head := peek
+	if !peekEOF {
+		more := make([]byte, readFileDetectSample-len(peek))
+		mn, _ := io.ReadFull(f, more)
+		head = append(peek, more[:mn]...)
+	}
+	enc, _ := detectFullEncoding(head)
+
+	src := io.MultiReader(bytes.NewReader(head), f)
+	if dec := encodingDecoder(enc); dec != nil {
+		return t.scanLines(transformReader(src, dec), p.Offset, p.Limit)
+	}
+	return t.scanLines(scanReader(src), p.Offset, p.Limit)
+}
+
+// scanLines reads lines and formats them with right-aligned 1-based line numbers.
+func (t *ReadFileTool) scanLines(content string, offset, limit int) (string, error) {
+	lines := strings.SplitAfter(content, "\n")
+	// 处理末尾无换行的最后一行
+	if len(lines) > 0 && !strings.HasSuffix(lines[len(lines)-1], "\n") {
+		// 最后一行不是以 \n 结尾，保持原样
+	}
+	total := len(lines)
+	// 去掉末尾空行（由 strings.SplitAfter 产生）
+	if total > 0 && lines[total-1] == "" {
+		lines = lines[:total-1]
+		total = len(lines)
+	}
+	if total == 0 {
+		return "(空文件)", nil
+	}
+	if offset >= total {
+		return fmt.Sprintf("(offset %d 超过文件总行数 %d)", offset, total), nil
+	}
+
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	hasMore := end < total
+
+	shown := lines[offset:end]
+	maxLineNo := offset + len(shown)
+	w := len(fmt.Sprint(maxLineNo))
+
+	var b strings.Builder
+	for i, line := range shown {
+		lineNo := offset + i + 1
+		// 去掉末尾换行符用于显示
+		display := strings.TrimSuffix(line, "\n")
+		fmt.Fprintf(&b, "%*d→%s\n", w, lineNo, display)
+	}
+	if hasMore {
+		fmt.Fprintf(&b, "\n[more lines below; pass offset=%d to continue]\n", end)
+	}
+	return b.String(), nil
 }
 
 // checkPath 校验路径是否在白名单内
@@ -162,6 +240,195 @@ func (t *ReadFileTool) checkPath(path string) error {
 		return fmt.Errorf("path %q 不在允许的目录白名单中", path)
 	}
 	return nil
+}
+
+// =====================================================================
+// 轻量编码处理（内联版，避免独立 package）
+// =====================================================================
+
+type fileEncoding int
+
+const (
+	encUTF8 fileEncoding = iota
+	encUTF8BOM
+	encUTF16LE
+	encUTF16BE
+	encGB18030
+	encLossy
+)
+
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+func detectEncoding(peek []byte) fileEncoding {
+	if len(peek) >= 3 && peek[0] == 0xEF && peek[1] == 0xBB && peek[2] == 0xBF {
+		return encUTF8BOM
+	}
+	if len(peek) >= 2 && peek[0] == 0xFF && peek[1] == 0xFE {
+		return encUTF16LE
+	}
+	if len(peek) >= 2 && peek[0] == 0xFE && peek[1] == 0xFF {
+		return encUTF16BE
+	}
+	return encUTF8
+}
+
+func detectFullEncoding(data []byte) (fileEncoding, []byte) {
+	switch {
+	case len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF:
+		return encUTF8BOM, data
+	case len(data) >= 2 && data[0] == 0xFF && data[1] == 0xFE:
+		return encUTF16LE, data
+	case len(data) >= 2 && data[0] == 0xFE && data[1] == 0xFF:
+		return encUTF16BE, data
+	}
+	if utf8.Valid(data) {
+		return encUTF8, data
+	}
+	dec := simplifiedchinese.GB18030.NewDecoder()
+	if _, _, err := transform.Bytes(dec, data); err == nil {
+		return encGB18030, data
+	}
+	return encLossy, data
+}
+
+func decodeBytes(data []byte, enc fileEncoding) []byte {
+	switch enc {
+	case encUTF8BOM:
+		return data[3:]
+	case encUTF16LE:
+		return decodeUTF16(data[2:], binary.LittleEndian)
+	case encUTF16BE:
+		return decodeUTF16(data[2:], binary.BigEndian)
+	case encGB18030:
+		out, _, err := transform.Bytes(simplifiedchinese.GB18030.NewDecoder(), data)
+		if err != nil {
+			return data
+		}
+		return out
+	}
+	return data
+}
+
+// encodeBytes 将 UTF-8 文本编码回原格式写入磁盘。
+func encodeBytes(text string, enc fileEncoding) []byte {
+	switch enc {
+	case encUTF8BOM:
+		return append(utf8BOM, []byte(text)...)
+	case encUTF16LE:
+		return encodeUTF16(text, binary.LittleEndian, true)
+	case encUTF16BE:
+		return encodeUTF16(text, binary.BigEndian, true)
+	case encGB18030:
+		out, _, err := transform.Bytes(simplifiedchinese.GB18030.NewEncoder(), []byte(text))
+		if err != nil {
+			return []byte(text)
+		}
+		return out
+	}
+	return []byte(text)
+}
+
+func encodingDecoder(enc fileEncoding) transform.Transformer {
+	switch enc {
+	case encGB18030:
+		return simplifiedchinese.GB18030.NewDecoder()
+	}
+	return nil
+}
+
+// readFileEncoded 与 writeFileEncoded 供 edit_file / write_file 使用。
+func readFileEncoded(path string) (content string, enc fileEncoding, err error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", encUTF8, err
+	}
+	enc, _ = detectFullEncoding(b)
+	return string(decodeBytes(b, enc)), enc, nil
+}
+
+func writeFileEncoded(path string, content string, enc fileEncoding) error {
+	return os.WriteFile(path, encodeBytes(content, enc), 0o644)
+}
+
+func decodeUTF16(b []byte, order binary.ByteOrder) []byte {
+	if len(b)%2 != 0 {
+		b = b[:len(b)-1]
+	}
+	u := make([]uint16, len(b)/2)
+	for i := range u {
+		u[i] = order.Uint16(b[i*2:])
+	}
+	runes := utf16Decode(u)
+	return []byte(string(runes))
+}
+
+func encodeUTF16(text string, order binary.ByteOrder, withBOM bool) []byte {
+	runes := []rune(text)
+	encoded := utf16Encode(runes)
+
+	var buf bytes.Buffer
+	if withBOM {
+		var bom [2]byte
+		if order == binary.LittleEndian {
+			bom[0], bom[1] = 0xFF, 0xFE
+		} else {
+			bom[0], bom[1] = 0xFE, 0xFF
+		}
+		buf.Write(bom[:])
+	}
+	for _, u := range encoded {
+		var b [2]byte
+		order.PutUint16(b[:], u)
+		buf.Write(b[:])
+	}
+	return buf.Bytes()
+}
+
+func utf16Decode(u []uint16) []rune {
+	var out []rune
+	for i := 0; i < len(u); i++ {
+		c := u[i]
+		if c >= 0xD800 && c <= 0xDBFF && i+1 < len(u) {
+			c2 := u[i+1]
+			if c2 >= 0xDC00 && c2 <= 0xDFFF {
+				out = append(out, rune(c-0xD800)<<10|rune(c2-0xDC00)+0x10000)
+				i++
+				continue
+			}
+		}
+		out = append(out, rune(c))
+	}
+	return out
+}
+
+func utf16Encode(runes []rune) []uint16 {
+	var out []uint16
+	for _, r := range runes {
+		if r >= 0x10000 && r <= 0x10FFFF {
+			r -= 0x10000
+			out = append(out, uint16(0xD800+(r>>10)), uint16(0xDC00+(r&0x3FF)))
+		} else {
+			out = append(out, uint16(r))
+		}
+	}
+	return out
+}
+
+// scanReader 把 io.Reader 的内容读到 string。
+func scanReader(r io.Reader) string {
+	data, _ := io.ReadAll(r)
+	return string(data)
+}
+
+// transformReader 用 transform.Transformer 包装 reader。
+func transformReader(r io.Reader, tr transform.Transformer) string {
+	// 简单方式：全部读到内存再转换
+	data, _ := io.ReadAll(r)
+	out, _, err := transform.Bytes(tr, data)
+	if err != nil {
+		return string(data)
+	}
+	return string(out)
 }
 
 // =====================================================================
@@ -234,36 +501,44 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]any) (strin
 	if strings.TrimSpace(p.Path) == "" {
 		return "", errors.New("path 不能为空")
 	}
+	p.Path = NormalizeMingwPath(p.Path)
 	if err := t.checkPath(p.Path); err != nil {
 		return "", err
 	}
 
 	// 父目录自动创建
 	dir := filepath.Dir(p.Path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("创建父目录失败: %w", err)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return "", fmt.Errorf("创建父目录失败: %w", err)
+		}
 	}
 
-	flag := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	if p.Append {
-		flag = os.O_WRONLY | os.O_CREATE | os.O_APPEND
+		f, err := os.OpenFile(p.Path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+		if err != nil {
+			return "", fmt.Errorf("打开文件失败: %w", err)
+		}
+		defer f.Close()
+		n, err := f.WriteString(p.Content)
+		if err != nil {
+			return "", fmt.Errorf("写入文件失败: %w", err)
+		}
+		return fmt.Sprintf("OK: 追加写入 %d 字节到 %s", n, p.Path), nil
 	}
 
-	f, err := os.OpenFile(p.Path, flag, 0o644)
-	if err != nil {
-		return "", fmt.Errorf("打开文件失败: %w", err)
+	// 保持原文件编码（覆盖模式）
+	existing, enc, rerr := readFileEncoded(p.Path)
+	if rerr == nil && existing == p.Content {
+		return fmt.Sprintf("%s 已包含完全相同的内容，无需写入", p.Path), nil
 	}
-	defer f.Close()
-
-	n, err := f.WriteString(p.Content)
-	if err != nil {
+	if rerr != nil {
+		enc = encUTF8 // 文件不存在，默认 UTF-8
+	}
+	if err := writeFileEncoded(p.Path, p.Content, enc); err != nil {
 		return "", fmt.Errorf("写入文件失败: %w", err)
 	}
-	mode := "覆盖"
-	if p.Append {
-		mode = "追加"
-	}
-	return fmt.Sprintf("OK: %s写入 %d 字节到 %s", mode, n, p.Path), nil
+	return fmt.Sprintf("wrote %d bytes to %s", len(p.Content), p.Path), nil
 }
 
 func (t *WriteFileTool) checkPath(path string) error {
@@ -356,6 +631,7 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]any) (string
 	if strings.TrimSpace(p.Path) == "" {
 		return "", errors.New("path 不能为空")
 	}
+	p.Path = NormalizeMingwPath(p.Path)
 	if p.OldText == "" {
 		return "", errors.New("old_text 不能为空")
 	}
@@ -363,14 +639,17 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]any) (string
 		return "", err
 	}
 
-	data, err := os.ReadFile(p.Path)
+	content, enc, err := readFileEncoded(p.Path)
 	if err != nil {
 		return "", fmt.Errorf("读取文件失败: %w", err)
 	}
-	content := string(data)
-	count := strings.Count(content, p.OldText)
+
+	old, newStr := matchIndent(content, p.OldText, p.NewText)
+	old, newStr = matchLineEndings(content, old, newStr)
+	count := strings.Count(content, old)
 	if count == 0 {
-		return "", errors.New("old_text 在文件中未找到")
+		return "", fmt.Errorf("old_text 在文件中未找到。尝试匹配: %q\n提示: 检查空白字符（tab vs 空格），用 read_file 重新确认目标文本的精确内容",
+			p.OldText)
 	}
 	if !p.All && count > 1 {
 		return "", fmt.Errorf("old_text 在文件中匹配 %d 次，要求唯一匹配；如需全部替换请设置 all=true", count)
@@ -378,17 +657,59 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]any) (string
 
 	var newContent string
 	if p.All {
-		newContent = strings.ReplaceAll(content, p.OldText, p.NewText)
+		newContent = strings.ReplaceAll(content, old, newStr)
 	} else {
 		// count == 1 已由上面 if 保证
-		idx := strings.Index(content, p.OldText)
-		newContent = content[:idx] + p.NewText + content[idx+len(p.OldText):]
+		idx := strings.Index(content, old)
+		newContent = content[:idx] + newStr + content[idx+len(old):]
 	}
 
-	if err := os.WriteFile(p.Path, []byte(newContent), 0o644); err != nil {
+	if err := writeFileEncoded(p.Path, newContent, enc); err != nil {
 		return "", fmt.Errorf("写入文件失败: %w", err)
 	}
 	return fmt.Sprintf("OK: 替换 %d 处", count), nil
+}
+
+// matchIndent 适配 old/new 的缩进风格以匹配文件。当 LLM 通过 TUI 渲染看到空格
+// 但文件使用 tab（或反过来）时，将 old_text 转为文件实际使用的缩进风格后再匹配。
+// 模式与 Reasonix 的 matchLineEndings 一致：精确匹配优先，失败后做一次轻量适配。
+func matchIndent(content, old, newStr string) (string, string) {
+	if strings.Contains(content, old) {
+		return old, newStr
+	}
+	// 文件含 tab 但 LLM 用了空格 → 尝试把 4 空格组转 tab
+	if strings.Contains(content, "\t") {
+		tabbed := strings.ReplaceAll(old, "    ", "\t")
+		if strings.Contains(content, tabbed) {
+			return tabbed, strings.ReplaceAll(newStr, "    ", "\t")
+		}
+	}
+	// 文件用空格但 LLM 用了 tab → 尝试把 tab 转 4 空格
+	if strings.Contains(old, "\t") {
+		spaced := strings.ReplaceAll(old, "\t", "    ")
+		if strings.Contains(content, spaced) {
+			return spaced, strings.ReplaceAll(newStr, "\t", "    ")
+		}
+	}
+	return old, newStr
+}
+
+// matchLineEndings adapts an edit's old/new text to a CRLF file when the literal
+// old_string isn't present but its CRLF form is. read_file strips '\r' so a
+// model's multi-line old_string arrives LF-only while a Windows source stores
+// '\r\n'; rewriting search and replacement to the file's ending fixes the match
+// without rewriting the file's other line endings.
+func matchLineEndings(content, old, newStr string) (string, string) {
+	if strings.Contains(content, old) || !strings.Contains(content, "\r\n") {
+		return old, newStr
+	}
+	toCRLF := func(s string) string {
+		return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")
+	}
+	if strings.Contains(content, toCRLF(old)) {
+		return toCRLF(old), toCRLF(newStr)
+	}
+	return old, newStr
 }
 
 func (t *EditFileTool) checkPath(path string) error {
@@ -477,7 +798,7 @@ func (t *GlobFileTool) Execute(ctx context.Context, args map[string]any) (string
 	if strings.TrimSpace(p.Pattern) == "" {
 		return "", errors.New("pattern 不能为空")
 	}
-	base := p.BaseDir
+	base := NormalizeMingwPath(p.BaseDir)
 	if base == "" {
 		wd, err := os.Getwd()
 		if err != nil {

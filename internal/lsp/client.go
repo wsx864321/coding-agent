@@ -16,18 +16,22 @@ import (
 type Client struct {
 	*jsonrpc.BaseClient
 
-	diagMu sync.RWMutex
-	diags  map[string][]Diagnostic
-	rootURI  string
-	rootPath string
+	diagMu     sync.RWMutex
+	diags      map[string][]Diagnostic
+	rootURI    string
+	rootPath   string
+
+	diagWaiterMu sync.Mutex
+	diagWaiter   map[string]chan<- struct{} // URI → 等待通知的 channel
 }
 
 // NewClient 创建并启动一个 LSP 客户端
 func NewClient(command string, args []string, rootPath string) (*Client, error) {
 	c := &Client{
-		diags:    make(map[string][]Diagnostic),
-		rootPath: rootPath,
-		rootURI:  pathToURI(rootPath),
+		diags:      make(map[string][]Diagnostic),
+		diagWaiter: make(map[string]chan<- struct{}),
+		rootPath:   rootPath,
+		rootURI:    pathToURI(rootPath),
 	}
 
 	base, err := jsonrpc.NewBaseClient(jsonrpc.BaseClientOptions{
@@ -98,6 +102,13 @@ func (c *Client) handleNotification(msg *jsonrpc.Message) {
 			c.diagMu.Lock()
 			c.diags[params.URI] = params.Diagnostics
 			c.diagMu.Unlock()
+			// 通知等待方
+			c.diagWaiterMu.Lock()
+			if ch, ok := c.diagWaiter[params.URI]; ok {
+				delete(c.diagWaiter, params.URI)
+				close(ch)
+			}
+			c.diagWaiterMu.Unlock()
 		}
 	}
 }
@@ -230,11 +241,28 @@ func (c *Client) GetDiagnostics(uri string) []Diagnostic {
 	return c.diags[uri]
 }
 
-// ForceDiagnostics 发送 textDocument/didOpen 以触发服务器重新诊断
+// ForceDiagnostics 发送 textDocument/didOpen 以触发服务器重新诊断，
+// 等待 publishDiagnostics 通知到达或超时后返回结果。
 func (c *Client) ForceDiagnostics(ctx context.Context, file string) ([]Diagnostic, error) {
 	uri := pathToURI(file)
+
+	// 注册等待通道
+	c.diagWaiterMu.Lock()
+	ch := make(chan struct{})
+	c.diagWaiter[uri] = ch
+	c.diagWaiterMu.Unlock()
+
 	c.ensureOpen(uri)
-	time.Sleep(500 * time.Millisecond)
+
+	select {
+	case <-ch:
+	case <-time.After(5 * time.Second):
+	}
+
+	c.diagWaiterMu.Lock()
+	delete(c.diagWaiter, uri)
+	c.diagWaiterMu.Unlock()
+
 	return c.GetDiagnostics(uri), nil
 }
 

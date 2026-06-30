@@ -52,8 +52,10 @@ func TestReadFile_Whole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if out != "hello\nworld\n" {
-		t.Errorf("got %q, want %q", out, "hello\nworld\n")
+	// 带行号输出
+	want := "1→hello\n2→world\n"
+	if out != want {
+		t.Errorf("got %q, want %q", out, want)
 	}
 }
 
@@ -70,8 +72,9 @@ func TestReadFile_LineRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if out != "L2\nL3\nL4" {
-		t.Errorf("got %q, want %q", out, "L2\nL3\nL4")
+	want := "2→L2\n3→L3\n4→L4\n\n[more lines below; pass offset=4 to continue]\n"
+	if out != want {
+		t.Errorf("got %q, want %q", out, want)
 	}
 }
 
@@ -116,8 +119,8 @@ func TestWriteFile_Overwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if !strings.Contains(out, "覆盖") {
-		t.Errorf("expected 覆盖 in output, got %q", out)
+	if !strings.Contains(out, "bytes") {
+		t.Errorf("expected 'bytes' in output, got %q", out)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {
@@ -236,6 +239,50 @@ func TestEditFile_NotFound(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error when old_text not found")
+	}
+}
+
+func TestEditFile_TabToSpaceFallback(t *testing.T) {
+	dir := mkTempDir(t)
+	// 文件使用 tab 缩进
+	path := writeTemp(t, dir, "a.go", "\t\tusage = chunk.Usage\n")
+
+	tool := NewEditFileTool(dir)
+	// LLM 用空格构造 old_text（TUI 显示层可能将 tab 渲染为空格）
+	out, err := tool.Execute(context.Background(), map[string]any{
+		"path":     path,
+		"old_text": "    usage = chunk.Usage", // 8 空格代替 2 tab
+		"new_text": "    usage = chunk.Usage // replaced",
+	})
+	if err != nil {
+		t.Fatalf("Execute failed (whitespace fallback should have matched): %v", err)
+	}
+	if !strings.Contains(out, "替换 1 处") {
+		t.Errorf("got %q, want contains '替换 1 处'", out)
+	}
+	got, _ := os.ReadFile(path)
+	want := "\t\tusage = chunk.Usage // replaced\n"
+	if string(got) != want {
+		t.Errorf("file = %q, want %q", got, want)
+	}
+}
+
+func TestEditFile_NotFoundWithNormalize(t *testing.T) {
+	dir := mkTempDir(t)
+	path := writeTemp(t, dir, "a.go", "hello world\n")
+
+	tool := NewEditFileTool(dir)
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"path":     path,
+		"old_text": "bonjour\tmonde",
+		"new_text": "x",
+	})
+	if err == nil {
+		t.Fatal("expected error when old_text not found even after normalize")
+	}
+	// 错误消息应包含 %q 格式的 old_text
+	if !strings.Contains(err.Error(), `"bonjour\tmonde"`) {
+		t.Errorf("error should contain %q formatted old_text, got: %v", `"bonjour\tmonde"`, err)
 	}
 }
 

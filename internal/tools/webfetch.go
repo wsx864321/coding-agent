@@ -57,7 +57,7 @@ func (t *WebFetchTool) Schema() json.RawMessage {
 
 func (t *WebFetchTool) Execute(ctx context.Context, args map[string]any) (string, error) {
 	var p webFetchArgs
-	if err := decode(args, &p); err != nil {
+	if err := decodeArgs(args, &p); err != nil {
 		return "", err
 	}
 

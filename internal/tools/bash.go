@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -173,6 +176,10 @@ func (b *BashTool) Execute(ctx context.Context, args map[string]any) (string, er
 		output = output[:b.MaxOutputBytes] + "\n... (输出被截断)"
 	}
 
+	// Windows: 将 Git Bash 风格路径 /d/project/... 转为 D:\project\...
+	// 仅当转换后的路径实际存在时才替换，避免误伤 /usr/bin 等非 Windows 路径
+	output = sanitizeBashOutput(output)
+
 	// 处理超时错误
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return output, fmt.Errorf("命令执行超时 (>= %s)", timeout)
@@ -298,4 +305,44 @@ func commandPreview(cmd string) string {
 		return cmd[:maxLen] + "..."
 	}
 	return cmd
+}
+
+// sanitizeBashOutput 将 bash 输出中的 Git Bash / MSYS2 posix 路径（如 /d/project/...）
+// 转换为 Windows 路径，从源头阻止 LLM 学到无法使用的路径格式。
+// 非 Windows 平台直接透传；转换后的路径会通过 os.Stat 验证存在性。
+func sanitizeBashOutput(output string) string {
+	if runtime.GOOS != "windows" {
+		return output
+	}
+	return msys2PathRe.ReplaceAllStringFunc(output, func(match string) string {
+		win := NormalizeMingwPath(match)
+		if win == match {
+			return match
+		}
+		// 验证转换后的路径确实存在（可能是目录也可能是文件）
+		if _, err := os.Stat(win); err == nil {
+			return win
+		}
+		// 尝试父目录：/d/project/coding-agent/internal/tools/files.go
+		// 如果文件不存在但父目录存在，也做转换
+		dir := win
+		for {
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				return match
+			}
+			if _, err := os.Stat(parent); err == nil {
+				return win
+			}
+			dir = parent
+		}
+	})
+}
+
+// msys2PathRe 匹配 MSYS2 / Git Bash 风格的 posix 绝对路径：
+// /单字母/剩余...  例如 /d/project/coding-agent/src/main.go
+var msys2PathRe *regexp.Regexp
+
+func init() {
+	msys2PathRe = regexp.MustCompile(`/[a-zA-Z]/[^\s"'` + "`" + `;:]*`)
 }

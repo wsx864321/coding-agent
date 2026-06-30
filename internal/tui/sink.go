@@ -19,8 +19,8 @@ func (s *TuiSink) SetChan(ch chan<- event.Event) {
 
 func (s *TuiSink) Emit(e event.Event) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	ch := s.ch
-	s.mu.Unlock()
 	if ch == nil {
 		return
 	}

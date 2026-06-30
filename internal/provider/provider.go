@@ -111,7 +111,24 @@ func CollectWithText(ch <-chan Chunk, onText func(string)) (Message, *Usage, err
 				toolCalls[currentTCIndex].Arguments += chunk.ToolCall.Arguments
 			}
 		case ChunkUsage:
-			usage = chunk.Usage
+			if usage == nil {
+				usage = chunk.Usage
+			} else {
+				// 合并多次 usage 上报（如 Anthropic 分两次发送
+				// message_start 的 input_tokens 和 message_delta 的 output_tokens）
+				if chunk.Usage.PromptTokens > 0 {
+					usage.PromptTokens = chunk.Usage.PromptTokens
+				}
+				if chunk.Usage.CompletionTokens > 0 {
+					usage.CompletionTokens = chunk.Usage.CompletionTokens
+				}
+				if chunk.Usage.TotalTokens > 0 {
+					usage.TotalTokens = chunk.Usage.TotalTokens
+				}
+				if chunk.Usage.FinishReason != "" {
+					usage.FinishReason = chunk.Usage.FinishReason
+				}
+			}
 		case ChunkError:
 			return Message{}, nil, chunk.Err
 		case ChunkDone:
@@ -252,7 +269,7 @@ func msgHasToolCallID(msg Message, toolCallID string) bool {
 	}
 	id := strings.TrimSpace(toolCallID)
 	if id == "" {
-		return true
+		return false
 	}
 	for _, tc := range msg.ToolCalls {
 		if tc.ID == id {

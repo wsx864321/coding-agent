@@ -236,7 +236,7 @@ func (a *Agent) executeBatch(ctx context.Context, calls []provider.ToolCall) {
 
 	for _, batch := range partitionToolCalls(a.registry, calls) {
 		if batch.parallel && batch.end-batch.start > 1 {
-			runParallel(batch.start, batch.end, func(i int) {
+			runParallel(batch.start, batch.end, results, func(i int) {
 				results[i] = a.invokeTool(ctx, calls[i])
 			})
 			continue
@@ -297,10 +297,9 @@ func isParallelisable(r *tools.Registry, name string) bool {
 
 // runParallel 在 [start, end) 范围内并发执行 run(i)，最多 maxParallelTools 个 goroutine。
 // 包含 panic 恢复，防止单个工具 panic 崩溃整个 agent。
-func runParallel(start, end int, run func(int)) {
+// results 必须预先分配好，长度 >= end。
+func runParallel(start, end int, results []string, run func(int)) {
 	sem := make(chan struct{}, maxParallelTools)
-	results := make([]string, end-start)
-	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for i := start; i < end; i++ {
 		i := i
@@ -311,9 +310,7 @@ func runParallel(start, end int, run func(int)) {
 			defer func() { <-sem }()
 			defer func() {
 				if r := recover(); r != nil {
-					mu.Lock()
-					results[i-start] = fmt.Sprintf("Error: panic in tool: %v", r)
-					mu.Unlock()
+					results[i] = fmt.Sprintf("Error: panic in tool: %v", r)
 				}
 			}()
 			run(i)
