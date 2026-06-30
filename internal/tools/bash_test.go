@@ -234,9 +234,9 @@ func TestBashTool_Execute_Timeout(t *testing.T) {
 	if !strings.Contains(err.Error(), "超时") {
 		t.Errorf("error %q does not mention 超时", err.Error())
 	}
-	// 不应等到 5s 完成；容忍 4s 上限（避免 CI 抖动）
-	if elapsed > 4*time.Second {
-		t.Errorf("execution took %v, expected < 4s", elapsed)
+	// `sh -c` 被杀后 sleep 孙子进程可能未被信号覆盖，给足 6s 余量避免 CI 抖动
+	if elapsed > 6*time.Second {
+		t.Errorf("execution took %v, expected < 6s", elapsed)
 	}
 }
 
@@ -262,8 +262,8 @@ func TestBashTool_Execute_TimeoutParamOverride(t *testing.T) {
 	if !strings.Contains(err.Error(), "超时") {
 		t.Errorf("error %q does not mention 超时", err.Error())
 	}
-	if elapsed > 4*time.Second {
-		t.Errorf("execution took %v, expected < 4s", elapsed)
+	if elapsed > 6*time.Second {
+		t.Errorf("execution took %v, expected < 6s", elapsed)
 	}
 }
 

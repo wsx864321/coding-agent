@@ -133,7 +133,7 @@ func TestAgent_BackgroundBash_Kill(t *testing.T) {
 	// 第 3 轮：最终回答
 	f := newFakeLLM(t,
 		scriptedResponse{toolCalls: []provider.ToolCall{
-			makeToolCall("call-1", "bash", `{"command":"ping -n 30 127.0.0.1","run_in_background":true}`),
+			makeToolCall("call-1", "bash", `{"command":"sleep 5","run_in_background":true}`),
 		}},
 		scriptedResponse{toolCalls: []provider.ToolCall{
 			makeToolCall("call-2", "kill_shell", `{"job_id":"bash-1"}`),
