@@ -18,20 +18,37 @@ var tuiCmd = &cobra.Command{
 }
 
 func init() {
+	tuiCmd.Flags().String("resume", "", "恢复指定会话（latest=最近, 或 ID 前缀匹配）")
+	tuiCmd.Flags().Bool("list", false, "列出当前项目的所有会话")
 	rootCmd.AddCommand(tuiCmd)
 }
 
 func runTui(cmd *cobra.Command, args []string) error {
+	cfg := buildConfig(cmd)
+	workdir := resolveWorkdir(cmd)
+	sessionBucket := agent.SessionBucket(agent.ResolveSessionDir(cfg.SessionDir), workdir)
+
+	// --list: 列出所有会话并退出
+	list, _ := cmd.Flags().GetBool("list")
+	if list {
+		return listAndPrintSessions(sessionBucket)
+	}
+
 	setup, err := setupTuiAgent(cmd)
 	if err != nil {
 		return err
 	}
 	defer setup.cleanup()
 
-	cfg := buildConfig(cmd)
-	workdir := resolveWorkdir(cmd)
-	sessionBucket := agent.SessionBucket(agent.ResolveSessionDir(cfg.SessionDir), workdir)
-	setup.Agent.SetSessionPath(agent.NewSessionPath(sessionBucket, cfg.Model))
+	// --resume: 恢复已有 session，否则新建
+	resume, _ := cmd.Flags().GetString("resume")
+	if resume != "" {
+		if err := resumeSession(setup.Agent, sessionBucket, resume); err != nil {
+			return err
+		}
+	} else {
+		setup.Agent.SetSessionPath(agent.NewSessionPath(sessionBucket, cfg.Model))
+	}
 
 	// 构造斜杠命令处理器
 	slashHandler := &SlashHandler{
