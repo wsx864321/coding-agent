@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -182,9 +181,6 @@ func TestGrepDir_SkipsBinary(t *testing.T) {
 }
 
 func TestGrep_DefaultPath(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skip on windows: path separator semantics in test")
-	}
 	dir := mkTempDir(t)
 	writeTemp(t, dir, "test.go", "package p")
 
@@ -195,7 +191,8 @@ func TestGrep_DefaultPath(t *testing.T) {
 	}
 	defer os.Chdir(orig)
 
-	tool := NewGrepTool(dir)
+	// use "" workdir so no whitelist restriction
+	tool := NewGrepTool("")
 	out, err := tool.Execute(context.Background(), map[string]any{
 		"pattern": "package",
 	})

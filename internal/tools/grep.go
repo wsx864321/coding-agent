@@ -198,6 +198,10 @@ func (t *GrepTool) grepDir(ctx context.Context, re *regexp.Regexp, dir string) (
 
 		// 跳过目录
 		if info.IsDir() {
+			// 根目录本身不跳过，只跳过子目录
+			if path == dir {
+				return nil
+			}
 			name := info.Name()
 			if name == ".git" || name == "node_modules" {
 				return filepath.SkipDir
