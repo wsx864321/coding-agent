@@ -67,7 +67,10 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		apiKey:  cfg.APIKey,
 		keyEnv:  cfg.KeyEnv,
 		httpClient: &http.Client{
-			Timeout: 0,
+			Transport: &http.Transport{
+				TLSHandshakeTimeout:   30 * time.Second,
+				ResponseHeaderTimeout: 60 * time.Second,
+			},
 		},
 	}, nil
 }

@@ -15,11 +15,12 @@ import (
 
 // LSPDefinitionTool 跳转到符号定义
 type LSPDefinitionTool struct {
-	manager *lsp.Manager
+	manager     *lsp.Manager
+	allowedDirs []string
 }
 
-func NewLSPDefinitionTool(manager *lsp.Manager) *LSPDefinitionTool {
-	return &LSPDefinitionTool{manager: manager}
+func NewLSPDefinitionTool(manager *lsp.Manager, allowedDirs []string) *LSPDefinitionTool {
+	return &LSPDefinitionTool{manager: manager, allowedDirs: allowedDirs}
 }
 
 func (t *LSPDefinitionTool) ReadOnly() bool { return true }
@@ -62,6 +63,9 @@ func (t *LSPDefinitionTool) Execute(ctx context.Context, args map[string]any) (s
 	if err := decode(args, &p); err != nil {
 		return "", err
 	}
+	if err := checkLSPPath(t.allowedDirs, p.File); err != nil {
+		return "", err
+	}
 	if t.manager == nil {
 		return "", fmt.Errorf("LSP 管理器未初始化")
 	}
@@ -80,11 +84,12 @@ func (t *LSPDefinitionTool) Execute(ctx context.Context, args map[string]any) (s
 
 // LSPReferencesTool 查找所有引用
 type LSPReferencesTool struct {
-	manager *lsp.Manager
+	manager     *lsp.Manager
+	allowedDirs []string
 }
 
-func NewLSPReferencesTool(manager *lsp.Manager) *LSPReferencesTool {
-	return &LSPReferencesTool{manager: manager}
+func NewLSPReferencesTool(manager *lsp.Manager, allowedDirs []string) *LSPReferencesTool {
+	return &LSPReferencesTool{manager: manager, allowedDirs: allowedDirs}
 }
 
 func (t *LSPReferencesTool) ReadOnly() bool { return true }
@@ -121,6 +126,9 @@ func (t *LSPReferencesTool) Execute(ctx context.Context, args map[string]any) (s
 	if err := decode(args, &p); err != nil {
 		return "", err
 	}
+	if err := checkLSPPath(t.allowedDirs, p.File); err != nil {
+		return "", err
+	}
 	if t.manager == nil {
 		return "", fmt.Errorf("LSP 管理器未初始化")
 	}
@@ -142,11 +150,12 @@ func (t *LSPReferencesTool) Execute(ctx context.Context, args map[string]any) (s
 
 // LSPHoverTool 获取符号类型和文档
 type LSPHoverTool struct {
-	manager *lsp.Manager
+	manager     *lsp.Manager
+	allowedDirs []string
 }
 
-func NewLSPHoverTool(manager *lsp.Manager) *LSPHoverTool {
-	return &LSPHoverTool{manager: manager}
+func NewLSPHoverTool(manager *lsp.Manager, allowedDirs []string) *LSPHoverTool {
+	return &LSPHoverTool{manager: manager, allowedDirs: allowedDirs}
 }
 
 func (t *LSPHoverTool) ReadOnly() bool { return true }
@@ -183,6 +192,9 @@ func (t *LSPHoverTool) Execute(ctx context.Context, args map[string]any) (string
 	if err := decode(args, &p); err != nil {
 		return "", err
 	}
+	if err := checkLSPPath(t.allowedDirs, p.File); err != nil {
+		return "", err
+	}
 	if t.manager == nil {
 		return "", fmt.Errorf("LSP 管理器未初始化")
 	}
@@ -199,6 +211,9 @@ func (t *LSPHoverTool) Execute(ctx context.Context, args map[string]any) (string
 	}
 
 	// 返回 markdown 格式的 hover 内容
+	if h.Contents.Value == "" {
+		return "无可用信息。", nil
+	}
 	return h.Contents.Value, nil
 }
 
@@ -206,11 +221,12 @@ func (t *LSPHoverTool) Execute(ctx context.Context, args map[string]any) (string
 
 // LSPDiagnosticsTool 获取文件诊断信息
 type LSPDiagnosticsTool struct {
-	manager *lsp.Manager
+	manager     *lsp.Manager
+	allowedDirs []string
 }
 
-func NewLSPDiagnosticsTool(manager *lsp.Manager) *LSPDiagnosticsTool {
-	return &LSPDiagnosticsTool{manager: manager}
+func NewLSPDiagnosticsTool(manager *lsp.Manager, allowedDirs []string) *LSPDiagnosticsTool {
+	return &LSPDiagnosticsTool{manager: manager, allowedDirs: allowedDirs}
 }
 
 func (t *LSPDiagnosticsTool) ReadOnly() bool { return true }
@@ -241,6 +257,9 @@ type lspFileArg struct {
 func (t *LSPDiagnosticsTool) Execute(ctx context.Context, args map[string]any) (string, error) {
 	var p lspFileArg
 	if err := decode(args, &p); err != nil {
+		return "", err
+	}
+	if err := checkLSPPath(t.allowedDirs, p.File); err != nil {
 		return "", err
 	}
 	if t.manager == nil {
@@ -275,11 +294,12 @@ func (t *LSPDiagnosticsTool) Execute(ctx context.Context, args map[string]any) (
 
 // CodeIndexTool 提供轻量级符号索引
 type CodeIndexTool struct {
-	manager *lsp.Manager
+	manager     *lsp.Manager
+	allowedDirs []string
 }
 
-func NewCodeIndexTool(manager *lsp.Manager) *CodeIndexTool {
-	return &CodeIndexTool{manager: manager}
+func NewCodeIndexTool(manager *lsp.Manager, allowedDirs []string) *CodeIndexTool {
+	return &CodeIndexTool{manager: manager, allowedDirs: allowedDirs}
 }
 
 func (t *CodeIndexTool) ReadOnly() bool { return true }
@@ -332,6 +352,11 @@ func (t *CodeIndexTool) Execute(ctx context.Context, args map[string]any) (strin
 	var p codeIndexArgs
 	if err := decode(args, &p); err != nil {
 		return "", err
+	}
+	if p.Path != "" && p.Path != "." {
+		if err := checkLSPPath(t.allowedDirs, p.Path); err != nil {
+			return "", err
+		}
 	}
 	if t.manager == nil {
 		return "", fmt.Errorf("LSP 管理器未初始化")
@@ -408,6 +433,22 @@ func (t *CodeIndexTool) search(ctx context.Context, p codeIndexArgs) (string, er
 }
 
 // ---------- helpers ----------
+
+// checkLSPPath 校验 LSP 工具的文件参数是否在白名单内。
+// allowedDirs 为空时跳过校验（向后兼容测试等场景）。
+func checkLSPPath(allowedDirs []string, file string) error {
+	if len(allowedDirs) == 0 {
+		return nil
+	}
+	ok, err := isInAllowedDirs(file, allowedDirs)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("路径 %q 不在允许的目录范围内", file)
+	}
+	return nil
+}
 
 func decode(args map[string]any, target interface{}) error {
 	raw, _ := json.Marshal(args)

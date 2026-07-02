@@ -62,7 +62,10 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		apiKey:  cfg.APIKey,
 		keyEnv:  cfg.KeyEnv,
 		httpClient: &http.Client{
-			Timeout: 0, // streaming, no timeout
+			Transport: &http.Transport{
+				TLSHandshakeTimeout:   30 * time.Second,
+				ResponseHeaderTimeout: 60 * time.Second,
+			},
 		},
 	}, nil
 }
@@ -234,10 +237,10 @@ func (c *client) readStream(ctx context.Context, body io.ReadCloser, ch chan<- p
 				}
 				return
 			}
-			if !strings.HasPrefix(line, "data: ") {
+			if !strings.HasPrefix(line, "data:") {
 				continue
 			}
-			data := strings.TrimPrefix(line, "data: ")
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 			if data == "[DONE]" {
 				ch <- provider.Chunk{Type: provider.ChunkDone}
 				return

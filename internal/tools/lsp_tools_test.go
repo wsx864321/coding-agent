@@ -10,7 +10,7 @@ import (
 )
 
 func TestLSPDefinitionTool_Name(t *testing.T) {
-	tool := NewLSPDefinitionTool(nil)
+	tool := NewLSPDefinitionTool(nil, nil)
 	if tool.Name() != "lsp_definition" {
 		t.Errorf("Name: got %q", tool.Name())
 	}
@@ -20,7 +20,7 @@ func TestLSPDefinitionTool_Name(t *testing.T) {
 }
 
 func TestLSPDefinitionTool_NoManager(t *testing.T) {
-	tool := NewLSPDefinitionTool(nil)
+	tool := NewLSPDefinitionTool(nil, nil)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"file":   "test.go",
 		"line":   10,
@@ -34,7 +34,7 @@ func TestLSPDefinitionTool_NoManager(t *testing.T) {
 func TestLSPDefinitionTool_ManagerNotAvailable(t *testing.T) {
 	mgr := lsp.NewManager(t.TempDir())
 	// Don't call Start() — no LSP server running
-	tool := NewLSPDefinitionTool(mgr)
+	tool := NewLSPDefinitionTool(mgr, nil)
 	result, err := tool.Execute(context.Background(), map[string]any{
 		"file":   "test.go",
 		"line":   10,
@@ -49,28 +49,28 @@ func TestLSPDefinitionTool_ManagerNotAvailable(t *testing.T) {
 }
 
 func TestLSPReferencesTool_Name(t *testing.T) {
-	tool := NewLSPReferencesTool(nil)
+	tool := NewLSPReferencesTool(nil, nil)
 	if tool.Name() != "lsp_references" {
 		t.Errorf("Name: got %q", tool.Name())
 	}
 }
 
 func TestLSPHoverTool_Name(t *testing.T) {
-	tool := NewLSPHoverTool(nil)
+	tool := NewLSPHoverTool(nil, nil)
 	if tool.Name() != "lsp_hover" {
 		t.Errorf("Name: got %q", tool.Name())
 	}
 }
 
 func TestLSPDiagnosticsTool_Name(t *testing.T) {
-	tool := NewLSPDiagnosticsTool(nil)
+	tool := NewLSPDiagnosticsTool(nil, nil)
 	if tool.Name() != "lsp_diagnostics" {
 		t.Errorf("Name: got %q", tool.Name())
 	}
 }
 
 func TestLSPDiagnosticsTool_NoManager(t *testing.T) {
-	tool := NewLSPDiagnosticsTool(nil)
+	tool := NewLSPDiagnosticsTool(nil, nil)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"file": "test.go",
 	})
@@ -80,14 +80,14 @@ func TestLSPDiagnosticsTool_NoManager(t *testing.T) {
 }
 
 func TestCodeIndexTool_Name(t *testing.T) {
-	tool := NewCodeIndexTool(nil)
+	tool := NewCodeIndexTool(nil, nil)
 	if tool.Name() != "code_index" {
 		t.Errorf("Name: got %q", tool.Name())
 	}
 }
 
 func TestCodeIndexTool_InvalidOp(t *testing.T) {
-	tool := NewCodeIndexTool(nil)
+	tool := NewCodeIndexTool(nil, nil)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"action": "invalid",
 	})
@@ -98,7 +98,7 @@ func TestCodeIndexTool_InvalidOp(t *testing.T) {
 
 func TestCodeIndexTool_OutlineMissingPath(t *testing.T) {
 	mgr := lsp.NewManager(t.TempDir())
-	tool := NewCodeIndexTool(mgr)
+	tool := NewCodeIndexTool(mgr, nil)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"action": "outline",
 	})
@@ -109,7 +109,7 @@ func TestCodeIndexTool_OutlineMissingPath(t *testing.T) {
 
 func TestCodeIndexTool_SearchMissingQuery(t *testing.T) {
 	mgr := lsp.NewManager(t.TempDir())
-	tool := NewCodeIndexTool(mgr)
+	tool := NewCodeIndexTool(mgr, nil)
 	_, err := tool.Execute(context.Background(), map[string]any{
 		"action": "search",
 	})
@@ -123,11 +123,11 @@ func TestLSPTools_Schema(t *testing.T) {
 		name string
 		t    Tool
 	}{
-		{"lsp_definition", NewLSPDefinitionTool(nil)},
-		{"lsp_references", NewLSPReferencesTool(nil)},
-		{"lsp_hover", NewLSPHoverTool(nil)},
-		{"lsp_diagnostics", NewLSPDiagnosticsTool(nil)},
-		{"code_index", NewCodeIndexTool(nil)},
+		{"lsp_definition", NewLSPDefinitionTool(nil, nil)},
+		{"lsp_references", NewLSPReferencesTool(nil, nil)},
+		{"lsp_hover", NewLSPHoverTool(nil, nil)},
+		{"lsp_diagnostics", NewLSPDiagnosticsTool(nil, nil)},
+		{"code_index", NewCodeIndexTool(nil, nil)},
 	}
 
 	for _, tt := range tools {

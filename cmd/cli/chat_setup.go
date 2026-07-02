@@ -96,11 +96,11 @@ func setupAgentWithAsker(cmd *cobra.Command, asker permission.Asker, tuiSink *tu
 	lspManager.Start()
 
 	// 注册 LSP 工具
-	registry.Register(tools.NewLSPDefinitionTool(lspManager))
-	registry.Register(tools.NewLSPReferencesTool(lspManager))
-	registry.Register(tools.NewLSPHoverTool(lspManager))
-	registry.Register(tools.NewLSPDiagnosticsTool(lspManager))
-	registry.Register(tools.NewCodeIndexTool(lspManager))
+	registry.Register(tools.NewLSPDefinitionTool(lspManager, []string{workdir}))
+	registry.Register(tools.NewLSPReferencesTool(lspManager, []string{workdir}))
+	registry.Register(tools.NewLSPHoverTool(lspManager, []string{workdir}))
+	registry.Register(tools.NewLSPDiagnosticsTool(lspManager, []string{workdir}))
+	registry.Register(tools.NewCodeIndexTool(lspManager, []string{workdir}))
 
 	a, err := agent.NewAgent(buildConfig(cmd),
 		agent.WithRegistry(registry),
