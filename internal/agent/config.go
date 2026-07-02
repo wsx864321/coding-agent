@@ -341,8 +341,37 @@ func archiveProjectBucket(workdir string) string {
 	}
 	sum := sha1.Sum([]byte(filepath.Clean(wd)))
 	short := hex.EncodeToString(sum[:])[:12]
-	name := strings.TrimSpace(filepath.Base(wd))
-	if name == "" || name == "." || name == string(filepath.Separator) {
+
+	// Encode full path segments for human readability.
+	// D:\project\apo → D-project-apo, /home/me/proj → home-me-proj
+	clean := filepath.Clean(wd)
+	clean = strings.Trim(clean, string(filepath.Separator)+`/`)
+	segments := strings.FieldsFunc(clean, func(r rune) bool {
+		return r == '\\' || r == '/'
+	})
+
+	// Sanitize illegal filename characters; limit to 5 segments.
+	badChars := strings.NewReplacer(
+		"<", "-", ">", "-", ":", "-", `"`, "-",
+		"|", "-", "?", "-", "*", "-",
+	)
+	var cleanSegs []string
+	for _, s := range segments {
+		s = strings.TrimRight(s, ":") // strip Windows drive-letter colon
+		s = badChars.Replace(s)
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		cleanSegs = append(cleanSegs, s)
+	}
+	const maxSegs = 5
+	if len(cleanSegs) > maxSegs {
+		cleanSegs = cleanSegs[:maxSegs]
+	}
+
+	name := strings.Join(cleanSegs, "-")
+	if name == "" || name == "." {
 		name = "workspace"
 	}
 	return name + "-" + short

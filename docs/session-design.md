@@ -20,17 +20,19 @@
 ```
 <UserHome>/.coding-agent/
 ├── archives/                         # 已有：compact 归档（审计用）
-│   └── coding-agent-a1b2c3d4e5f6/
+│   └── D-project-coding-agent-a1b2c3d4e5f6/
 │       └── 20260614-170500.000.jsonl
 │
 └── sessions/                         # 新增：session 持久化（可恢复）
-    └── coding-agent-a1b2c3d4e5f6/
+    └── D-project-coding-agent-a1b2c3d4e5f6/
         └── 20260614-171500.000-deepseek-v3.jsonl
 ```
 
 项目分桶使用与 archive 完全相同的 `archiveProjectBucket()`：
 - 对工作目录绝对路径做 SHA1，取前 12 位 hex
-- 格式：`<项目目录名>-<12位哈希>`
+- 格式：`<路径段编码>-<12位哈希>`
+- 路径段编码：完整绝对路径按分隔符切分为段（最多 5 段），去除盘符冒号、替换非法文件名字符，用 `-` 拼接
+- 例如：`D:\project\coding-agent` → `D-project-coding-agent-a1b2c3d4e5f6`
 
 ---
 

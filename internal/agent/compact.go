@@ -126,7 +126,7 @@ func (a *Agent) pruneStaleToolResults() error {
 		return nil
 	}
 	if len(archived) > 0 {
-		_, _ = archiveMessages(a.archiveDir, archived)
+		_, _ = a.archiveMessages(a.archiveDir, archived)
 	}
 	return nil
 }
@@ -199,7 +199,7 @@ func (a *Agent) compactHistory(ctx context.Context, trigger, focus string, force
 
 	archivePath := ""
 	if a.archiveDir != "" {
-		p, err := archiveMessages(a.archiveDir, fold)
+		p, err := a.archiveMessages(a.archiveDir, fold)
 		if err != nil {
 			return false, err
 		}
@@ -283,7 +283,12 @@ func renderTranscript(msgs []provider.Message) string {
 	return b.String()
 }
 
-func archiveMessages(dir string, msgs []provider.Message) (string, error) {
+// archiveMessages 将消息追加写入本次运行的 archive 文件。
+// 首次调用时创建文件（包含时间戳命名）；后续调用 append 追加到同一文件。
+func (a *Agent) archiveMessages(dir string, msgs []provider.Message) (string, error) {
+	if len(msgs) == 0 {
+		return "", nil
+	}
 	if strings.TrimSpace(dir) == "" {
 		return "", nil
 	}
@@ -291,9 +296,28 @@ func archiveMessages(dir string, msgs []provider.Message) (string, error) {
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		return "", err
 	}
-	_ = cleanupArchiveProjectDir(projectDir, time.Duration(DefaultArchiveRetention)*time.Second, DefaultArchiveProjectCap)
-	path := filepath.Join(projectDir, time.Now().Format("20060102-150405.000")+".jsonl")
-	f, err := os.Create(path)
+
+	// First archive in this run: create a new file.
+	if a.archivePath == "" {
+		_ = cleanupArchiveProjectDir(projectDir, time.Duration(DefaultArchiveRetention)*time.Second, DefaultArchiveProjectCap)
+		path := filepath.Join(projectDir, time.Now().Format("20060102-150405.000")+".jsonl")
+		f, err := os.Create(path)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		enc := json.NewEncoder(f)
+		for _, m := range msgs {
+			if err := enc.Encode(m); err != nil {
+				return "", err
+			}
+		}
+		a.archivePath = path
+		return path, nil
+	}
+
+	// Subsequent archives in this run: append to the same file.
+	f, err := os.OpenFile(a.archivePath, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return "", err
 	}
@@ -304,7 +328,7 @@ func archiveMessages(dir string, msgs []provider.Message) (string, error) {
 			return "", err
 		}
 	}
-	return path, nil
+	return a.archivePath, nil
 }
 
 func mechanicalFoldDigest(n int, archive string, cause error) string {

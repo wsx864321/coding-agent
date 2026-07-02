@@ -34,6 +34,7 @@ type Agent struct {
 	recentKeep          int
 	maxMessagesSnip     int
 	archiveDir          string
+	archivePath         string // first archive file created this run; subsequent appends reuse it
 	consecutiveCompacts int
 	compactStuck        bool
 	softCompactNoticed  bool
